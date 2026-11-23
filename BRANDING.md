@@ -1,9 +1,7 @@
-# REC Calories branding
+﻿# CHAD branding
 
-No verified Real Estate Central logo, colour guide, or brand assets were found in the requested local search on 23 November 2026.
+CHAD is the app name, wordmark, document title, Apple install title, manifest name and short name. The original text mark uses navy #14284B and gold #B0894C. Bone #F4F1EA supports the light theme; a navy surface palette supports system dark mode.
 
-The read-only search covered Documents (including the Shared Brain), OneDrive, Downloads, and the JH Toolkit source tree. Grave Yard and OCIATE were excluded, as were environment files and files named for secrets or credentials. Filename searches and relevant text references were checked. The available brand guides and logos belonged to JH Team; they were not treated as Real Estate Central assets or copied.
+No Real Estate Central identity, third-party logos, or copied app artwork is used. The repository and Pages path remain arjunsells/rec-calories; manifest id, start_url and scope stay ./ to preserve install identity. The rec-calories storage/cache namespace is retained for compatibility.
 
-Source: the fallback explicitly supplied in the project brief. Navy `#14284B`, gold `#B0894C`, and bone `#F4F1EA`. The app uses a text wordmark, “Real Estate Central”, with system fonts and a Georgia heading. The generated REC app icons are original utility icons, not an official company logo.
-
-No source documents, personal details, private paths, or customer records are included in this public repository.
+The icon generator in scripts/generate_icons.py creates 180, 192 and 512 pixel PNGs with a CHAD text mark inside a maskable safe area. Motion, ring fills, sheet entrances, grade reveals and reward feedback respect prefers-reduced-motion. Screens use generous touch targets, a bottom tab bar, and one primary SNAP action.

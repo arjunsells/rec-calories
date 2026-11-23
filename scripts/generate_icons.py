@@ -1,10 +1,12 @@
-"""Generate original REC monogram icons using only the Python standard library."""
+"""Generate original CHAD text mark icons using only the Python standard library."""
 from pathlib import Path
 import struct
 import zlib
 
 LETTERS = {
-    'R': ['11110', '10001', '10001', '11110', '10100', '10010', '10001'],
+    'H': ['10001', '10001', '10001', '11111', '10001', '10001', '10001'],
+    'A': ['01110', '10001', '10001', '11111', '10001', '10001', '10001'],
+    'D': ['11110', '10001', '10001', '10001', '10001', '10001', '11110'],
     'E': ['11111', '10000', '10000', '11110', '10000', '10000', '11111'],
     'C': ['01111', '10000', '10000', '10000', '10000', '10000', '01111'],
 }
@@ -20,11 +22,11 @@ def icon(size):
             # Keep the artwork inside the central maskable safe area.
             if .22 <= nx <= .78 and .70 <= ny <= .725:
                 color = gold
-            gx, gy = int((nx - .22) / .56 * 17), int((ny - .36) / .25 * 7)
+            gx, gy = int((nx - .22) / .56 * 23), int((ny - .36) / .25 * 7)
             if .22 <= nx < .78 and .36 <= ny < .61 and 0 <= gy < 7:
                 letter_index, col = divmod(gx, 6)
-                if letter_index < 3 and col < 5 and LETTERS['REC'[letter_index]][gy][col] == '1':
-                    color = bone
+                if letter_index < 4 and col < 5 and LETTERS['CHAD'[letter_index]][gy][col] == '1':
+                    color = gold
             row.extend(color)
         rows.append(row)
     def chunk(kind, data):

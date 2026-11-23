@@ -1,49 +1,31 @@
-# REC Calories
+﻿# CHAD
 
-A tiny offline calorie and protein tracker for Real Estate Central. Plain HTML, CSS, and JavaScript; no framework, build step, remote fonts, analytics, or runtime dependencies.
+Fuel your next level. A private, mobile-first food journal with equal calorie/protein rings, daily quests, XP, levels, streaks, grades and badges. Original navy/gold visual identity; plain HTML, CSS and JavaScript with no build step.
 
-## Use
+Open https://arjunsells.github.io/rec-calories/ in Safari and use Share → Add to Home Screen. The repository and install identity remain unchanged. Settings shows when offline logging is ready.
 
-Open https://arjunsells.github.io/rec-calories/ once online. On iPhone Safari, use Share → Add to Home Screen. Offline access is ready after the service worker finishes installation; its status appears in Settings.
+## Logging
 
-Add calories with an optional name and protein amount. Tap recent or frequent entries to add them again. Delete entries from Today, review the last seven days in History, and change the default 1,800 kcal target in Settings. Dates use the device's local timezone. The ring shows calories eaten toward the target and clearly labels an excess.
+SNAP opens photo or text estimates with your own OpenAI key, plus free barcode scanning and packaged-food search using Open Food Facts. Search prefers Australian products, then falls back worldwide. ZXing supports browser barcode decoding without BarcodeDetector. Camera use requires HTTPS and permission; manual barcode digits are also supported.
 
-Data is stored only in this browser's localStorage, under `rec-calories-v1`. There is no sync or backup; scans optionally send a chosen photo to OpenAI as described below. Clearing browser data removes entries; private browsing may not persist them. The app ships with no entries or personal data.
+Review estimates, choose a meal, adjust 0.5×–2× portions, copy a summary, then tap Log it. Packaged foods use serving nutrition when available; otherwise enter grams against the 100 g basis (check liquid units on the pack). Past entries have Log again. Manual entry is below the home screen rings and quest card.
 
-## Property journey
+Defaults are Cut: 1,900 kcal / 220 g protein / 150 g carbs / 45 g fat (24 Nov–6 Dec 2026). Reset is 2,700/200/320/70; Bulk is 3,000/200/370/80. Existing saved goals are preserved. These are configurable personal targets, not a nutrition prescription.
 
-Logging stays the same: submit Quick add or tap a recent item once. Each log earns 10 XP. After local midnight, a logged day within 10% of your calorie target earns 50 XP, with 25 extra XP for reaching protein. The protein goal defaults to 180 g and is editable alongside calories in Settings.
+## Progress
 
-Grades are S (within 10% and protein reached), A (within 10%), B (within 20%), or C (outside 20%). Today's grade is provisional. Empty days receive no grade or XP. Streaks count consecutive days with logs; yesterday's streak remains active until today ends.
+Each entry earns 10 XP. Daily quests reward protein (30 XP), three distinct meals (30 XP), and a photo or barcode log (20 XP). Completed days within 10% of calories earn 50 XP, plus 25 XP for protein. S = within 10% and protein; A = within 10%; B = within 20%; C = outside 20%. Today is provisional. Rewards derive from logs and current goals, so edits/deletions recalculate without duplicate awards.
 
-Six levels run from Open Home Rookie to Agency Legend at 0, 100, 300, 700, 1,400 and 2,500 XP. Seven badges reward first log, 25 logs, 3/7/30-day streaks, protein and a completed S day. Level and badge celebrations animate only when reduced motion is not requested.
+Streaks count consecutive logged days, with yesterday keeping the streak alive until today ends. Six levels and seven badges reward consistency. Every log has XP feedback/bounce; new levels have a full-screen celebration. Motion and vibration respect reduced-motion preferences. Theme follows system light/dark mode.
 
-Progress is derived from all saved entries using current goals. Deleting entries or editing goals recalculates rewards, including historical rewards. Future-dated logs do not earn rewards until that day. Existing storage is migrated in memory and written with schema version 3 on startup and successful saves, retaining original entries and fields. Unreadable data is left intact and saving is paused. No separate XP ledger or personal data is shipped.
+## Data and services
 
-## Development
+Data remains in localStorage `rec-calories-v1`; schema 4 migrates existing data without wiping entries, goals or extra fields. Unreadable saved data pauses saving to protect it. Old photo thumbnails are pruned after seven days; logs remain. The OpenAI key uses the existing device-only `rec-calories-ai-key` storage key. No key is bundled. Only chosen photos/descriptions go to OpenAI; free food queries go to Open Food Facts. Network services require internet; offline manual logging/history/settings use `rec-calories-shell-v4`.
 
-Serve this directory with `python -m http.server 8080` and open `http://localhost:8080`. Secure contexts (HTTPS or localhost) are required for service workers. All app paths are relative for GitHub Pages subdirectory hosting.
+Food data: [Open Food Facts](https://world.openfoodfacts.org), ODbL. Local barcode bundle: @zxing/browser 0.1.5, MIT; license/provenance in `vendor/`. No analytics, account or sync. Clearing browser data removes history.
 
-Regenerate the three PNG icons with `python scripts/generate_icons.py` (Python standard library only). Increment the cache version in `sw.js` when changing the app shell. GitHub Pages publishes the `main` branch root.
+## Validation
 
-See [BRANDING.md](./BRANDING.md) for brand provenance.
+Run `node scripts/check.cjs` and `node scripts/scan-check.cjs`. Browser integration: install Playwright outside this repo (`npm install --prefix "$env:TEMP/chad-browser-qa" playwright`), then `node scripts/browser-check.cjs`. Uses installed Edge by default; override `BROWSER_EXECUTABLE` or `PLAYWRIGHT_MODULE` as needed. Browser tests exercise real OFF search and AU barcode 9300652010794, mock AI responses, storage migration, portions, offline shell and mobile light/dark. Screenshots go outside this repo to sibling `rec-calories-shots` (override `CHAD_SHOTS`). Real AI estimates need a user key; physical iPhone camera scanning/haptics and home-screen update behavior require device testing.
 
-Run `node scripts/check.cjs` for dependency-free regression checks covering logging, persistence, migration, game rules, streak boundaries, levels, safe rendering, storage failures, manifest/icons, and shell cache v3. Run `node --check app.js`, `node --check game.js`, and `node --check sw.js` for syntax checks.
-
-Browser release checks: at a mobile viewport, try a legacy synthetic history, a new log, one-tap repeat, deletion, goal edit/reload, level and badge celebrations, reduced-motion mode, and offline reload after the service worker takes control. Check for overflow and JavaScript errors. Use synthetic data only.
-
-## Photo scan (v3)
-
-Today has a one-tap route to Scan. In Settings, paste your own OpenAI API key into the masked **AI key** field and save. The app ships without a key. It stores your key separately in localStorage (`rec-calories-ai-key`) only in that browser on your device. Saving a blank field removes it. No backend, account creation, or shared credentials are involved.
-
-The camera input uses `accept="image/*" capture="environment"` for mobile Safari and installed home-screen use. The browser controls the camera/library chooser. Photos are resized client-side to a maximum 1024px JPEG and sent directly to `https://api.openai.com/v1/chat/completions`, using `gpt-4o-mini`, JSON mode and `store: false`. OpenAI API billing and provider data policies apply. Scan requires internet; manual entry and saved history work offline.
-
-Review and edit each food name, estimated amount, calories and protein/carbs/fat, choose a meal, then tap **Log meal**. Amount is descriptive; changing it does not automatically scale nutrition. Estimates are approximate. The app validates the JSON and recomputes the total. Missing keys, rejected keys, usage limits, connection failures, timeouts, unreadable photos and malformed estimates show messages with manual entry available.
-
-Only a small 96px JPEG thumbnail is stored with the first food of a scanned meal, avoiding duplicate images. The full photo is never persisted. Thumbnails older than seven local calendar days are removed on startup, daily rollover and saves. If storage fills, saving retries without thumbnails while retaining food logs. Schema v3 keeps the existing `rec-calories-v1` key, preserves historical fields, treats absent carb/fat values as zero for display, and groups legacy entries under Snacks. All existing reward rules remain in `game.js`.
-
-The bottom tabs are Today, Scan, Progress (history, journey and badges), and Settings. Carb and fat bars use reference amounts of 50% and 30% of calorie goal respectively; protein uses the configured goal.
-
-New files in v3: `scan.js` (vision request, validation and image compression), `scripts/scan-check.cjs` (mocked API tests), and `scripts/browser-check.cjs` (mobile browser integration tests). `sw.js` caches the complete app shell including `scan.js` under `rec-calories-shell-v3`; cross-origin API traffic is never cached.
-
-Run `node scripts/check.cjs` and `node scripts/scan-check.cjs`. For browser checks, install Playwright locally with `npm install --prefix .qa playwright` (ignored by Git), then run `node scripts/browser-check.cjs`. The browser script defaults to the Windows Edge executable; set `BROWSER_EXECUTABLE` to override. All fixtures are synthetic and all API calls are intercepted; no real key or paid request is used. Physical iPhone camera and installed-app behavior still need a device check.
+Icons are original CHAD text marks generated with `python scripts/generate_icons.py`. Deploy by pushing main to GitHub Pages. Never add credentials, personal logs, test screenshots, or local dependency folders.
