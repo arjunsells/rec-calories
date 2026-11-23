@@ -26,7 +26,7 @@ Darwin local calendar dates drive automatic goals:
 
 Edit phase end dates in Settings; manual phase/custom goals override automatic dates. Bulk goals continue after its end until edited. Reset displays separate daily-shake and extra-banana logging; Bulk displays bagel, wrap and shake logging. Add-on macros are approximate and are logged separately, so switching a meal cannot duplicate them. The shake contains 500 mL high-protein milk, 60 g oats and one banana.
 
-Progress has 7-/30-day SVG calories-vs-goal bars, protein, water, scores, a rolling seven-day average of available optional weigh-ins, a 13-week heatmap, XP, levels and badges. Missing measurements are not invented.
+Progress has 7-/30-day canvas calories-vs-goal bars, protein, water, scores, a rolling seven-day average of available optional weigh-ins, a 13-week heatmap, XP, levels and badges. Missing measurements are not invented.
 
 ## Preserved logging
 
@@ -38,18 +38,51 @@ The existing localStorage key `rec-calories-v1` migrates to schema 5. Entries, t
 
 The existing `rec-calories-ai-key` stays device-only and is sent directly to OpenAI for requested estimates. Local backup export excludes it. Backups can contain private measurements/photos; keep them private. Clearing browser storage removes the journal.
 
-Offline shell: `rec-calories-shell-v5`. Manifest `id`, `start_url` and `scope` remain `./`.
+Offline shell: `rec-calories-shell-v5b`. Manifest `id`, `start_url` and `scope` remain `./`.
 
 ## Assets and new files
 
 New runtime files (all included in the service-worker shell):
 
+- `theme.css` — supplied light/dark component kit and self-hosted pixel font.
+- `sprites.js` — `CHADSprites` SVG sprite library; flame, tabs, camera and training muscles.
+- `charts.js` — `CHADCharts` canvas bars, lines, heatmap and rings. Small integration extension: `barsVsGoal` accepts `opts.goals` for per-day phase/hydration targets.
 - `plan-data.js` — 12 public meal-plan cards; the input folder itself is excluded.
-- `quest.js` — v5 checklist, calendar, training, scoring, settings and SVG charts.
+- `quest.js` — v5 checklist, calendar, training, scoring, settings and CHADCharts integration.
 - `fonts/press-start-2p.ttf` — self-hosted Press Start 2P from Google Fonts (SIL OFL).
 - `fonts/OFL.txt` — font copyright and license.
 
 New test files: `scripts/quest-check.cjs`, `scripts/v5-browser-check.cjs`. Existing app/browser tests were updated. No new dependencies are shipped. System fonts provide body text. Existing ZXing is MIT (`vendor/ZXING-LICENSE`). Font source: https://github.com/google/fonts/tree/main/ofl/pressstart2p. Meal data follows the supplied plan and includes its approximate takeaway values. External product data: Open Food Facts (ODbL).
+
+The merge removes the old layered visual CSS and SVG chart renderer. `style.css` retains app layout, form/dialog behavior and adapters for the kit. No new runtime dependencies. The floating SNAP button remains available across tabs, hides during Snap + Say, and every view clears its bottom edge. Manual `data-theme` overrides and system theme changes redraw charts; daily values remain available in chart disclosure panels.
+
+Merge file list: `index.html`, `app.js`, `quest.js`, `style.css`, `theme.css`, `sprites.js`, `charts.js`, `sw.js`, `README.md`, `scripts/check.cjs`, `scripts/browser-check.cjs`, `scripts/v5-browser-check.cjs`, `scripts/sw-update-check.cjs`. Screenshots remain in the sibling directory and are not committed.
+
+Complete `shell-v5b` precache list (21 resources):
+
+```text
+./
+index.html
+style.css
+theme.css
+sprites.js
+charts.js
+app.js
+game.js
+plan-data.js
+quest.js
+fonts/press-start-2p.ttf
+fonts/OFL.txt
+scan.js
+food.js
+vendor/zxing-browser.min.js
+vendor/ZXING-LICENSE
+vendor/README.md
+manifest.webmanifest
+icons/apple-touch-icon.png
+icons/icon-192.png
+icons/icon-512.png
+```
 
 ## Validation and release
 
@@ -63,9 +96,12 @@ node scripts/quest-check.cjs
 npm install --prefix "$env:TEMP/chad-browser-qa" playwright
 node scripts/browser-check.cjs
 node scripts/v5-browser-check.cjs
+node scripts/sw-update-check.cjs
 ```
 
-Browser tests use installed headless Edge at 430×932; override `BROWSER_EXECUTABLE` / `PLAYWRIGHT_MODULE` if needed. Food and AI requests are mocked by default; `CHAD_LIVE_FOOD=1` enables live OFF checks. Synthetic fixtures verify v4 migration including old thumbnails and goals, 17=S, undo/switch, streaks, calendar phases, add-ons, deload, training/PR, optional weigh-in persistence, theme/settings, charts, 320/430/680 overflow, reduced motion and offline fonts/scanner. Screenshots go to sibling `rec-calories-shots`, never the repository.
+Browser tests use installed headless Edge at 430×932; override `BROWSER_EXECUTABLE` / `PLAYWRIGHT_MODULE` if needed. Food and AI requests are mocked by default; `CHAD_LIVE_FOOD=1` enables live OFF checks. Synthetic fixtures verify v4 migration including old thumbnails and goals, 17=S, undo/switch, streaks, calendar phases, add-ons, deload, training/PR, optional weigh-in persistence, theme/settings, charts, 320/430/680 overflow, reduced motion and offline fonts/scanner. The v5b checks also compare rendered chart pixels across manual theme changes, verify weekday hydration goals and complete shell contents, and confirm the final row clears SNAP on all tabs in light and dark. Screenshots go to sibling `rec-calories-shots`, never the repository.
+
+The worker-upgrade check verifies v5 → v5b cache replacement, offline kit loading, and journal preservation in Edge.
 
 Physical iPhone camera scanning, haptics, actual audio playback and installed-PWA update behavior require device testing. Real OpenAI estimates require a user key and are not exercised by automated tests. Open Food Facts can be unavailable; failures preserve manual logging.
 
