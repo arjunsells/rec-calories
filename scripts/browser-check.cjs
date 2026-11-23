@@ -22,7 +22,7 @@ const server=http.createServer((req,res)=>{const pathname=decodeURIComponent(new
  await page.locator('#portion-slider').fill('1.5');assert.equal(parseFloat((await page.locator('#scan-total').innerText()).replaceAll(',','')),Math.round(kcal*1.5));
  await page.locator('#scan-confirm-form button[type=submit]').click();assert.equal(await page.locator('#confirm-sheet').isVisible(),false);
  let saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('rec-calories-v1')));assert.equal(saved.entries.at(-1).source,'barcode');assert.equal(saved.entries.at(-1).kcal,Math.round(kcal*1.5));
- await page.locator('[data-view=scan]').click();await page.locator('#food-search').fill('Weet-Bix');await page.locator('#search-form button').click();await page.locator('#food-results button').first().waitFor({timeout:45000}).catch(async e=>{throw Error(e.message+'; status='+await page.locator('#scan-status').textContent()+'; errors='+errors.join('|'))});assert.match(await page.locator('#food-results').innerText(),/Weet/i);
+ await page.locator('[data-view=scan]').click();await page.locator('#food-search').fill('weet-bix');await page.locator('#search-form button').click();await page.locator('#food-results button').first().waitFor({timeout:45000}).catch(async e=>{throw Error(e.message+'; status='+await page.locator('#scan-status').textContent()+'; errors='+errors.join('|'))});assert.match(await page.locator('#food-results').innerText(),/Weet/i);
  assert.deepEqual(errors,[]);assert.deepEqual(consoleErrors,[]);
  console.log('PASS real OFF search and lookup');
  // One-tap repeats use the existing journal, retain today's data and do not reuse scan quest source.
