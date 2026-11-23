@@ -5,28 +5,35 @@
   const fmt = value => new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value);
   const dayKey = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   const valid = (n, min, max) => typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max;
-  let state = { target: 1800, entries: [] };
+  const defaults = () => ({ schemaVersion: 2, target: 1800, proteinGoal: 180, entries: [] });
+  let state = defaults();
+  let storageReadable = true;
+  let previousGame = null;
+  let celebrationTimer;
   let currentDay = dayKey();
   function message(text, error = false) { $('message').textContent = text; $('message').classList.toggle('error', error); }
   function read() {
     try {
       const raw = localStorage.getItem(KEY);
+      storageReadable = true;
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (!parsed || !valid(parsed.target, 1, 50000) || !Array.isArray(parsed.entries)) throw new Error();
       const ids = new Set();
-      const entries = parsed.entries.filter(e => e && typeof e.id === 'string' && !ids.has(e.id) && ids.add(e.id) && typeof e.name === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.day) && valid(e.kcal, 1, 50000) && valid(e.protein, 0, 5000)).map(e => ({ id: e.id, name: e.name.slice(0, 80), day: e.day, kcal: e.kcal, protein: e.protein }));
-      state = { target: parsed.target, entries };
-    } catch { message('Saved data could not be read. New changes may replace it. Browser storage must be enabled.', true); }
+      const entries = parsed.entries.filter(e => e && typeof e.id === 'string' && !ids.has(e.id) && ids.add(e.id) && typeof e.name === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.day) && valid(e.kcal, 1, 50000) && valid(e.protein, 0, 5000));
+      if (entries.length !== parsed.entries.length || (parsed.proteinGoal !== undefined && !valid(parsed.proteinGoal, 1, 5000))) throw new Error();
+      state = { ...parsed, schemaVersion: 2, target: parsed.target, proteinGoal: parsed.proteinGoal ?? 180, entries };
+    } catch { storageReadable = false; message('Saved data could not be read. Saving is paused to protect it. Your existing data has not been replaced.', true); }
   }
   function save(next) {
+    if (!storageReadable) { message('Saving is paused to protect unreadable saved data.', true); return false; }
     try { localStorage.setItem(KEY, JSON.stringify(next)); state = next; render(); return true; }
     catch { message('Could not save. Storage may be full or unavailable. Your entry has not been changed.', true); return false; }
   }
   function totals(entries) { return entries.reduce((sum, e) => ({ kcal: sum.kcal + e.kcal, protein: sum.protein + e.protein }), { kcal: 0, protein: 0 }); }
   function add(name, kcal, protein) {
     const entry = { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, day: dayKey(), name: name.trim().slice(0, 80), kcal, protein };
-    if (save({ ...state, entries: [...state.entries, entry] })) { message(`${name || 'Entry'} added · ${fmt(kcal)} kcal`); return true; }
+    if (save({ ...state, entries: [...state.entries, entry] })) { message(`${name || 'Entry'} added · ${fmt(kcal)} kcal · +10 XP`); return true; }
     return false;
   }
   function node(tag, className, text) { const element = document.createElement(tag); if (className) element.className = className; if (text !== undefined) element.textContent = text; return element; }
@@ -44,6 +51,8 @@
     $('target-label').textContent = fmt(state.target);
     $('protein-total').textContent = fmt(total.protein);
     $('daily-target').value = state.target;
+    $('protein-goal').value = state.proteinGoal;
+    $('protein-goal-label').textContent = fmt(state.proteinGoal);
     $('date-label').textContent = new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
     $('entry-count').textContent = `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`;
     $('entries').replaceChildren();
@@ -57,7 +66,8 @@
       remove.addEventListener('click', () => { if (save({ ...state, entries: state.entries.filter(e => e.id !== entry.id) })) message('Entry deleted.'); });
       row.append(info, node('span', 'entry-kcal', `${fmt(entry.kcal)} kcal`), remove); $('entries').append(row);
     });
-    renderQuick(); renderHistory();
+    const game = RECGame.derive(state, currentDay);
+    renderQuick(); renderHistory(game); renderGame(game);
   }
   function renderQuick() {
     const groups = new Map();
@@ -77,7 +87,7 @@
       button.type = 'button'; button.addEventListener('click', () => add(entry.name, entry.kcal, entry.protein)); container.append(button);
     });
   }
-  function renderHistory() {
+  function renderHistory(game) {
     const days = Array.from({ length: 7 }, (_, i) => {
       const date = new Date(); date.setHours(12, 0, 0, 0); date.setDate(date.getDate() - (6 - i));
       const key = dayKey(date); return { date, key, total: totals(state.entries.filter(e => e.day === key)) };
@@ -93,8 +103,45 @@
       const bar = node('div', 'bar'); bar.setAttribute('aria-hidden', 'true');
       const fill = node('div', 'bar-fill'); fill.style.width = `${total.kcal / max * 100}%`;
       const target = node('span', 'bar-target'); target.style.left = `${state.target / max * 100}%`;
-      bar.append(fill, target); row.append(label, bar); $('history-bars').append(row);
+      bar.append(fill, target); const gameDay = game.days.get(key);
+      if (gameDay) label.children[0].textContent += ` · ${gameDay.grade}${key === currentDay ? ' (so far)' : ` · +${gameDay.xp} day XP`}`;
+      row.append(label, bar); $('history-bars').append(row);
     });
+  }
+  function renderGame(game) {
+    $('streak').textContent = `🔥 ${game.streak} day${game.streak === 1 ? '' : 's'}`;
+    $('streak').setAttribute('aria-label', `${game.streak} day logging streak`);
+    $('level-name').textContent = game.name;
+    $('level-number').textContent = `Level ${game.level + 1}`;
+    $('xp-total').textContent = `${fmt(game.xp)} XP`;
+    $('level-progress').value = game.next ? (game.xp - game.floor) / (game.next - game.floor) * 100 : 100;
+    $('level-progress').setAttribute('aria-valuetext', game.next ? `${game.xp - game.floor} of ${game.next - game.floor} XP to next level` : 'Maximum level reached');
+    $('level-next').textContent = game.next ? `${fmt(game.next - game.xp)} XP to next level` : 'Top level reached. Keep building your journey.';
+    const today = game.days.get(currentDay);
+    $('daily-grade').textContent = today ? today.grade : '—';
+    $('grade-detail').textContent = today ? 'Today’s grade · so far' : 'Today’s grade · add a log to begin';
+    $('badge-count').textContent = `${game.badges.filter(b => b.unlocked).length} / ${game.badges.length}`;
+    $('badges').replaceChildren();
+    game.badges.forEach(badge => {
+      const item = node('li', `badge ${badge.unlocked ? 'unlocked' : 'locked'}`);
+      const icon = node('span', 'badge-icon', badge.unlocked ? badge.icon : '○');
+      icon.setAttribute('aria-hidden', 'true');
+      item.append(icon, node('strong', '', badge.name), node('small', '', `${badge.unlocked ? 'Unlocked' : 'Locked'} · ${badge.hint}`));
+      $('badges').append(item);
+    });
+    if (previousGame) {
+      if (game.xp < previousGame.xp) { clearTimeout(celebrationTimer); $('celebration').hidden = true; }
+      const fresh = game.badges.filter(b => b.unlocked && !previousGame.badges.find(old => old.id === b.id).unlocked);
+      const levelUp = game.level > previousGame.level;
+      if (levelUp || fresh.length) {
+        clearTimeout(celebrationTimer);
+        const celebration = $('celebration');
+        celebration.textContent = [levelUp ? `Level up! ${game.name}` : '', ...fresh.map(b => `Badge unlocked: ${b.name}`)].filter(Boolean).join(' · ');
+        celebration.hidden = false;
+        celebrationTimer = setTimeout(() => { celebration.hidden = true; }, 5000);
+      }
+    }
+    previousGame = game;
   }
   document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
     document.querySelectorAll('.view').forEach(view => { view.hidden = view.id !== tab.dataset.view; });
@@ -109,10 +156,12 @@
   });
   $('settings-form').addEventListener('submit', event => {
     event.preventDefault(); const target = Number($('daily-target').value);
+    const proteinGoal = Number($('protein-goal').value);
     if (!valid(target, 1, 50000) || !Number.isInteger(target)) return message('Enter a whole daily target from 1 to 50,000 kcal.', true);
-    if (save({ ...state, target })) message('Daily target saved.');
+    if (!valid(proteinGoal, 1, 5000)) return message('Enter a protein goal from 1 to 5,000 g.', true);
+    if (save({ ...state, target, proteinGoal })) message('Daily goals saved.');
   });
-  window.addEventListener('storage', event => { if (event.key === KEY || event.key === null) { state = { target: 1800, entries: [] }; read(); render(); } });
+  window.addEventListener('storage', event => { if (event.key === KEY || event.key === null) { state = defaults(); previousGame = null; read(); render(); } });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
   setInterval(() => { if (dayKey() !== currentDay) render(); }, 30000);
   read(); render();

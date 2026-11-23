@@ -13,6 +13,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
   <link rel="stylesheet" href="./style.css">
+  <script src="./game.js" defer></script>
   <script src="./app.js" defer></script>
 </head>
 <body>
@@ -25,18 +26,29 @@
         <div class="summary card">
           <div class="ring" id="calorie-ring" role="img" aria-label="Calorie progress"><div class="ring-center"><span id="remaining" class="big-number">1,800</span><span id="remaining-label">kcal remaining</span></div></div>
           <p class="target-line"><strong id="consumed">0</strong> eaten <span> / </span><span id="target-label">1,800</span> kcal target</p>
-          <div class="protein"><span>Protein today</span><strong><span id="protein-total">0</span> <small>g</small></strong></div>
+          <div class="protein"><span>Protein today</span><strong><span id="protein-total">0</span> <small>/ <span id="protein-goal-label">180</span> g</small></strong></div>
         </div>
         <section class="card" aria-labelledby="add-title"><h2 id="add-title">Quick add</h2><form id="add-form">
           <label for="food-name">Name <span class="optional">optional</span></label><input id="food-name" maxlength="80" placeholder="e.g. Lunch" autocomplete="off">
           <div class="input-row"><div><label for="calories">Calories <span class="unit">kcal</span></label><input id="calories" type="number" inputmode="decimal" min="1" max="50000" step="1" required placeholder="0"></div><div><label for="protein">Protein <span class="optional">g · optional</span></label><input id="protein" type="number" inputmode="decimal" min="0" max="5000" step="0.1" placeholder="0"></div></div>
           <button class="primary" type="submit">+ Add entry</button>
         </form><div id="quick-items" class="quick-items" aria-label="Frequent and recent items"></div></section>
+        <section class="card game-card" aria-labelledby="game-title">
+          <div class="game-heading"><h2 id="game-title">Your property journey</h2><span id="streak" class="streak"></span></div>
+          <strong id="level-name" class="level-name"></strong>
+          <div class="level-meta"><span id="level-number"></span><span id="xp-total"></span></div>
+          <progress id="level-progress" max="100" value="0" aria-label="Progress to next level"></progress>
+          <p id="level-next" class="hint"></p>
+          <div class="daily-grade"><strong id="daily-grade"></strong><span id="grade-detail"></span></div>
+          <details><summary>XP &amp; grade rules</summary><p class="hint">Every log earns 10 XP. After midnight, a logged day within 10% of your calorie target earns 50 XP, plus 25 XP if you hit protein. S = within 10% + protein goal; A = within 10%; B = within 20%; C = outside 20%. No logs = no grade. Today is provisional.</p><p class="hint">Streaks count consecutive days with logs. Yesterday keeps your streak alive until today ends. All progress uses your current goals and recalculates when you edit goals or delete entries. Historical logs count automatically.</p></details>
+        </section>
+        <section class="card" aria-labelledby="badges-title"><div class="section-heading badge-heading"><h2 id="badges-title">Badge shelf</h2><span id="badge-count"></span></div><ul id="badges" class="badges"></ul></section>
         <section class="entries-section" aria-labelledby="entries-title"><div class="section-heading"><h2 id="entries-title">Today's entries</h2><span id="entry-count">0 entries</span></div><ul id="entries" class="entries"></ul></section>
       </section>
       <section id="history" class="view" hidden aria-labelledby="history-title"><h2 id="history-title">The last 7 days</h2><p class="muted">Your daily calories, including today.</p><div id="history-bars" class="card history-bars"></div><p class="hint">The marker shows your current daily target.</p></section>
-      <section id="settings" class="view" hidden aria-labelledby="settings-title"><h2 id="settings-title">Make it yours</h2><form id="settings-form" class="card"><label for="daily-target">Daily calorie target <span class="unit">kcal</span></label><input id="daily-target" type="number" inputmode="numeric" required min="1" max="50000" step="1" value="1800"><button class="primary" type="submit">Save target</button></form><div class="card about"><h2>Private by design</h2><p>Your entries stay in this browser on this device. No account, no analytics, no uploads.</p><p>Clearing browser data removes your history. Private browsing may not keep it.</p><h2>Keep it handy</h2><p>On iPhone, open in Safari, tap Share, then Add to Home Screen. Open it once online to prepare for offline use.</p><p id="offline-status" class="hint">Preparing offline access…</p></div></section>
+      <section id="settings" class="view" hidden aria-labelledby="settings-title"><h2 id="settings-title">Make it yours</h2><form id="settings-form" class="card"><label for="daily-target">Daily calorie target <span class="unit">kcal</span></label><input id="daily-target" type="number" inputmode="numeric" required min="1" max="50000" step="1" value="1800"><label for="protein-goal">Daily protein goal <span class="unit">g</span></label><input id="protein-goal" type="number" inputmode="decimal" required min="1" max="5000" step="0.1" value="180"><button class="primary" type="submit">Save goals</button></form><div class="card about"><h2>Private by design</h2><p>Your entries stay in this browser on this device. No account, no analytics, no uploads.</p><p>Clearing browser data removes your history. Private browsing may not keep it.</p><h2>Keep it handy</h2><p>On iPhone, open in Safari, tap Share, then Add to Home Screen. Open it once online to prepare for offline use.</p><p id="offline-status" class="hint">Preparing offline access…</p></div></section>
     </main>
+    <p id="celebration" class="celebration" role="status" aria-live="polite" hidden></p>
     <p id="message" class="message" role="status" aria-live="polite"></p>
     <footer>REAL ESTATE CENTRAL <span>One day at a time.</span></footer>
   </div>

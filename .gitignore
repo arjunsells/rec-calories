@@ -1,5 +1,5 @@
-codex-run.log
-JOB.md
+codex-run*.log
+JOB*.md
 .env*
 node_modules/
 __pycache__/
