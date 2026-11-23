@@ -1,6 +1,6 @@
 'use strict';
-const CACHE = 'rec-calories-shell-v2';
-const SHELL = ['./', './index.html', './style.css', './app.js', './game.js', './manifest.webmanifest', './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png'];
+const CACHE = 'rec-calories-shell-v3';
+const SHELL = ['./', './index.html', './style.css', './app.js', './game.js', './scan.js', './manifest.webmanifest', './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
 });

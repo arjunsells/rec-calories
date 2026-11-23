@@ -19,8 +19,8 @@ const get = id => { if (!elements.has(id)) elements.set(id, new Element()); retu
 let stored = null, failStorage = false;
 const context = {
   document: { getElementById: get, createElement: () => new Element(), querySelectorAll: () => [], addEventListener() {} },
-  window: { addEventListener() {} }, navigator: {}, Intl, Date, Math, setInterval() {}, setTimeout() {}, clearTimeout() {}, RECGame,
-  localStorage: { getItem: () => stored, setItem: (_, value) => { if (failStorage) throw Error('quota'); stored = value; } }
+  window: { addEventListener() {} }, navigator: {}, Intl, Date, Math, setInterval() {}, setTimeout() {}, clearTimeout() {}, RECGame, RECScan: require('../scan.js'),
+  localStorage: { getItem: key => key === 'rec-calories-v1' ? stored : null, removeItem() {}, setItem: (_, value) => { if (failStorage) throw Error('quota'); stored = value; } }
 };
 const code = fs.readFileSync('app.js', 'utf8');
 const submit = id => get(id).events.submit({ preventDefault() {} });
@@ -35,10 +35,10 @@ get('food-name').value = '<img src=x onerror=alert(1)>';
 get('calories').value = '450'; get('protein').value = '30.5'; submit('add-form');
 assert.equal(get('remaining').textContent, '1,350');
 assert.equal(get('protein-total').textContent, '30.5');
-assert.equal(JSON.parse(stored).schemaVersion, 2);
+assert.equal(JSON.parse(stored).schemaVersion, 3);
 assert.equal(get('xp-total').textContent, '10 XP');
 assert.match(get('celebration').textContent, /First Open Home/);
-assert.equal(get('entries').children[0].children[0].children[0].textContent, '<img src=x onerror=alert(1)>');
+assert.equal(get('entries').children.find(section => section.children[1].children[0]?.children.length).children[1].children[0].children[0].children[0].textContent, '<img src=x onerror=alert(1)>');
 get('quick-items').children[1].events.click();
 assert.equal(JSON.parse(stored).entries.length, 2);
 assert.equal(get('consumed').textContent, '900');
@@ -52,7 +52,7 @@ get('protein-goal').value = '200'; submit('settings-form');
 assert.equal(JSON.parse(stored).proteinGoal, 200);
 get('protein-goal').value = '0'; submit('settings-form');
 assert.equal(JSON.parse(stored).proteinGoal, 200);
-get('entries').children[0].children[2].events.click();
+get('entries').children.find(section => section.children[1].children[0]?.children.length).children[1].children[0].children[2].events.click();
 assert.equal(JSON.parse(stored).entries.length, 1);
 assert.equal(get('xp-total').textContent, '10 XP');
 const before = stored;
@@ -112,11 +112,11 @@ assert.equal(derive([]).xp, 0);
 const html = fs.readFileSync('index.html', 'utf8');
 for (const id of elements.keys()) assert.ok(html.includes(`id="${id}"`), `Missing DOM element: ${id}`);
 const sw = fs.readFileSync('sw.js', 'utf8');
-assert.match(sw, /rec-calories-shell-v2/);
+assert.match(sw, /rec-calories-shell-v3/);
 assert.match(sw, /'\.\/game.js'/);
 assert.ok(html.indexOf('./game.js') < html.indexOf('./app.js'));
 assert.match(fs.readFileSync('style.css', 'utf8'), /prefers-reduced-motion:no-preference/);
-console.log('PASS: game XP, completed-day bonuses, grades, protein goals, legacy migration, unreadable-data protection, streaks 3/7/30, gaps, leap days, levels, deletion recalculation, DOM IDs, cache v2 and reduced-motion guard.');
+console.log('PASS: game XP, completed-day bonuses, grades, protein goals, legacy migration, unreadable-data protection, streaks 3/7/30, gaps, leap days, levels, deletion recalculation, DOM IDs, cache v3 and reduced-motion guard.');
 const manifest = JSON.parse(fs.readFileSync('manifest.webmanifest', 'utf8'));
 assert.equal(manifest.display, 'standalone'); assert.equal(manifest.start_url, './');
 for (const [file, size] of [['apple-touch-icon.png', 180], ['icon-192.png', 192], ['icon-512.png', 512]]) {
