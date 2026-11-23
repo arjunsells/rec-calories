@@ -1,0 +1,16 @@
+{
+  "id": "./",
+  "name": "REC Calories",
+  "short_name": "REC Calories",
+  "description": "A simple private calorie and protein tracker by Real Estate Central.",
+  "lang": "en",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F4F1EA",
+  "theme_color": "#14284B",
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

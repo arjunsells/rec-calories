@@ -1,0 +1,6 @@
+codex-run.log
+JOB.md
+.env*
+node_modules/
+__pycache__/
+.qa/
