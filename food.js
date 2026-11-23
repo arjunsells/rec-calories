@@ -35,7 +35,7 @@
   }
   async function request(url, fetcher = root.fetch) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    const timeout = setTimeout(() => controller.abort(), 4500);
     try {
       const response = await fetcher(url, { signal: controller.signal });
       if (!response.ok) throw Error('Open Food Facts is busy. Try again in a moment.');
@@ -59,18 +59,32 @@
   async function search(query, fetcher) {
     const term = String(query).trim().slice(0, 100);
     if (term.length < 2) throw Error('Type at least two letters to search.');
-    const params = new URLSearchParams({ search_terms: term, search_simple: '1', action: 'process', json: '1', page_size: '12', fields: FIELDS });
-    const endpoint = `${API}/cgi/search.pl?`;
-    const local = new URLSearchParams(params);
-    local.set('tagtype_0', 'countries'); local.set('tag_contains_0', 'contains'); local.set('tag_0', 'australia');
-    let products = [], localError;
-    try { products = (await request(endpoint + local, fetcher)).products || []; } catch (error) { localError = error; }
-    let items = products.map(normalize).filter(Boolean);
-    if (!items.length) {
-      try { items = ((await request(endpoint + params, fetcher)).products || []).map(normalize).filter(Boolean); }
-      catch (error) { throw localError || error; }
+    const params = new URLSearchParams({ search_terms: term, page_size: '20', fields: FIELDS });
+    const legacy = new URLSearchParams({ ...Object.fromEntries(params), search_simple: '1', action: 'process', json: '1' });
+    const endpoints = [
+      `${API}/api/v2/search?${params}`,
+      `${API}/cgi/search.pl?${legacy}`,
+      `https://au.openfoodfacts.org/api/v2/search?${params}`,
+      `https://au.openfoodfacts.org/cgi/search.pl?${legacy}`
+    ];
+    let succeeded = false;
+    for (const endpoint of endpoints) {
+      try {
+        const result = await request(endpoint, fetcher);
+        if (!Array.isArray(result.products)) continue;
+        // Some v2 deployments silently ignore search_terms and return popular foods.
+        // Do not show those as matches; continue to the text-search endpoint instead.
+        const compact = value => String(value || '').normalize('NFKD').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const products = endpoint.includes('/api/v2/search')
+          ? result.products.filter(p => compact([p.product_name,p.product_name_en,p.brands].join(' ')).includes(compact(term)))
+          : result.products;
+        if (!endpoint.includes('/api/v2/search') || !result.products.length || products.length) succeeded = true;
+        const items = products.map(normalize).filter(Boolean);
+        if (items.length) return items.map(item => ({ ...item, source: 'search' }));
+      } catch { /* Try the next public endpoint, including AU. */ }
     }
-    return items.map(item => ({ ...item, source: 'search' }));
+    if (succeeded) return [];
+    throw Error('Food search is unavailable right now. Try again, or use Quick add to enter the package calories.');
   }
   async function startScanner(video, onCode) {
     if (!root.ZXingBrowser) throw Error('Barcode scanner is unavailable. Enter the barcode digits below.');
