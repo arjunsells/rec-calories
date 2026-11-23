@@ -1,31 +1,72 @@
-﻿# CHAD
+﻿# CHAD v5
 
-Fuel your next level. A private, mobile-first food journal with equal calorie/protein rings, daily quests, XP, levels, streaks, grades and badges. Original navy/gold visual identity; plain HTML, CSS and JavaScript with no build step.
+A personal arcade-style daily tracker, built with plain HTML, CSS and JavaScript. No build step, CDN, analytics, account or sync. Install from https://arjunsells.github.io/rec-calories/ using Safari → Share → Add to Home Screen.
 
-Open https://arjunsells.github.io/rec-calories/ in Safari and use Share → Add to Home Screen. The repository and install identity remain unchanged. Settings shows when offline logging is ready.
+## Daily quests
 
-## Logging
+Today contains four meal slots: Lunch, Pre-gym (2:30–3 pm), Dinner and Dessert. Each has the three original meal-plan picks, exact source macros, quantities, flavour tips and swap fixes. Pick one to log its nutrition and tick the slot. Tap it again to undo; switch tiers without duplicating the meal. “Ate something else” opens Snap + Say. Off-card meals remain in the nutrition journal; meal points require a plan pick.
 
-SNAP opens photo or text estimates with your own OpenAI key, plus free barcode scanning and packaged-food search using Open Food Facts. Search prefers Australian products, then falls back worldwide. ZXing supports browser barcode decoding without BarcodeDetector. Camera use requires HTTPS and permission; manual barcode digits are also supported.
+Meals score Strict 3 / Medium 2 / Free 1. Protein **210 g+** earns 2 points (the PDF's scoring threshold), water target earns 2, and 10k steps earns 1: max 17. The protein ring separately uses the phase target (220 g during Cut). S = 15–17, A = 12–14, B = 9–11, C = 0–8. Grade B+ saves the streak; yesterday keeps it alive while today is unfinished.
 
-Review estimates, choose a meal, adjust 0.5×–2× portions, copy a summary, then tap Log it. Packaged foods use serving nutrition when available; otherwise enter grams against the 100 g basis (check liquid units on the pack). Past entries have Log again. Manual entry is below the home screen rings and quest card.
+Water targets: Sunday 3.5 L, Monday–Friday 4.5 L, Saturday 5 L. Bottle taps, electrolyte, training, cardio, steps, sleep and optional local weigh-ins complete the checklist. Training includes every exercise in Perfect Week v1, individual/session ticks, optional top sets and PR feedback. Deload weeks automatically halve gym sets, rounding up. Recovery warnings and Sunday-only sauna/ice bath rules are shown.
 
-Defaults are Cut: 1,900 kcal / 220 g protein / 150 g carbs / 45 g fat (24 Nov–6 Dec 2026). Reset is 2,700/200/320/70; Bulk is 3,000/200/370/80. Existing saved goals are preserved. These are configurable personal targets, not a nutrition prescription.
+Weekly ranks: Rookie <60, Grinder 60–84, Beast 85–104, Champion 105–119, AJ Mode 120+. A complete seven-day Mon–Sun meal checklist earns +10 only with at most two Free picks (max 129). Bonus stays pending until all seven days are complete. New badges include Protein Streak, Hydration Hero, Zero-Free Week, Fight Night Fuel and Perfect Day; all seven existing badges and six lifetime XP levels remain.
 
-## Progress
+Legacy XP rules remain. Additional checklist XP derives from completed meal slots, bottles, exercises and side quests; undo recalculates it. Rewards earned before migration are retained as a floor. New levels keep the existing celebration. Optional square-wave chimes are OFF by default; theme follows the system with manual light/dark choices. Motion respects reduced-motion preferences.
 
-Each entry earns 10 XP. Daily quests reward protein (30 XP), three distinct meals (30 XP), and a photo or barcode log (20 XP). Completed days within 10% of calories earn 50 XP, plus 25 XP for protein. S = within 10% and protein; A = within 10%; B = within 20%; C = outside 20%. Today is provisional. Rewards derive from logs and current goals, so edits/deletions recalculate without duplicate awards.
+## Phases and progress
 
-Streaks count consecutive logged days, with yesterday keeping the streak alive until today ends. Six levels and seven badges reward consistency. Every log has XP feedback/bounce; new levels have a full-screen celebration. Motion and vibration respect reduced-motion preferences. Theme follows system light/dark mode.
+Darwin local calendar dates drive automatic goals:
 
-## Data and services
+| Phase | Dates | kcal / P / C / F |
+|---|---|---|
+| Cut | Through 6 Dec 2026 | 1900 / 220 / 150 / 45 |
+| Reset | 7–13 Dec 2026 | 2700 / 200 / 320 / 70 |
+| Bulk | 14 Dec 2026–2 May 2027 | 3000 / 200 / 370 / 80 |
 
-Data remains in localStorage `rec-calories-v1`; schema 4 migrates existing data without wiping entries, goals or extra fields. Unreadable saved data pauses saving to protect it. Old photo thumbnails are pruned after seven days; logs remain. The OpenAI key uses the existing device-only `rec-calories-ai-key` storage key. No key is bundled. Only chosen photos/descriptions go to OpenAI; free food queries go to Open Food Facts. Network services require internet; offline manual logging/history/settings use `rec-calories-shell-v4`.
+Edit phase end dates in Settings; manual phase/custom goals override automatic dates. Bulk goals continue after its end until edited. Reset displays separate daily-shake and extra-banana logging; Bulk displays bagel, wrap and shake logging. Add-on macros are approximate and are logged separately, so switching a meal cannot duplicate them. The shake contains 500 mL high-protein milk, 60 g oats and one banana.
 
-Food data: [Open Food Facts](https://world.openfoodfacts.org), ODbL. Local barcode bundle: @zxing/browser 0.1.5, MIT; license/provenance in `vendor/`. No analytics, account or sync. Clearing browser data removes history.
+Progress has 7-/30-day SVG calories-vs-goal bars, protein, water, scores, a rolling seven-day average of available optional weigh-ins, a 13-week heatmap, XP, levels and badges. Missing measurements are not invented.
 
-## Validation
+## Preserved logging
 
-Run `node scripts/check.cjs` and `node scripts/scan-check.cjs`. Browser integration: install Playwright outside this repo (`npm install --prefix "$env:TEMP/chad-browser-qa" playwright`), then `node scripts/browser-check.cjs`. Uses installed Edge by default; override `BROWSER_EXECUTABLE` or `PLAYWRIGHT_MODULE` as needed. Browser tests exercise real OFF search and AU barcode 9300652010794, mock AI responses, storage migration, portions, offline shell and mobile light/dark. Screenshots go outside this repo to sibling `rec-calories-shots` (override `CHAD_SHOTS`). Real AI estimates need a user key; physical iPhone camera scanning/haptics and home-screen update behavior require device testing.
+Snap + Say supports photo/text estimates with your own OpenAI key. Free barcode/search uses Open Food Facts, preferring Australia before worldwide fallback. Local ZXing supports camera decoding. Review portions, log, copy a summary, repeat historical meals, delete entries or use manual entry. AI estimates and food lookup require internet. Camera access requires HTTPS and permission.
 
-Icons are original CHAD text marks generated with `python scripts/generate_icons.py`. Deploy by pushing main to GitHub Pages. Never add credentials, personal logs, test screenshots, or local dependency folders.
+## Data and privacy
+
+The existing localStorage key `rec-calories-v1` migrates to schema 5. Entries, thumbnails and unknown fields are preserved; v4 goals are retained in `legacyGoals`, and earned XP/badges in `legacyRewards`. Automatic phase goals apply by default. Old photo pruning and quota-driven photo deletion have been removed. Unreadable data or failed writes leave the original storage untouched. Measurements and optional top sets are stored only in localStorage. No user journal, measurement, photo, credential or source-input directory belongs in this public repository.
+
+The existing `rec-calories-ai-key` stays device-only and is sent directly to OpenAI for requested estimates. Local backup export excludes it. Backups can contain private measurements/photos; keep them private. Clearing browser storage removes the journal.
+
+Offline shell: `rec-calories-shell-v5`. Manifest `id`, `start_url` and `scope` remain `./`.
+
+## Assets and new files
+
+New runtime files (all included in the service-worker shell):
+
+- `plan-data.js` — 12 public meal-plan cards; the input folder itself is excluded.
+- `quest.js` — v5 checklist, calendar, training, scoring, settings and SVG charts.
+- `fonts/press-start-2p.ttf` — self-hosted Press Start 2P from Google Fonts (SIL OFL).
+- `fonts/OFL.txt` — font copyright and license.
+
+New test files: `scripts/quest-check.cjs`, `scripts/v5-browser-check.cjs`. Existing app/browser tests were updated. No new dependencies are shipped. System fonts provide body text. Existing ZXing is MIT (`vendor/ZXING-LICENSE`). Font source: https://github.com/google/fonts/tree/main/ofl/pressstart2p. Meal data follows the supplied plan and includes its approximate takeaway values. External product data: Open Food Facts (ODbL).
+
+## Validation and release
+
+Run:
+
+```powershell
+node scripts/check.cjs
+node scripts/scan-check.cjs
+node scripts/quest-check.cjs
+# Install tooling outside this repository if needed:
+npm install --prefix "$env:TEMP/chad-browser-qa" playwright
+node scripts/browser-check.cjs
+node scripts/v5-browser-check.cjs
+```
+
+Browser tests use installed headless Edge at 430×932; override `BROWSER_EXECUTABLE` / `PLAYWRIGHT_MODULE` if needed. Food and AI requests are mocked by default; `CHAD_LIVE_FOOD=1` enables live OFF checks. Synthetic fixtures verify v4 migration including old thumbnails and goals, 17=S, undo/switch, streaks, calendar phases, add-ons, deload, training/PR, optional weigh-in persistence, theme/settings, charts, 320/430/680 overflow, reduced motion and offline fonts/scanner. Screenshots go to sibling `rec-calories-shots`, never the repository.
+
+Physical iPhone camera scanning, haptics, actual audio playback and installed-PWA update behavior require device testing. Real OpenAI estimates require a user key and are not exercised by automated tests. Open Food Facts can be unavailable; failures preserve manual logging.
+
+Deploy by pushing `main` to GitHub Pages, then check index, manifest, worker, scripts, stylesheet and font with cache-busting requests. Never add credentials, personal logs, screenshots or local dependencies.
