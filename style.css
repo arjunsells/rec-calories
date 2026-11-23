@@ -1,6 +1,6 @@
 ﻿/* App-specific layout. Shared visuals and motion are in theme6.css. */
 [hidden]{display:none!important}*{box-sizing:border-box}button{cursor:pointer;touch-action:manipulation}button:disabled{opacity:.55}a{color:var(--ch-blue)}
-.ch-app{overflow-wrap:anywhere;padding-bottom:calc(var(--ch-tabbar-h) + env(safe-area-inset-bottom,0px) + 110px)}
+.ch-app{overflow-wrap:anywhere;padding-bottom:calc(var(--ch-tabbar-h) + var(--ch-sab) + 110px)}
 h1{font-size:34px;letter-spacing:-.022em}h2{font-size:22px}h3{font-size:17px}.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--ch-muted)}
 .section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}.pill{flex-shrink:0}.hint,.muted{color:var(--ch-muted);font-size:13px;line-height:1.45}.card{margin-bottom:16px}.text-button,.other-meal{min-height:44px;min-width:44px;border:0;background:none;color:var(--ch-blue);text-align:left;padding:10px 0;font-size:15px}.other-meal{width:100%}
 .ch-hero{gap:14px}.ch-hero .ch-rings{flex:0 0 46%;width:46%;--size:100%}.ch-metric>small{font-size:11px;color:var(--ch-muted)}
@@ -12,5 +12,41 @@ label{display:block;font-size:13px;font-weight:500;margin:16px 0 7px}input,selec
 .training-level{padding:0;background:var(--ch-surface);border-radius:22px;overflow:hidden}.training-level>summary{list-style:none;box-shadow:none}.training-level>summary>span:nth-child(2){font-size:15px;font-weight:600}.training-level>summary>small{font-size:11px;text-align:right;color:var(--ch-muted)}.training-level>p,.training-level>.check-card,.training-level>.exercise{margin:12px 16px}.training-level>.check-card{width:calc(100% - 32px)}.muscles{color:var(--ch-green);font-size:13px}.exercise{border-top:1px solid var(--ch-line);padding-top:6px}.exercise-toggle{width:100%;min-height:54px;border:0;background:none;text-align:left;font-size:15px;line-height:1.5;padding:8px 0;color:var(--ch-text)}.exercise-toggle[aria-pressed=true]{color:var(--ch-green)}.top-set-form{display:flex;gap:8px;align-items:center;margin-bottom:12px}.top-set-form .secondary{margin:0}.cardio-note,.red-flags{font-size:13px;color:var(--ch-orange);padding:12px 0}.deload{font-size:15px;margin-bottom:16px}
 .chart-controls{display:flex;gap:10px;margin-bottom:18px}.chart-controls .secondary{margin:0;font-size:13px}.chart-controls .active{background:var(--ch-blue);color:white}.chart-card h2{font-size:15px;margin-bottom:12px}.chart-values summary{font-size:13px;color:var(--ch-muted)}.chart-values .hint{margin:4px 0}.streak-chart{height:126px}.progress-rings{display:grid;grid-template-columns:1fr 1fr}.progress-rings>h2{grid-column:1/-1}.progress-ring{height:120px;min-width:0}.daily-grade{display:flex;align-items:center;gap:20px;margin:20px 0}.daily-grade>span{font-size:13px;color:var(--ch-muted)}#level-name{font-size:22px}#level-number,#xp-total{font:9px/1.7 var(--ch-font-px)}#xp-bar{margin-top:14px}.badges{display:grid;grid-template-columns:1fr 1fr;gap:10px}.badge{text-align:center;padding:16px 8px;background:var(--ch-fill);border-radius:18px}.badge strong,.badge small{display:block;font-size:13px}.badge small{font-size:11px;color:var(--ch-muted);margin-top:6px}.badge-icon{font-size:24px;color:var(--ch-gold-text)}.badge.locked{opacity:.6}
 .settings-group{margin-bottom:12px}.settings-group>summary{padding:16px;font-weight:600}.settings-group>div,.settings-group>form,.settings-group>p{margin:0 16px 16px}.settings-group .ch-card{padding:0;box-shadow:none;background:none}.settings-group form{padding-bottom:16px}.settings-group button{white-space:normal}.week-summary{margin-bottom:16px}
-.ch-sheet__body{gap:16px}.ch-sheet__body>form{padding-bottom:8px}#scan-sheet #scan{padding:0}.sheet-heading .text-button{padding:10px;flex-shrink:0}#confirm-sheet .section-heading{min-height:52px}#confirm-sheet .section-heading h2{font-size:22px}.result-total{font-size:34px;font-weight:700;margin-top:12px}#result-macros{display:block;margin-bottom:18px}.level-up{text-align:center}.level-star{font-size:64px;color:var(--ch-gold)}.level-up h1{font-size:28px}.level-up h2{font-size:20px}.level-up button{margin-top:16px}.message:empty{display:none}.message{pointer-events:none!important}.message.error{color:var(--ch-red)}.message:not(:empty){animation:message-fade 5s forwards}.xp-pop.ch-toast{top:auto;bottom:calc(var(--ch-tabbar-h) + env(safe-area-inset-bottom,0px) + 90px);left:16px;right:auto;width:auto;font-size:14px}.celebration{z-index:110}footer{padding:30px 16px 0;color:var(--ch-muted);font-size:11px}footer span{float:right}
+.ch-sheet__body{gap:16px}.ch-sheet__body>form{padding-bottom:8px}#scan-sheet #scan{padding:0}.sheet-heading .text-button{padding:10px;flex-shrink:0}#confirm-sheet .section-heading{min-height:52px}#confirm-sheet .section-heading h2{font-size:22px}.result-total{font-size:34px;font-weight:700;margin-top:12px}#result-macros{display:block;margin-bottom:18px}.level-up{text-align:center}.level-star{font-size:64px;color:var(--ch-gold)}.level-up h1{font-size:28px}.level-up h2{font-size:20px}.level-up button{margin-top:16px}.message:empty{display:none}.message{pointer-events:none!important}.message.error{color:var(--ch-red)}.message:not(:empty){animation:message-fade 5s forwards}.xp-pop.ch-toast{top:auto;bottom:calc(var(--ch-tabbar-h) + var(--ch-sab) + 90px);left:16px;right:auto;width:auto;font-size:14px}.celebration{z-index:110}footer{padding:30px 16px 0;color:var(--ch-muted);font-size:11px}footer span{float:right}
 @keyframes message-fade{0%,80%{opacity:1}100%{opacity:0}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* v7 structural layout. Visual tokens still come from the current kit. */
+.ch-sub{display:none}
+.ch-view{gap:12px}
+.date-header{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.date-header>div{flex:1;min-width:0}.date-header h1{font-size:28px;line-height:1.15}
+.date-header .eyebrow{font-size:11px}.date-header>button:not(.text-button){width:44px;height:48px;border:0;border-radius:12px;background:var(--ch-fill);color:var(--ch-blue);font-size:28px}
+.date-header #home-streak{font-size:11px;padding:6px 9px}.date-header #return-today{padding:0 8px}
+.ch-hero{padding:14px;gap:12px}.ch-hero .ch-rings{flex-basis:43%;width:43%}.ch-hero__stats{gap:8px}
+.meal-slot{margin:12px 0 20px}.meal-slot.next-up{margin-top:0}.meal-slot>.section-heading{margin-bottom:8px}
+.meal-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.meal-choice{display:flex;flex-direction:column;min-width:0;border-radius:16px;background:var(--ch-surface)}
+.meal-pick{flex:1;gap:6px;min-height:150px;padding:12px 9px;border-radius:16px 16px 0 0;background:var(--ch-surface)}
+.meal-pick.selected{outline:0;box-shadow:inset 0 0 0 2px var(--ch-green);background:color-mix(in srgb,var(--ch-green) 10%,var(--ch-surface))}
+.meal-title{font-size:14px;line-height:1.25}.tier-label{font-size:11px;font-weight:700}.meal-macros{font-size:11px}
+.meal-pick.tier-S .tier-label{color:var(--ch-green)}.meal-pick.tier-M .tier-label{color:var(--ch-orange)}.meal-pick.tier-F .tier-label{color:var(--ch-red)}
+.meal-info{align-self:flex-end;width:44px;height:44px;border:0;border-radius:12px;background:none;color:var(--ch-muted);font-size:18px}
+.daily-quests{margin-bottom:20px}.water-row{display:flex;align-items:center;gap:10px;padding:8px 0}
+.water-total{flex:0 0 58px;font-size:12px;color:var(--ch-cyan);font-variant-numeric:tabular-nums}
+.bottles{flex:1;display:grid;grid-template-columns:repeat(5,minmax(44px,1fr));gap:4px;margin:0}
+.bottle{min-width:44px;min-height:44px;padding:0;font-size:22px;border-radius:10px}
+.quest-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.quest-chip{min-height:44px;min-width:44px;padding:10px 12px;border:1px solid var(--ch-line);border-radius:14px;background:var(--ch-surface);color:var(--ch-text);font-size:13px}
+.quest-chip.checked{border-color:var(--ch-green);background:color-mix(in srgb,var(--ch-green) 12%,var(--ch-surface));color:var(--ch-green)}
+.quest-chip.checked::before{content:'\2713 ';font-weight:700}.addons{display:flex;flex-wrap:wrap;gap:8px}.addons h2{width:100%;font-size:17px}
+.training-level>.ch-day{display:flex;justify-content:space-between;gap:8px;box-shadow:none;border-radius:0;padding:12px 16px}
+.training-level h2{font-size:17px}.training-level>.quest-chip{margin:4px 16px 8px}.training-level .exercise{display:flex;align-items:center;gap:4px;margin:0 16px;padding:0}
+.exercise-toggle{flex:1;min-width:0;font-size:14px}.exercise-info{flex:0 0 44px;text-align:center;padding:0}.training-level:not(.is-today) .exercise-toggle{font-size:13px;min-height:44px}
+.training-level>.cardio-note{padding:8px 0;margin:0 16px 8px;font-size:12px}
+.action-toast.ch-toast{top:auto;bottom:calc(var(--ch-tabbar-h) + var(--ch-sab) + 14px);max-width:calc(100% - 104px);padding:0 12px;opacity:1;transform:translate(-50%,0);pointer-events:auto;gap:12px;font-size:13px}
+.action-toast .text-button{color:inherit;font-weight:700;padding:8px;flex-shrink:0}
+#undo-toast{left:calc(50% - 30px)}
+#detail-content{display:grid;gap:16px}.top-set-form{flex-wrap:wrap}.top-set-form input{flex:1;width:70px}.top-set-form button{width:100%}
+#manual-sheet #add-form{display:grid;gap:4px}#manual-sheet label{margin-top:8px}
+.ch-app a{min-height:44px;min-width:44px;display:inline-flex;align-items:center}#key-card a{display:flex}
+@media(max-width:360px){.water-row{display:block}.water-total{display:block;margin-bottom:6px}.meal-title{font-size:13px}}

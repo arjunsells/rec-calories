@@ -59,12 +59,18 @@ assert.equal(food.normalize({...product,nutriments:{'energy-kcal_100g':400}}),nu
 assert.equal(food.normalize({...product,nutriments:{energy_100g:1673.6,proteins_100g:10,carbohydrates_100g:50,fat_100g:8}}).kcal,160);
 assert.deepEqual(['kcal','protein','carbs','fat'].map(k=>food.scale(normalized,1.5)[k]),[240,6,30,4.8]);for(const m of [0,-1,NaN,101])assert.throws(()=>food.scale(normalized,m),/portion/);
 const html=fs.readFileSync('index.html','utf8'),sw=fs.readFileSync('sw.js','utf8'),css=fs.readFileSync('style.css','utf8')+fs.readFileSync('theme6.css','utf8');
-assert.match(html,/<title>CHAD/);assert.match(html,/apple-mobile-web-app-title[^>]+CHAD/);assert.match(sw,/rec-calories-shell-v6/);
+assert.match(html,/<title>\s*CHAD/);assert.match(html,/apple-mobile-web-app-title[^>]+CHAD/);assert.match(sw,/rec-calories-shell-v7-ux/);
 for(const file of ['ux.js','icons6.js','theme6.css','sprites.js','charts6.js','app.js','game.js','plan-data.js','quest.js','fonts/press-start-2p.ttf','fonts/OFL.txt','scan.js','food.js','vendor/zxing-browser.min.js','style.css','manifest.webmanifest','icons/apple-touch-icon.png','icons/icon-192.png','icons/icon-512.png']){assert.ok(fs.existsSync(file),`${file} exists`);assert.ok(sw.includes(`./${file}`),`${file} cached`)}
 assert.ok(html.indexOf('./game.js')<html.indexOf('./app.js'));assert.ok(html.indexOf('./food.js')<html.indexOf('./app.js'));assert.match(css,/prefers-reduced-motion/);assert.match(css,/prefers-color-scheme:\s*dark/);
 const manifest=JSON.parse(fs.readFileSync('manifest.webmanifest','utf8'));assert.equal(manifest.name,'CHAD');assert.equal(manifest.short_name,'CHAD');for(const k of ['id','start_url','scope'])assert.equal(manifest[k],'./');assert.equal(manifest.display,'standalone');
+assert.match(html,/^<!doctype html>/i);assert.match(html,/apple-mobile-web-app-status-bar-style" content="black-translucent"/);
+assert.match(html,/theme-color" content="#F2F2F7" media="\(prefers-color-scheme: light\)"/);
+assert.match(html,/theme-color" content="#000000" media="\(prefers-color-scheme: dark\)"/);
+assert.equal(manifest.background_color,'#F2F2F7');
+for(const size of ['192x192','512x512'])assert.ok(manifest.icons.some(i=>i.sizes===size&&i.purpose==='any'));
+assert.ok(manifest.icons.some(i=>i.sizes==='512x512'&&i.purpose==='maskable'));
 for(const [file,size]of [['apple-touch-icon.png',180],['icon-192.png',192],['icon-512.png',512]]){const png=fs.readFileSync(`icons/${file}`);assert.equal(png.readUInt32BE(16),size);assert.equal(png.readUInt32BE(20),size)}
-console.log('PASS: OFF serving/100g normalization, kJ conversion, scaling, CHAD manifest identity, PNG dimensions, shell-v6 complete assets and motion/dark CSS guards.');
+console.log('PASS: OFF serving/100g normalization, kJ conversion, scaling, CHAD manifest identity, PNG dimensions, shell-v7-ux complete assets and motion/dark CSS guards.');
 (async()=>{let urls=[];const response=products=>({ok:true,json:async()=>({products})});
 let results=await food.search('cereal',async url=>{urls.push(url);return response(urls.length===1?[]:[product])});assert.equal(results.length,1);assert.equal(results[0].source,'search');assert.equal(urls.length,2);assert.match(urls[0],/api\/v2\/search/);assert.match(urls[1],/cgi\/search.pl/);
 urls=[];results=await food.search('cereal',async url=>{urls.push(url);return response([product])});assert.equal(urls.length,1);assert.equal(results.length,1);

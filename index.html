@@ -1,20 +1,412 @@
-﻿<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="CHAD"><meta name="description" content="CHAD. Fuel your next level."><title>CHAD</title><link rel="manifest" href="./manifest.webmanifest"><link rel="apple-touch-icon" href="./icons/apple-touch-icon.png"><link rel="icon" href="./icons/icon-192.png"><link rel="stylesheet" href="./theme6.css"><link rel="stylesheet" href="./style.css"><script src="./icons6.js" defer></script><script src="./sprites.js" defer></script><script src="./charts6.js" defer></script><script src="./game.js" defer></script><script src="./scan.js" defer></script><script src="./vendor/zxing-browser.min.js" defer></script><script src="./food.js" defer></script><script src="./plan-data.js" defer></script><script src="./quest.js" defer></script><script src="./ux.js" defer></script><script src="./app.js" defer></script></head>
-<body><div class="app ch-app"><header class="ch-header"><a class="wordmark ch-title" href="./">CHAD<span>•</span></a><span class="eyebrow ch-sub">FUEL YOUR NEXT LEVEL</span></header>
-<main><section id="today" class="view ch-view"><div class="section-heading"><div><p class="eyebrow" id="date-label"></p><h1>Today</h1></div><span id="home-streak" class="pill ch-chip ch-chip--gold"></span></div>
-<section class="ch-card ch-hero" aria-label="Today's progress"><div id="activity-rings" class="ch-rings"></div><div class="ch-hero__stats">
-<div id="calorie-ring" class="ch-metric ch-metric--kcal" role="img" aria-label="Calorie progress"><span class="ch-metric__label">Calories</span><div class="ch-metric__val"><span id="consumed">0</span><small> / <span id="target-label">1,900</span></small></div><small><span id="remaining">1,900</span> <span id="remaining-label">kcal left</span></small></div>
-<div id="protein-ring" class="ch-metric ch-metric--protein" role="img" aria-label="Protein progress"><span class="ch-metric__label">Protein</span><div class="ch-metric__val"><span id="protein-total">0</span><small> / <span id="protein-goal-label">220</span> g</small></div></div>
-<div id="quest-ring" class="ch-metric ch-metric--quests" role="img" aria-label="Quest progress"><span class="ch-metric__label">Quests</span><div class="ch-metric__val"><span id="quest-total">0</span><small> / 17 pts</small></div><small id="quest-grade">Grade C</small></div></div></section><div id="quest-hero"></div>
-<div id="daily-checklist"></div><div id="quests" hidden></div><div class="below-fold"><div class="section-heading"><h2>Your fuel today</h2><span id="entry-count"></span></div><div class="card macro-detail ch-card"><span>Carbs <strong id="carbs-total">0</strong> g</span><span>Fat <strong id="fat-total">0</strong> g</span></div><ul id="entries" class="entries"></ul><details class="card ch-card"><summary>Quick manual entry</summary><form id="add-form"><label for="food-name">Food name</label><input class="ch-input" id="food-name" maxlength="80" placeholder="e.g. Chicken bowl"><div class="input-row"><div><label for="calories">Calories</label><input class="ch-input" id="calories" type="number" min="1" max="50000" required></div><div><label for="protein">Protein (g)</label><input class="ch-input" id="protein" type="number" min="0" max="5000" step="0.1"></div></div><div class="input-row"><div><label for="carbs">Carbs (g)</label><input class="ch-input" id="carbs" type="number" min="0" max="5000" step="0.1"></div><div><label for="fat">Fat (g)</label><input class="ch-input" id="fat" type="number" min="0" max="5000" step="0.1"></div></div><label for="meal">Meal</label><select class="ch-input" id="meal"><option>Breakfast</option><option>Lunch</option><option>Dinner</option><option>Snacks</option></select><button class="primary ch-btn ch-btn--primary ch-btn--block">Log it</button></form></details></div></section>
-<section id="scan" class="view ch-view" hidden><p class="eyebrow">FIND YOUR FUEL</p><h1 id="scan-title">Find your food</h1><div class="card ch-card" id="key-card" hidden><h2>Paste your OpenAI key in Settings</h2><p class="muted">One step to photo estimates. Barcode and search are free.</p><button id="scan-settings" class="primary ch-btn ch-btn--primary ch-btn--block">Open Settings</button><a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">Get an OpenAI key ↗</a></div><div class="card ch-card" id="camera-panel"><h2>What's on your plate?</h2><p class="muted">Photo estimates with your own OpenAI key.</p><button id="camera-button" class="primary ch-btn ch-btn--primary ch-btn--block">◎ Take a food photo</button><input class="ch-input" type="file" accept="image/*" capture="environment" id="photo-input" hidden><label for="food-description">Or describe your meal</label><textarea class="ch-input" id="food-description" placeholder="200g chicken breast with rice"></textarea><button id="describe-button" class="secondary ch-btn ch-btn--block">Estimate meal</button><p class="hint">Photos and descriptions go directly to OpenAI. Estimates can miss portions or ingredients. API usage may cost money.</p></div><div class="card ch-card" id="finder-panel"><div class="section-heading"><h2>Free food finder</h2><span class="pill ch-chip ch-chip--gold">NO KEY</span></div><form id="search-form"><label for="food-search">Search packaged foods</label><div class="search-row"><input class="ch-input" id="food-search" required placeholder="Try Weet-Bix"><button class="primary ch-btn ch-btn--primary ch-btn--block">Search</button></div></form><hr><button id="barcode-camera" class="secondary ch-btn ch-btn--block">▥ Scan a barcode</button><video id="barcode-video" muted playsinline hidden></video><button id="stop-camera" class="text-button" hidden>Stop camera</button><form id="barcode-form"><label for="barcode">Or enter barcode digits</label><div class="search-row"><input class="ch-input" id="barcode" inputmode="numeric" pattern="[0-9]{8,14}" required placeholder="9300633603801"><button class="secondary ch-btn ch-btn--block">Find</button></div></form><p class="hint">Food data: <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a> · check the package label.</p><div id="food-results"></div></div><p id="scan-status" role="status" class="hint"></p><button id="scan-manual" class="text-button">Quick add instead</button></section>
-<section id="training" class="view ch-view" hidden><p class="eyebrow">PERFECT WEEK v1</p><h1>Training</h1><div id="training-content"></div></section><section id="history" class="view ch-view" hidden><p class="eyebrow">YOUR PROGRESS</p><h1>Progress</h1><section class="card ch-card"><div class="section-heading"><h2 id="level-name"></h2><span id="streak" class="pill ch-chip ch-chip--gold"></span></div><div class="section-heading"><span id="level-number"></span><strong id="xp-total"></strong></div><progress id="level-progress" max="100" hidden></progress><div id="xp-bar" class="ch-bar ch-bar--seg ch-bar--lg" role="progressbar" aria-label="Level XP" aria-valuemin="0" aria-valuemax="100"><i></i></div><p id="level-next" class="hint"></p><div class="daily-grade"><strong id="daily-grade"></strong><span id="grade-detail">Today's grade · provisional</span></div><details><summary>How rewards work</summary><p class="hint">Meals: Strict 3, Medium 2, Free 1. Protein 210 g+ earns 2; water target earns 2; 10k steps earns 1. Max 17. S 15+, A 12+, B 9+, C &le;8. Grade B+ saves your streak. Weekly bonus +10 after a full Mon-Sun with at most 2 Free picks. Existing XP, levels and badges are retained.</p></details></section><div id="charts"></div><div id="history-bars" hidden></div><section class="card ch-card"><div class="section-heading"><h2>Badge shelf</h2><span id="badge-count"></span></div><ul id="badges" class="badges"></ul></section><h2>Past entries</h2><ul id="past-entries" class="entries"></ul></section>
-<section id="settings" class="view ch-view" hidden><p class="eyebrow">MAKE IT YOURS</p><h1>Your goals. Your pace.</h1><div id="arcade-settings" class="card ch-card"></div><form id="settings-form" class="card ch-card"><label for="phase">Phase</label><select class="ch-input" id="phase"><option value="custom">Custom / saved goals</option><option value="cut">Cut · 24 Nov–6 Dec 2026</option><option value="reset">Reset</option><option value="bulk">Bulk</option></select><div class="input-row"><div><label for="daily-target">Calories (kcal)</label><input class="ch-input" id="daily-target" type="number" required min="1" max="50000"></div><div><label for="protein-goal">Protein (g)</label><input class="ch-input" id="protein-goal" type="number" required min="1" max="5000" step="0.1"></div></div><div class="input-row"><div><label for="carbs-goal">Carbs (g)</label><input class="ch-input" id="carbs-goal" type="number" required min="1" max="5000" step="0.1"></div><div><label for="fat-goal">Fat (g)</label><input class="ch-input" id="fat-goal" type="number" required min="1" max="5000" step="0.1"></div></div><label for="ai-key">OpenAI key</label><input class="ch-input" id="ai-key" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Paste your OpenAI key"><p class="hint">Stored only in this browser. Sent directly to OpenAI for estimates. Leave blank to remove it.</p><button class="primary ch-btn ch-btn--primary ch-btn--block">Save settings</button></form><div class="card ch-card"><h2>Keep your progress</h2><p class="muted">Your journal lives on this device. Clearing browser data removes it. In Safari, use Share → Add to Home Screen.</p><p id="offline-status" class="hint">Preparing offline access…</p></div></section></main>
-<button class="ch-snap" id="today-scan" aria-label="Add food" aria-haspopup="dialog"><i data-icon="plus" aria-hidden="true"></i><span class="ch-snap__label">Add food</span></button>
-<nav class="ch-tabbar" aria-label="Main navigation"><button class="tab active ch-tab" data-view="today" aria-current="page"><span class="ch-tab__icon"><i data-icon="today" data-size="26" aria-hidden="true"></i></span><span class="ch-tab__label">Today</span></button><button class="tab ch-tab" data-view="training"><span class="ch-tab__icon"><i data-icon="training" data-size="26" aria-hidden="true"></i></span><span class="ch-tab__label">Training</span></button><button class="tab ch-tab" data-view="history"><span class="ch-tab__icon"><i data-icon="progress" data-size="26" aria-hidden="true"></i></span><span class="ch-tab__label">Progress</span></button><button class="tab ch-tab" data-view="settings"><span class="ch-tab__icon"><i data-icon="settings" data-size="26" aria-hidden="true"></i></span><span class="ch-tab__label">Settings</span></button></nav>
-<dialog class="ch-sheet" id="add-sheet" aria-labelledby="add-title"><div class="sheet-heading ch-sheet__head"><h2 id="add-title">Add food</h2><button type="button" class="text-button" data-close="add-sheet">Close</button></div><div class="add-options ch-actions"><button class="ch-action" style="--c:var(--ch-blue)" data-add="camera"><span class="ch-action__icon"><i data-icon="camera"></i></span>Camera<small>Photo or describe a meal</small></button><button class="ch-action" style="--c:var(--ch-indigo)" data-add="barcode"><span class="ch-action__icon"><i data-icon="barcode"></i></span>Barcode<small>Scan or enter digits</small></button><button class="ch-action" style="--c:var(--ch-green)" data-add="search"><span class="ch-action__icon"><i data-icon="magnifier"></i></span>Search<small>Find a packaged food</small></button><button class="ch-action" style="--c:var(--ch-orange)" data-add="manual"><span class="ch-action__icon"><i data-icon="bolt"></i></span>Quick add<small>Name and calories</small></button></div></dialog>
-<dialog class="ch-sheet" id="scan-sheet" aria-labelledby="scan-title"><div class="sheet-heading ch-sheet__head"><span>Food finder</span><button type="button" class="text-button" data-close="scan-sheet">Close</button></div></dialog>
-<dialog class="ch-sheet" id="manual-sheet" aria-labelledby="manual-title"><div class="sheet-heading ch-sheet__head"><h2 id="manual-title">Quick add</h2><button type="button" class="text-button" data-close="manual-sheet">Close</button></div></dialog>
-<dialog class="ch-sheet" id="detail-sheet" aria-labelledby="detail-title"><div class="sheet-heading ch-sheet__head"><h2 id="detail-title">Details</h2><button type="button" class="text-button" data-close="detail-sheet">Close</button></div><div id="detail-content"></div></dialog>
-<dialog class="ch-sheet" id="confirm-sheet" aria-labelledby="confirm-title"><form id="scan-confirm-form"><div class="sheet-handle ch-sheet__grip"></div><div class="section-heading"><h2 id="confirm-title">Your meal, decoded.</h2><button id="cancel-scan" type="button" class="text-button">Close</button></div><p id="confidence" class="hint"></p><div id="scan-items"></div><div id="serving-control" hidden><label for="serving-grams">Serving size (g)</label><input class="ch-input" id="serving-grams" type="number" min="1" max="5000" value="100"></div><label for="portion-slider">Portion <strong id="portion-label">1×</strong></label><input class="ch-input" id="portion-slider" type="range" min="0.5" max="2" step="0.1" value="1"><div id="scan-total" class="result-total"></div><div id="result-macros" class="macro-detail"></div><label for="scan-meal">Meal</label><select class="ch-input" id="scan-meal"><option>Breakfast</option><option>Lunch</option><option>Dinner</option><option>Snacks</option></select><button class="primary ch-btn ch-btn--primary ch-btn--block" type="submit">Log it</button><button id="copy-result" type="button" class="secondary ch-btn ch-btn--block">Copy summary</button></form></dialog>
-<dialog id="level-up" class="level-up ch-alert"><p class="eyebrow">YOU EARNED THIS</p><span class="level-star">✦</span><h1>LEVEL UP</h1><h2 id="new-level"></h2><button id="close-level" class="primary ch-btn ch-btn--primary ch-btn--block">Let's go</button></dialog><p id="xp-pop" class="xp-pop ch-toast is-show" hidden></p><p id="celebration" class="celebration ch-toast is-show" role="status" hidden></p><p id="message" class="message ch-toast is-show" role="status"></p><footer>CHAD <span>One day stronger.</span></footer></div></body></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="CHAD">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="description" content="CHAD. Fuel your next level.">
+    <title>CHAD</title>
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+    <link rel="icon" href="./icons/icon-192.png">
+    <link rel="stylesheet" href="./theme6.css">
+    <link rel="stylesheet" href="./style.css">
+    <script src="./icons6.js" defer></script>
+    <script src="./sprites.js" defer></script>
+    <script src="./charts6.js" defer></script>
+    <script src="./game.js" defer></script>
+    <script src="./scan.js" defer></script>
+    <script src="./vendor/zxing-browser.min.js" defer></script>
+    <script src="./food.js" defer></script>
+    <script src="./plan-data.js" defer></script>
+    <script src="./quest.js" defer></script>
+    <script src="./ux.js" defer></script>
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <div class="app ch-app">
+      <header class="ch-header">
+        <a class="wordmark ch-title" href="./">
+          CHAD
+          <span>•</span>
+        </a>
+        <span class="eyebrow ch-sub">FUEL YOUR NEXT LEVEL</span>
+      </header>
+      <main>
+        <section id="today" class="view ch-view">
+          <div class="date-header">
+            <button id="previous-day" type="button" aria-label="Previous day">&#8249;</button>
+            <div>
+              <p class="eyebrow" id="date-label"></p>
+              <h1 id="day-title">Today</h1>
+            </div>
+            <button id="next-day" type="button" aria-label="Next day">&#8250;</button>
+            <button id="return-today" type="button" class="text-button" hidden>Today</button>
+            <span id="home-streak" class="pill ch-chip ch-chip--gold"></span>
+          </div>
+          <section class="ch-card ch-hero" aria-label="Daily progress">
+            <div id="activity-rings" class="ch-rings"></div>
+            <div class="ch-hero__stats">
+              <div id="calorie-ring" class="ch-metric ch-metric--kcal" role="img" aria-label="Calorie progress">
+                <span class="ch-metric__label">Calories</span>
+                <div class="ch-metric__val">
+                  <span id="consumed">0</span>
+                  <small>
+                    /
+                    <span id="target-label">1,900</span>
+                  </small>
+                </div>
+                <small>
+                  <span id="remaining">1,900</span>
+                  <span id="remaining-label">kcal left</span>
+                </small>
+              </div>
+              <div id="protein-ring" class="ch-metric ch-metric--protein" role="img" aria-label="Protein progress">
+                <span class="ch-metric__label">Protein</span>
+                <div class="ch-metric__val">
+                  <span id="protein-total">0</span>
+                  <small>
+                    /
+                    <span id="protein-goal-label">220</span>
+                    g
+                  </small>
+                </div>
+              </div>
+              <div id="quest-ring" class="ch-metric ch-metric--quests" role="img" aria-label="Quest progress">
+                <span class="ch-metric__label">Quests</span>
+                <div class="ch-metric__val">
+                  <span id="quest-total">0</span>
+                  <small>/ 17 pts</small>
+                </div>
+                <small id="quest-grade">Grade C</small>
+              </div>
+            </div>
+          </section>
+          <div id="quest-hero"></div>
+          <div id="daily-checklist"></div>
+          <div id="quests" hidden></div>
+          <div class="below-fold">
+            <div class="section-heading">
+              <h2>Journal</h2>
+              <span id="entry-count"></span>
+            </div>
+            <div class="card macro-detail ch-card">
+              <span>
+                Carbs
+                <strong id="carbs-total">0</strong>
+                g
+              </span>
+              <span>
+                Fat
+                <strong id="fat-total">0</strong>
+                g
+              </span>
+            </div>
+            <ul id="entries" class="entries"></ul>
+          </div>
+        </section>
+        <section id="scan" class="view ch-view" hidden>
+          <h1 id="scan-title">Find your food</h1>
+          <div class="card ch-card" id="key-card" hidden>
+            <h2>Paste your OpenAI key in Settings</h2>
+            <p class="muted">One step to photo estimates. Barcode and search are free.</p>
+            <button id="scan-settings" class="primary ch-btn ch-btn--primary ch-btn--block">Open Settings</button>
+            <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">Get an OpenAI key ↗</a>
+          </div>
+          <div class="card ch-card" id="camera-panel">
+            <h2>What's on your plate?</h2>
+            <p class="muted">Photo estimates with your own OpenAI key.</p>
+            <button id="camera-button" class="primary ch-btn ch-btn--primary ch-btn--block">◎ Take a food photo</button>
+            <input class="ch-input" type="file" accept="image/*" capture="environment" id="photo-input" hidden>
+            <label for="food-description">Or describe your meal</label>
+            <textarea class="ch-input" id="food-description" placeholder="200g chicken breast with rice"></textarea>
+            <button id="describe-button" class="secondary ch-btn ch-btn--block">Estimate meal</button>
+          </div>
+          <div class="card ch-card" id="finder-panel">
+            <div class="section-heading">
+              <h2>Free food finder</h2>
+              <span class="pill ch-chip ch-chip--gold">NO KEY</span>
+            </div>
+            <form id="search-form">
+              <label for="food-search">Search packaged foods</label>
+              <div class="search-row">
+                <input class="ch-input" id="food-search" required placeholder="Try Weet-Bix">
+                <button class="primary ch-btn ch-btn--primary ch-btn--block">Search</button>
+              </div>
+            </form>
+            <hr>
+            <button id="barcode-camera" class="secondary ch-btn ch-btn--block">▥ Scan a barcode</button>
+            <video id="barcode-video" muted playsinline hidden></video>
+            <button id="stop-camera" class="text-button" hidden>Stop camera</button>
+            <form id="barcode-form">
+              <label for="barcode">Or enter barcode digits</label>
+              <div class="search-row">
+                <input class="ch-input" id="barcode" inputmode="numeric" pattern="[0-9]{8,14}" required placeholder="9300633603801">
+                <button class="secondary ch-btn ch-btn--block">Find</button>
+              </div>
+            </form>
+            <p class="hint">
+              Food data:
+              <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a>
+              · check the package label.
+            </p>
+            <div id="food-results"></div>
+          </div>
+          <p id="scan-status" role="status" class="hint"></p>
+          <button id="scan-manual" class="text-button">Quick add instead</button>
+        </section>
+        <section id="training" class="view ch-view" hidden>
+          <h1>Training</h1>
+          <div id="training-content"></div>
+        </section>
+        <section id="history" class="view ch-view" hidden>
+          <h1>Progress</h1>
+          <section class="card ch-card">
+            <div class="section-heading">
+              <h2 id="level-name"></h2>
+              <span id="streak" class="pill ch-chip ch-chip--gold"></span>
+            </div>
+            <div class="section-heading">
+              <span id="level-number"></span>
+              <strong id="xp-total"></strong>
+            </div>
+            <button id="open-level" type="button" class="text-button">Level details</button>
+            <progress id="level-progress" max="100" hidden></progress>
+            <div id="xp-bar" class="ch-bar ch-bar--seg ch-bar--lg" role="progressbar" aria-label="Level XP" aria-valuemin="0" aria-valuemax="100">
+              <i></i>
+            </div>
+            <p id="level-next" class="hint"></p>
+            <div class="daily-grade">
+              <strong id="daily-grade"></strong>
+              <span id="grade-detail">Today's grade · provisional</span>
+            </div>
+            <details>
+              <summary>How rewards work</summary>
+              <p class="hint">
+                Meals: Strict 3, Medium 2, Free 1. Protein 210 g+ earns 2; water target earns 2; 10k steps earns 1. Max 17. S 15+, A 12+, B 9+, C
+                &le;
+                8. Grade B+ saves your streak. Weekly bonus +10 after a full Mon-Sun with at most 2 Free picks. Existing XP, levels and badges are retained.
+              </p>
+            </details>
+          </section>
+          <div id="charts"></div>
+          <div id="history-bars" hidden></div>
+          <section class="card ch-card">
+            <div class="section-heading">
+              <h2>Badge shelf</h2>
+              <span id="badge-count"></span>
+            </div>
+            <ul id="badges" class="badges"></ul>
+          </section>
+          <h2>Past entries</h2>
+          <ul id="past-entries" class="entries"></ul>
+        </section>
+        <section id="settings" class="view ch-view" hidden>
+          <h1>Your goals. Your pace.</h1>
+          <div id="arcade-settings" class="card ch-card"></div>
+          <form id="settings-form" class="card ch-card">
+            <label for="phase">Phase</label>
+            <select class="ch-input" id="phase">
+              <option value="custom">Custom / saved goals</option>
+              <option value="cut">Cut · 24 Nov–6 Dec 2026</option>
+              <option value="reset">Reset</option>
+              <option value="bulk">Bulk</option>
+            </select>
+            <div class="input-row">
+              <div>
+                <label for="daily-target">Calories (kcal)</label>
+                <input class="ch-input" id="daily-target" type="number" required min="1" max="50000">
+              </div>
+              <div>
+                <label for="protein-goal">Protein (g)</label>
+                <input class="ch-input" id="protein-goal" type="number" required min="1" max="5000" step="0.1">
+              </div>
+            </div>
+            <div class="input-row">
+              <div>
+                <label for="carbs-goal">Carbs (g)</label>
+                <input class="ch-input" id="carbs-goal" type="number" required min="1" max="5000" step="0.1">
+              </div>
+              <div>
+                <label for="fat-goal">Fat (g)</label>
+                <input class="ch-input" id="fat-goal" type="number" required min="1" max="5000" step="0.1">
+              </div>
+            </div>
+            <label for="ai-key">OpenAI key</label>
+            <input class="ch-input" id="ai-key" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Paste your OpenAI key">
+            <p class="hint">Stored only in this browser. Sent directly to OpenAI for estimates. Leave blank to remove it.</p>
+            <button class="primary ch-btn ch-btn--primary ch-btn--block">Save settings</button>
+          </form>
+          <div class="card ch-card">
+            <h2>Keep your progress</h2>
+            <p class="muted">Your journal lives on this device. Clearing browser data removes it. In Safari, use Share → Add to Home Screen.</p>
+            <p id="offline-status" class="hint">Preparing offline access…</p>
+          </div>
+        </section>
+      </main>
+      <button class="ch-snap" id="today-scan" aria-label="Add food" aria-haspopup="dialog">
+        <i data-icon="plus" aria-hidden="true"></i>
+        <span class="ch-snap__label">Add food</span>
+      </button>
+      <nav class="ch-tabbar" aria-label="Main navigation">
+        <button class="tab active ch-tab" data-view="today" aria-current="page">
+          <span class="ch-tab__icon">
+            <i data-icon="today" data-size="26" aria-hidden="true"></i>
+          </span>
+          <span class="ch-tab__label">Today</span>
+        </button>
+        <button class="tab ch-tab" data-view="training">
+          <span class="ch-tab__icon">
+            <i data-icon="training" data-size="26" aria-hidden="true"></i>
+          </span>
+          <span class="ch-tab__label">Training</span>
+        </button>
+        <button class="tab ch-tab" data-view="history">
+          <span class="ch-tab__icon">
+            <i data-icon="progress" data-size="26" aria-hidden="true"></i>
+          </span>
+          <span class="ch-tab__label">Progress</span>
+        </button>
+        <button class="tab ch-tab" data-view="settings">
+          <span class="ch-tab__icon">
+            <i data-icon="settings" data-size="26" aria-hidden="true"></i>
+          </span>
+          <span class="ch-tab__label">Settings</span>
+        </button>
+      </nav>
+      <dialog class="ch-sheet" id="add-sheet" aria-labelledby="add-title">
+        <div class="sheet-heading ch-sheet__head">
+          <h2 id="add-title">Add food</h2>
+          <button type="button" class="text-button" data-close="add-sheet">Close</button>
+        </div>
+        <div class="add-options ch-actions">
+          <button class="ch-action" style="--c:var(--ch-blue)" data-add="camera">
+            <span class="ch-action__icon">
+              <i data-icon="camera"></i>
+            </span>
+            Camera
+          </button>
+          <button class="ch-action" style="--c:var(--ch-indigo)" data-add="barcode">
+            <span class="ch-action__icon">
+              <i data-icon="barcode"></i>
+            </span>
+            Barcode
+          </button>
+          <button class="ch-action" style="--c:var(--ch-green)" data-add="search">
+            <span class="ch-action__icon">
+              <i data-icon="magnifier"></i>
+            </span>
+            Search
+          </button>
+          <button class="ch-action" style="--c:var(--ch-orange)" data-add="manual">
+            <span class="ch-action__icon">
+              <i data-icon="bolt"></i>
+            </span>
+            Quick add
+          </button>
+        </div>
+      </dialog>
+      <dialog class="ch-sheet" id="scan-sheet" aria-labelledby="scan-title">
+        <div class="sheet-heading ch-sheet__head">
+          <span>Food finder</span>
+          <button type="button" class="text-button" data-close="scan-sheet">Close</button>
+        </div>
+      </dialog>
+      <dialog class="ch-sheet" id="manual-sheet" aria-labelledby="manual-title">
+        <div class="sheet-heading ch-sheet__head">
+          <h2 id="manual-title">Quick add</h2>
+          <button type="button" class="text-button" data-close="manual-sheet">Close</button>
+        </div>
+        <form id="add-form">
+          <label for="food-name">Food name</label>
+          <input class="ch-input" id="food-name" maxlength="80" placeholder="e.g. Chicken bowl">
+          <div class="input-row">
+            <div>
+              <label for="calories">Calories</label>
+              <input class="ch-input" id="calories" type="number" min="1" max="50000" required>
+            </div>
+            <div>
+              <label for="protein">Protein (g)</label>
+              <input class="ch-input" id="protein" type="number" min="0" max="5000" step="0.1">
+            </div>
+          </div>
+          <div class="input-row">
+            <div>
+              <label for="carbs">Carbs (g)</label>
+              <input class="ch-input" id="carbs" type="number" min="0" max="5000" step="0.1">
+            </div>
+            <div>
+              <label for="fat">Fat (g)</label>
+              <input class="ch-input" id="fat" type="number" min="0" max="5000" step="0.1">
+            </div>
+          </div>
+          <label for="meal">Meal</label>
+          <select class="ch-input" id="meal">
+            <option>Breakfast</option>
+            <option>Lunch</option>
+            <option>Dinner</option>
+            <option>Snacks</option>
+          </select>
+          <button class="primary ch-btn ch-btn--primary ch-btn--block">Log it</button>
+        </form>
+      </dialog>
+      <dialog class="ch-sheet" id="detail-sheet" aria-labelledby="detail-title">
+        <div class="sheet-heading ch-sheet__head">
+          <h2 id="detail-title">Details</h2>
+          <button type="button" class="text-button" data-close="detail-sheet">Close</button>
+        </div>
+        <div id="detail-content"></div>
+      </dialog>
+      <dialog class="ch-sheet" id="confirm-sheet" aria-labelledby="confirm-title">
+        <form id="scan-confirm-form">
+          <div class="sheet-handle ch-sheet__grip"></div>
+          <div class="section-heading">
+            <h2 id="confirm-title">Your meal, decoded.</h2>
+            <button id="cancel-scan" type="button" class="text-button">Close</button>
+          </div>
+          <p id="confidence" class="hint"></p>
+          <div id="scan-items"></div>
+          <div id="serving-control" hidden>
+            <label for="serving-grams">Serving size (g)</label>
+            <input class="ch-input" id="serving-grams" type="number" min="1" max="5000" value="100">
+          </div>
+          <label for="portion-slider">
+            Portion
+            <strong id="portion-label">1×</strong>
+          </label>
+          <input class="ch-input" id="portion-slider" type="range" min="0.5" max="2" step="0.1" value="1">
+          <div id="scan-total" class="result-total"></div>
+          <div id="result-macros" class="macro-detail"></div>
+          <label for="scan-meal">Meal</label>
+          <select class="ch-input" id="scan-meal">
+            <option>Breakfast</option>
+            <option>Lunch</option>
+            <option>Dinner</option>
+            <option>Snacks</option>
+          </select>
+          <button class="primary ch-btn ch-btn--primary ch-btn--block" type="submit">Log it</button>
+          <button id="copy-result" type="button" class="secondary ch-btn ch-btn--block">Copy summary</button>
+        </form>
+      </dialog>
+      <dialog id="level-up" class="level-up ch-alert">
+        <p class="eyebrow">YOU EARNED THIS</p>
+        <span class="level-star">✦</span>
+        <h1>LEVEL UP</h1>
+        <h2 id="new-level"></h2>
+        <button id="close-level" class="primary ch-btn ch-btn--primary ch-btn--block">Let's go</button>
+      </dialog>
+      <p id="xp-pop" class="xp-pop ch-toast is-show" hidden></p>
+      <p id="celebration" class="celebration ch-toast is-show" role="status" hidden></p>
+      <div id="undo-toast" class="ch-toast action-toast" role="status" hidden></div>
+      <p id="message" class="message ch-toast is-show" role="status"></p>
+      <footer>
+        CHAD
+        <span>One day stronger.</span>
+      </footer>
+    </div>
+  </body>
+</html>

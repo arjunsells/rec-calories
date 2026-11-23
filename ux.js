@@ -1,18 +1,24 @@
 'use strict';
-// v6 structure only. Journal keys, scoring and plan nutrition stay in the v5 modules.
+// v7 navigation and sheets. Storage and scoring remain in app.js / quest.js.
 (() => {
   const $ = id => document.getElementById(id);
   const make = (tag, className, text) => { const n=document.createElement(tag);n.className=className||'';if(text!==undefined)n.textContent=text;return n; };
-  const tiers = {S:'Strict',M:'Medium',F:'Free'};
-  const selectedTiers = {};
-  let mealsOpen=false, waterOpen=false, weighOpen=false, stopScanner=()=>{};
+  let selectedDay=null, stopScanner=()=>{}, refresh=()=>{}, undoTimer, foodMeal=null;
+  const dateKey=()=>selectedDay||CHADQuest.dayKey();
+  function navigate(offset){selectedDay=CHADQuest.shift(dateKey(),offset);if(selectedDay===CHADQuest.dayKey())selectedDay=null;closeSheets();refresh();window.scrollTo(0,0);}
+  function toast(text,undo){
+    clearTimeout(undoTimer);const bar=$('undo-toast');bar.replaceChildren(make('span','',text));
+    if(undo){const b=make('button','text-button','Undo');b.type='button';b.onclick=()=>{bar.hidden=true;undo();};bar.append(b);}
+    bar.hidden=false;undoTimer=setTimeout(()=>bar.hidden=true,6000);
+  }
   function currentSlot(date=new Date()) {
     const hour=Number(new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Darwin',hour:'numeric',hourCycle:'h23'}).format(date));
     return hour<14?'L':hour<18?'P':hour<21?'D':'E';
   }
   function closeSheets(){document.querySelectorAll('dialog.ch-sheet[open]').forEach(d=>d.close());stopScanner();}
   function openAdd(){closeSheets();$('add-sheet').showModal();}
-  function openFood(kind){
+  function openFood(kind,meal=null){
+    foodMeal=meal;
     closeSheets();
     if(kind==='manual'){$('manual-sheet').showModal();$('food-name').focus();return;}
     const camera=kind==='camera';
@@ -25,7 +31,13 @@
   function detail(title,nodes){closeSheets();$('detail-title').textContent=title;$('detail-content').replaceChildren(...nodes);$('detail-sheet').showModal();}
   function group(parent,title,nodes){const d=make('details','ch-list settings-group');d.append(make('summary','',title),...nodes);parent.append(d);return d;}
   function setup(actions){
-    stopScanner=actions.stopScanner;
+    stopScanner=actions.stopScanner;refresh=actions.render;
+    $('previous-day').onclick=()=>navigate(-1);$('next-day').onclick=()=>navigate(1);
+    $('return-today').onclick=()=>{selectedDay=null;refresh();};
+    let start;const today=$('today');
+    today.addEventListener('touchstart',e=>{if(e.touches.length!==1||e.target.closest('button,input,select,textarea,a,dialog')){start=null;return;}const t=e.touches[0];start={x:t.clientX,y:t.clientY};},{passive:true});
+    today.addEventListener('touchend',e=>{if(!start)return;const t=e.changedTouches[0],dx=t.clientX-start.x,dy=t.clientY-start.y;start=null;if(Math.abs(dx)>70&&Math.abs(dx)>Math.abs(dy)*1.5)navigate(dx<0?1:-1);},{passive:true});
+    today.addEventListener('touchcancel',()=>start=null,{passive:true});
     document.querySelectorAll('.view > h1,.section-heading h1').forEach(h=>h.classList.add('ch-large__title'));
     const compact=make('span','ch-header__title','Today');document.querySelector('.ch-header').append(compact);
     addEventListener('scroll',()=>{document.querySelector('.ch-header').classList.toggle('is-scrolled',scrollY>40);},{passive:true});
@@ -39,15 +51,8 @@
     });
     window.CHADIcons?.mount(document);
     const scan=$('scan');scan.classList.remove('view','ch-view');scan.hidden=false;document.querySelector('#scan-sheet .ch-sheet__body').append(scan);
-    const form=$('add-form'),old=form.closest('details');document.querySelector('#manual-sheet .ch-sheet__body').append(form);old.remove();
+    const form=$('add-form');document.querySelector('#manual-sheet .ch-sheet__body').append(form);
     $('food-name').required=true;$('food-name').placeholder='e.g. Chicken bowl';
-    const macros=make('details');macros.append(make('summary','','More nutrition (optional)'));
-    // Keep protein, carbohydrate, fat and meal controls available with the same IDs.
-    const protein=$('protein').parentElement;const calories=$('calories').parentElement;
-    const oldRow=calories.parentElement;oldRow.before(calories);protein.remove();oldRow.remove();
-    macros.append(protein,$('carbs').closest('.input-row'));
-    const mealLabel=document.querySelector('label[for="meal"]');macros.append(mealLabel,$('meal'));
-    form.insertBefore(macros,form.querySelector('button'));
     document.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>openFood(b.dataset.add));
     document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
     document.querySelectorAll('dialog.ch-sheet').forEach(d=>{
@@ -60,61 +65,20 @@
     const goalGroup=group(settings,'Goals & AI key',[goals]);appearance.after(goalGroup);
     const rewards=document.querySelector('#history details');if(rewards){group(settings,'Scoring & rewards',[...rewards.children].filter(n=>n.tagName!=='SUMMARY'));rewards.remove();}
     $('settings').querySelector('h1').textContent='Settings';group(settings,'Data & backup',[Object.assign(make('div'),{id:'data-settings'})]);
+    group(settings,'Logging & training',[make('p','hint','Tap a meal to log it; tap again to remove it. The info button or a long press shows ingredients, tips and swaps. Water bottles add 500 mL; tapping a full row removes 500 mL. Undo reverses your last action.'),make('p','hint','Hydration: 1 L by 10 am, 2 L by 1 pm, 3 L by 3:30 pm, 1 L at gym with Hydralyte, and 500 mL at dinner. Sunday target 3.5 L; Saturday 5 L; weekdays 4.5 L. Protein points start at 210 g; the ring uses your phase goal.'),make('p','hint','Training: stop 2 reps before failure. Add reps, then weight. Gym around 3:30 pm; cardio follows. Easy day if sleep is under 6 hours, joints hurt, or strength drops two sessions in a row. Deload halves sets, rounded up: 28 Dec-3 Jan, 8-14 Feb, 22-28 Mar, 3-9 May. Sauna or ice bath: Sunday only.'),make('p','hint','Photo and text estimates go directly to OpenAI using your own key. Estimates can miss portions or ingredients; API usage may cost money. Food lookup uses Open Food Facts; check the package label. Reset and Bulk add-ons are estimates. Shake: 500 mL high-protein milk, 60 g oats and a banana.'),make('p','hint','Weekly ranks: Rookie below 60; Grinder 60-84; Beast 85-104; Champion 105-119; AJ Mode 120+.')]);
     const weekly=Object.assign(make('div'),{id:'weekly-progress'});$('charts').before(weekly);
-    const journal=$('entries').closest('.below-fold');
-    const journalDetails=make('details','journal-section');journalDetails.append(make('summary','','Food journal'),...journal.children);journal.replaceChildren(journalDetails);
   }
   function render(state){
-    const backup=[...$('arcade-settings').querySelectorAll('button')].find(b=>b.textContent==='Export local backup');if(backup){const hint=backup.nextElementSibling;$('data-settings').append(backup,hint);}
-    const key=CHADQuest.dayKey(),d=CHADQuest.daily(state,key),checklist=$('daily-checklist');
-    const ring=$('quest-ring');if(ring){ring.style.setProperty('--p',d.score/17*100);ring.setAttribute('aria-label',`${d.score} of 17 quest points, grade ${d.grade}`);$('quest-total').textContent=d.score;$('quest-grade').textContent='Grade '+d.grade;}
-    const totals=state.entries.filter(e=>e.day===key).reduce((t,e)=>[t[0]+e.kcal,t[1]+e.protein],[0,0]);
-    CHADCharts.rings($('activity-rings'),[totals[0]/state.target,totals[1]/state.proteinGoal,d.score/17],{labels:[$('calorie-ring').getAttribute('aria-label'),$('protein-ring').getAttribute('aria-label'),ring.getAttribute('aria-label')]});
-    const blocks=[...checklist.querySelectorAll('.meal-slot')];
-    const next=make('section','next-up ch-card ch-next');next.id='next-up';next.setAttribute('aria-labelledby','next-title');next.append(Object.assign(make('h2','','Next up'),{id:'next-title'}));
-    const meals=make('details','card today-meals');meals.open=mealsOpen;meals.append(make('summary',"",`Today's meals · ${Object.keys(d.picks).length} / 4 logged`));meals.ontoggle=()=>mealsOpen=meals.open;
-    blocks.forEach((block,i)=>{
-      const slot=CHADPlan[i],cards=[...block.querySelectorAll('.meal-pick')];
-      let tier=selectedTiers[slot.id]||d.picks[slot.id]||'S';
-      const control=make('div','tier-control ch-seg');control.setAttribute('role','group');control.setAttribute('aria-label',slot.name+' meal tier');
-      const sync=()=>{control.style.setProperty('--n',3);control.style.setProperty('--i',Object.keys(tiers).indexOf(tier));cards.forEach(card=>card.hidden=card.dataset.tier!==tier);control.querySelectorAll('button').forEach(b=>{b.setAttribute('aria-pressed',b.dataset.chooseTier===tier);b.classList.toggle('is-selected',b.dataset.chooseTier===tier);});};
-      Object.entries(tiers).forEach(([id,label])=>{const b=make('button','tier-segment ch-seg__opt ch-seg__opt--'+label.toLowerCase(),label);b.type='button';b.dataset.chooseTier=id;b.onclick=()=>{tier=id;selectedTiers[slot.id]=id;sync();};control.append(b);});
-      cards.forEach(card=>{
-        const chosen=d.picks[slot.id]===card.dataset.tier;
-        card.setAttribute('aria-label',`${chosen?'Undo':'Log'} ${tiers[card.dataset.tier]} ${slot.name}: ${slot.choices.find(c=>c.tier===card.dataset.tier).title}`);
-        card.append(make('span','meal-log-label',chosen?'Logged · tap to undo':'Log '+tiers[card.dataset.tier]+' meal'));
-      });
-      block.querySelector('.meal-options').before(control);sync();
-      const more=make('button','text-button','Meal details & tips');more.type='button';more.onclick=()=>{
-        const c=slot.choices.find(c=>c.tier===tier),list=make('ul','meal-items');c.items.forEach(item=>list.append(make('li','',item)));
-        detail(c.title,[make('p','',tiers[tier]+' · '+c.macros[0]+' kcal'),list,make('p','',c.tip),make('p','hint',c.fix)]);
-      };block.append(more);
-      if(slot.id===currentSlot()&&!d.picks[slot.id])next.append(block);else meals.append(block);
-    });
-    // Water is a repeatable one-tap bottle; the original absolute-volume controls remain as a stepper.
-    const water=checklist.querySelector('.water-card'),bottles=water.querySelector('.bottles');
-    const adjust=make('details','water-adjust');adjust.open=waterOpen;adjust.append(make('summary','','Adjust water'),water.querySelector('.hint'),bottles);adjust.ontoggle=()=>waterOpen=adjust.open;
-    const add=make('button','primary ch-btn ch-btn--primary ch-btn--block water-add','+ Add a bottle · 500 mL');add.type='button';
-    const setWater=value=>{const amount=Math.max(0,Math.min(30,Math.round(value*10)/10));
-      if(window.CHADUX.save({...state,questsV5:{...state.questsV5,[key]:{...state.questsV5?.[key],water:amount}}})&&amount>(d.water||0))window.CHADUX.popXP();};
-    add.onclick=()=>setWater((d.water||0)+.5);
-    const undo=make('button','secondary ch-btn water-undo','− Undo 500 mL');undo.type='button';undo.disabled=!(d.water>0);undo.onclick=()=>setWater((d.water||0)-.5);adjust.querySelector('summary').after(undo);water.append(add,adjust);
-    const checks=checklist.querySelector('.checks');
-    const weigh=$('local-weight').closest('details');weigh.open=weighOpen;weigh.ontoggle=()=>weighOpen=weigh.open;
-    if(next.children.length===1){
-      const pending=!d.waterHit?water:[...checks.querySelectorAll('button.check-card')].find(b=>b.getAttribute('aria-pressed')==='false');
-      if(pending)next.append(pending);else if(!d.weight)next.append(weigh);else next.append(make('p','hint','All set. Your current meal and daily quests are logged.'));
-    }
-    const heading=checklist.querySelector('.section-heading');heading?.remove();checklist.querySelector(':scope > p.hint')?.remove();
-    checklist.querySelector('.quest-section-title').textContent='Daily quests';
-    checklist.prepend(next);checklist.append(meals);$('weekly-progress').replaceChildren(checklist.querySelector('.week-summary'));
-    // Top-set forms use the existing validation and PR logic, displayed in a bottom sheet.
-    document.querySelectorAll('.top-set').forEach(log=>{
-      const b=make('button','text-button','Exercise details / log top set');b.type='button';
-      const form=log.querySelector('form');form.addEventListener('submit',()=>closeSheets());
-      b.onclick=()=>detail(log.closest('.exercise').querySelector('.exercise-toggle').textContent,[form]);
-      log.before(b);log.hidden=true;
-    });
+    const backup=[...$('arcade-settings').querySelectorAll('button')].find(b=>b.textContent==='Export local backup');
+    if(backup){const hint=backup.nextElementSibling;$('data-settings').append(backup,hint);}
+    const key=dateKey(),d=CHADQuest.daily(state,key),ring=$('quest-ring');
+    const isToday=key===CHADQuest.dayKey();
+    $('day-title').textContent=isToday?'Today':new Date(key+'T12:00:00+09:30').toLocaleDateString('en-AU',{timeZone:'Australia/Darwin',weekday:'long'});
+    $('return-today').hidden=isToday;
+    ring.style.setProperty('--p',d.score/17*100);ring.setAttribute('aria-label',`${d.score} of 17 quest points, grade ${d.grade}`);
+    $('quest-total').textContent=d.score;$('quest-grade').textContent='Grade '+d.grade;
+    const goals=CHADQuest.goals(state,key);
+    CHADCharts.rings($('activity-rings'),[d.totals[0]/goals.target,d.totals[1]/goals.proteinGoal,d.score/17],{labels:[$('calorie-ring').getAttribute('aria-label'),$('protein-ring').getAttribute('aria-label'),ring.getAttribute('aria-label')]});
   }
-  window.CHADUX={setup,render,currentSlot,closeSheets,openAdd,openFood};
+  window.CHADUX={setup,render,currentSlot,dateKey,navigate,toast,detail,closeSheets,openAdd,openFood,foodMeal:()=>foodMeal};
 })();

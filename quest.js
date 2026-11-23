@@ -50,34 +50,137 @@
   const button=(text,fn,cls='secondary')=>{const b=el('button',cls,text);b.type='button';b.onclick=fn;return b;};
   const fmt=n=>new Intl.NumberFormat('en-AU',{maximumFractionDigits:1}).format(n);
   function chime(){if(!current.arcadeSound||matchMedia('(prefers-reduced-motion: reduce)').matches)return;try{const ac=new (window.AudioContext||window.webkitAudioContext)();[523,659,784].forEach((f,i)=>{const o=ac.createOscillator(),g=ac.createGain();o.type='square';o.frequency.value=f;g.gain.setValueAtTime(.025,ac.currentTime+i*.07);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+i*.07+.1);o.connect(g).connect(ac.destination);o.start(ac.currentTime+i*.07);o.stop(ac.currentTime+i*.07+.11);});setTimeout(()=>ac.close(),600);}catch{/* Sound remains optional. */}}
-  function update(patch,positive=true){const key=dayKey(),old=current.questsV5?.[key]||{};if(api.save({...current,questsV5:{...current.questsV5,[key]:{...old,...patch}}})&&positive){api.popXP(10);chime();}}
-  function pick(slot,tier){const key=dayKey(),q=daily(current,key),was=q.picks[slot.id]===tier,picks={...q.picks};delete picks[slot.id];let entries=current.entries.filter(e=>!(e.day===key&&e.planSlot===slot.id));if(!was){picks[slot.id]=tier;const c=slot.choices.find(c=>c.tier===tier);entries.push({id:'plan-'+key+'-'+slot.id,day:key,name:c.title,kcal:c.macros[0],protein:c.macros[1],carbs:c.macros[2],fat:c.macros[3],meal:slot.name,source:'plan',planSlot:slot.id});}if(api.save({...current,entries,questsV5:{...current.questsV5,[key]:{...current.questsV5?.[key],picks}}})&&!was){api.popXP();chime();}}
+  const activeKey=()=>api.key||dayKey();
+  // Undo only the fields touched by an action, preserving subsequent unrelated edits.
+  function update(patch,positive=true,key=activeKey(),label='Updated'){
+    const old=current.questsV5?.[key]||{},before=Object.fromEntries(Object.keys(patch).map(k=>[k,old[k]]));
+    if(api.save({...current,questsV5:{...current.questsV5,[key]:{...old,...patch}}})){
+      if(positive){api.popXP(10);chime();}
+      window.CHADUX.toast(label,()=>{
+        const q={...current.questsV5?.[key]};Object.entries(before).forEach(([k,v])=>{if(v===undefined)delete q[k];else q[k]=v;});
+        api.save({...current,questsV5:{...current.questsV5,[key]:q}});
+      });
+      return true;
+    }
+    return false;
+  }
+  function pick(slot,tier){
+    const key=activeKey(),q=daily(current,key),was=q.picks[slot.id]===tier,picks={...q.picks};
+    const prior=current.entries.filter(e=>e.day===key&&e.planSlot===slot.id),oldTier=picks[slot.id];delete picks[slot.id];
+    let entries=current.entries.filter(e=>!(e.day===key&&e.planSlot===slot.id));
+    if(!was){picks[slot.id]=tier;const c=slot.choices.find(c=>c.tier===tier);entries.push({id:'plan-'+key+'-'+slot.id,day:key,name:c.title,kcal:c.macros[0],protein:c.macros[1],carbs:c.macros[2],fat:c.macros[3],meal:slot.name,source:'plan',planSlot:slot.id});}
+    if(api.save({...current,entries,questsV5:{...current.questsV5,[key]:{...current.questsV5?.[key],picks}}})){
+      if(!was){api.popXP();chime();}
+      window.CHADUX.toast(was?'Meal removed':'Meal logged',()=>{
+        const q={...current.questsV5?.[key],picks:{...current.questsV5?.[key]?.picks}};
+        if(oldTier===undefined)delete q.picks[slot.id];else q.picks[slot.id]=oldTier;
+        api.save({...current,entries:[...current.entries.filter(e=>!(e.day===key&&e.planSlot===slot.id)),...prior],questsV5:{...current.questsV5,[key]:q}});
+      });
+    }
+  }
   function removeEntry(state,e,save){const quests={...state.questsV5};if(e.planSlot){const q={...quests[e.day],picks:{...quests[e.day]?.picks}};delete q.picks[e.planSlot];quests[e.day]=q;}save({...state,questsV5:quests,entries:state.entries.filter(x=>x.id!==e.id)});}
-  function toggle(key,label,hint,q,container){const b=button('',()=>update(key==='training'?{training:!q.training,exercises:Object.fromEntries(training[weekday(dayKey())].ex.map((_,i)=>[i,!q.training]))}:{[key]:!q[key]},!q[key]),'check-card'+(q[key]?' checked':''));b.setAttribute('aria-pressed',!!q[key]);const body=el('span','ch-quest__body');body.append(el('strong','ch-quest__title',label),el('small','ch-quest__meta',hint));b.append(el('span','check-box'),body);container.append(b);}
-  function render(state,actions){current=state;api=actions;const key=dayKey(),d=daily(state,key),s=stats(state,key),p=phase(state,key);
-    const hero=$('quest-hero');hero.replaceChildren();hero.className='ch-card';const flame=el('div','ch-streak__flame');flame.innerHTML=CHADSprites.sprite('flame',40);flame.setAttribute('aria-hidden','true');hero.append(flame,el('div','streak-copy',s.streak+' DAY STREAK'),el('span','phase-chip',p[1]+' PHASE'),el('div','score-big',d.score+' / 17'),el('div','score-caption','GRADE '+d.grade+' · '+s.level.toUpperCase()));
-    $('home-streak').textContent=d.grade+' RANK';$('streak').textContent='🔥 '+s.streak+' day streak';$('daily-grade').textContent=d.grade;$('daily-grade').className='ch-grade ch-grade--'+d.grade.toLowerCase();$('grade-detail').textContent='Daily quest · '+d.score+'/17';
-    if(lastStreak!==null&&s.streak>lastStreak){hero.classList.remove('saved');void hero.offsetWidth;hero.classList.add('saved');$('celebration').textContent='🔥 STREAK SAVED · '+s.streak+' DAYS';$('celebration').hidden=false;setTimeout(()=>$('celebration').hidden=true,3500);}lastStreak=s.streak;
-    const checklist=$('daily-checklist');checklist.replaceChildren();const heading=el('div','section-heading');heading.append(el('h2','','01 / FUEL QUESTS'),el('span','muted',Object.keys(d.picks).length+' / 4'));checklist.append(heading,el('p','hint','Pick one per slot. Tap again to undo. Two Free picks per week.'));
-    for(const slot of CHADPlan){const block=el('section','meal-slot'),h=el('div','section-heading');h.append(el('h2','',slot.name),el('span','hint',slot.time));block.append(h);const grid=el('div','meal-options');for(const c of slot.choices){const selected=d.picks[slot.id]===c.tier,b=button('',()=>pick(slot,c.tier),'meal-pick tier-'+c.tier+(selected?' selected':''));b.dataset.slot=slot.id;b.dataset.tier=c.tier;b.setAttribute('aria-pressed',selected);b.append(el('span','tier-label',({S:'STRICT · 3 PTS',M:'MEDIUM · 2 PTS',F:'FREE · 1 PT'}[c.tier])+(selected?' ✓':'')),el('strong','meal-title',c.title));const list=el('ul','meal-items');c.items.forEach(item=>list.append(el('li','',item)));b.append(list,el('span','meal-macros',fmt(c.macros[0])+' kcal · P '+fmt(c.macros[1])+' · C '+fmt(c.macros[2])+' · F '+fmt(c.macros[3])+' g'),el('span','meal-tip',c.tip),el('span','meal-fix',c.fix));if(p[0]==='bulk'&&(slot.id==='L'||slot.id==='D'))b.append(el('span','addon-note',slot.id==='L'?'+ Plain bagel · log add-on below':'+ Protein wrap · log add-on below'));if(p[0]==='reset'||p[0]==='bulk')b.append(el('span','addon-note',p[0]==='reset'?'Reset: daily shake + banana below':'Bulk: daily shake below'));grid.append(b);}block.append(grid,button('Ate something else → Snap + Say',()=>{api.showView('scan');$('scan-meal').value=slot.id==='P'||slot.id==='E'?'Snacks':slot.name;},'other-meal'));checklist.append(block);}
-    if(p[0]!=='cut'){const box=el('section','card');box.append(el('h2','',p[1]+' add-ons'),el('p','hint','Separate taps log approximate nutrition. Choose once daily.'));
+  function toggle(field,label,q,container,key=activeKey()){
+    const done=!!q[field],b=button(label,()=>{
+      const patch=field==='training'?{training:!done,exercises:Object.fromEntries(training[weekday(key)].ex.map((_,i)=>[i,!done]))}:{[field]:!done};
+      update(patch,!done,key,label+(done?' removed':' logged'));
+    },'quest-chip'+(done?' checked':''));
+    b.dataset.quest=field;b.setAttribute('aria-pressed',done);container.append(b);
+  }
+  function mealDetail(slot,c){
+    const list=el('ul','meal-items');c.items.forEach(item=>list.append(el('li','',item)));
+    const other=button('Log another meal',()=>window.CHADUX.openFood('camera',slot.id==='P'||slot.id==='E'?'Snacks':slot.name));
+    window.CHADUX.detail(c.title,[el('p','',({S:'Strict',M:'Medium',F:'Free'}[c.tier])+' \u00b7 '+c.macros[0]+' kcal \u00b7 P '+c.macros[1]+' / C '+c.macros[2]+' / F '+c.macros[3]+' g'),list,el('p','',c.tip),el('p','hint',c.fix),other]);
+  }
+  function render(state,actions){
+    current=state;api=actions;const key=activeKey(),d=daily(state,key),s=stats(state,dayKey()),p=phase(state,key);
+    const hero=$('quest-hero');hero.replaceChildren();hero.hidden=true;
+    $('home-streak').textContent=s.streak+' day streak';$('streak').textContent=s.streak+' day streak';
+    $('daily-grade').textContent=d.grade;$('daily-grade').className='ch-grade ch-grade--'+d.grade.toLowerCase();$('grade-detail').textContent=d.score+'/17 pts';
+    if(lastStreak!==null&&s.streak>lastStreak){$('celebration').textContent='Streak saved \u00b7 '+s.streak+' days';$('celebration').hidden=false;setTimeout(()=>$('celebration').hidden=true,3500);}lastStreak=s.streak;
+    const checklist=$('daily-checklist');checklist.replaceChildren();
+    const quests=el('section','daily-quests');quests.setAttribute('aria-label','Daily quests');
+    const water=el('div','water-row'),amount=d.water||0,target=waterGoal(key);
+    water.append(el('span','water-total',fmt(amount)+' / '+target+' L'));
+    const bottles=el('div','bottles');bottles.setAttribute('role','group');bottles.setAttribute('aria-label','Water bottles');
+    for(let i=0;i<Math.ceil(target/.5);i++){
+      const filled=amount>i*.5,b=button('',()=>update({water:Math.max(0,Math.min(30,Math.round((amount+(amount>=target?-.5:.5))*10)/10))},amount<target,key,amount>=target?'Bottle removed':'Bottle added'),'bottle'+(filled?' filled':''));
+      b.dataset.water=String(i);b.setAttribute('aria-label',amount>=target?'Remove 500 mL water':'Add 500 mL water');b.setAttribute('aria-pressed',filled);
+      b.append(el('span','bottle-symbol','\u25a5'));bottles.append(b);
+    }
+    water.append(bottles);quests.append(water);
+    const chips=el('div','quest-chips');for(const [field,label] of [['electrolyte','Hydralyte'],['training','Training'],['cardio','Cardio'],['steps','10k steps'],['sleep','Sleep']])toggle(field,label,d,chips,key);
+    quests.append(chips);
+    // A vertical list keeps every choice one tap away; the current slot leads.
+    const currentIndex=CHADPlan.findIndex(slot=>slot.id===window.CHADUX.currentSlot());
+    const pending=Array.from({length:4},(_,i)=>CHADPlan[(currentIndex+i)%4]).find(slot=>!d.picks[slot.id]);
+    const slotId=pending?.id||CHADPlan[currentIndex].id,slots=[...CHADPlan].sort((a,b)=>(b.id===slotId)-(a.id===slotId));
+    slots.forEach((slot,i)=>{
+      const block=el('section','meal-slot'+(i===0?' next-up':''));block.dataset.mealSlot=slot.id;if(i===0)block.id='next-up';
+      const heading=el('div','section-heading'),title=el('h2','',(i===0&&pending?'Next \u00b7 ':'')+slot.name);title.id='slot-heading-'+slot.id;block.setAttribute('aria-labelledby',title.id);heading.append(title,el('span','hint',slot.time));block.append(heading);
+      const grid=el('div','meal-options');
+      for(const c of slot.choices){
+        const selected=d.picks[slot.id]===c.tier,wrap=el('div','meal-choice'),b=button('',()=>pick(slot,c.tier),'meal-pick tier-'+c.tier+(selected?' selected':''));
+        b.dataset.slot=slot.id;b.dataset.tier=c.tier;b.setAttribute('aria-pressed',selected);
+        b.setAttribute('aria-label',(selected?'Undo ':'Log ')+({S:'Strict',M:'Medium',F:'Free'}[c.tier])+' '+slot.name+': '+c.title);
+        b.append(el('span','tier-label',({S:'Strict',M:'Medium',F:'Free'}[c.tier])+(selected?' \u2713':'')),el('strong','meal-title',c.title),el('span','meal-macros',fmt(c.macros[0])+' kcal'),el('span','meal-macros','P '+fmt(c.macros[1])+' g'));
+        // Long press opens the same sheet as the accessible info button, without logging.
+        let timer,suppress=false,origin;
+        b.addEventListener('pointerdown',e=>{suppress=false;origin={x:e.clientX,y:e.clientY};timer=setTimeout(()=>{timer=null;suppress=true;mealDetail(slot,c);},550);});
+        const cancel=()=>{clearTimeout(timer);timer=null;};
+        b.addEventListener('pointermove',e=>{if(origin&&(Math.abs(e.clientX-origin.x)>10||Math.abs(e.clientY-origin.y)>10))cancel();});
+        b.addEventListener('pointerup',cancel);b.addEventListener('pointercancel',cancel);b.addEventListener('pointerleave',cancel);
+        b.addEventListener('click',e=>{if(suppress){e.stopImmediatePropagation();e.preventDefault();suppress=false;}},true);
+        b.addEventListener('contextmenu',e=>e.preventDefault());
+        const info=button('\u24d8',()=>mealDetail(slot,c),'meal-info');info.setAttribute('aria-label',slot.name+' '+({S:'Strict',M:'Medium',F:'Free'}[c.tier])+' details');
+        wrap.append(b,info);grid.append(wrap);
+      }
+      block.append(grid);checklist.append(block);if(i===0)checklist.append(quests);
+    });
+    if(p[0]!=='cut'){
+      const box=el('section','card addons');box.append(el('h2','',p[1]+' add-ons'));
       const addons=p[0]==='bulk'?[['bagel','Plain bagel',[313,10,60,2]],['wrap','Protein wrap',[175,10,24,4]],['shake','Daily shake',[610,38,83,13]]]:[['shake','Daily shake',[610,38,83,13]],['banana','Extra banana',[89,1.1,23,.3]]];
-      for(const [id,name,m] of addons){const eid='addon-'+key+'-'+id,has=state.entries.some(e=>e.id===eid);const b=button((has?'✓ ':'+ ')+name+' · '+m[0]+' kcal',()=>{if(api.save({...current,entries:has?current.entries.filter(e=>e.id!==eid):[...current.entries,{id:eid,day:key,name,kcal:m[0],protein:m[1],carbs:m[2],fat:m[3],source:'addon',meal:'Snacks'}]})&&!has)api.popXP();},'check-card'+(has?' checked':''));b.setAttribute('aria-pressed',has);box.append(b);}box.append(el('p','hint','Shake: 500 mL high-protein milk + 60 g oats + a banana. Add-ons are estimates.'));checklist.append(box);}
-    checklist.append(el('h2','quest-section-title','02 / DAILY SIDE QUESTS'));
-    const water=el('section','card water-card');water.append(el('div','eyebrow','HYDRATION QUEST'),el('h2','',fmt(d.water||0)+' / '+waterGoal(key)+' L'),el('p','hint','1 L by 10 am · 2 L by 1 pm · 3 L by 3:30 pm · +1 at gym with electrolyte · +0.5 at dinner.'));
-    const bottles=el('div','bottles');for(let i=0;i<Math.ceil(waterGoal(key));i++){const volume=Math.min(i+1,waterGoal(key));const b=button((d.water||0)>=volume?'▣':'▢',()=>update({water:(d.water||0)===volume?Math.max(0,volume-(volume%1||1)):volume},(d.water||0)<volume),'bottle'+((d.water||0)>=volume?' filled':''));b.setAttribute('aria-label','Water '+volume+' L');b.setAttribute('aria-pressed',(d.water||0)>=volume);b.append(el('small','',i===Math.floor(waterGoal(key))?'.5 L':'1 L'));bottles.append(b);}water.append(bottles);checklist.append(water);
-    const checks=el('div','checks');const proteinCard=el('div','check-card'+(d.protein?' checked':'')),proteinBody=el('span','ch-quest__body');proteinBody.append(el('strong','ch-quest__title','Protein 210 g+'),el('small','ch-quest__meta',fmt(d.totals[1])+' g logged / +2 points automatically. Ring uses your phase goal.'));proteinCard.append(el('span','check-box'),proteinBody);checks.append(proteinCard);toggle('electrolyte','Electrolyte','Hydralyte at gym or Muay Thai',d,checks);const session=training[weekday(key)];toggle('training','Training · '+session.name,session.muscles,d,checks);checks.append(button('View / tick today’s exercises →',()=>api.showView('training'),'other-meal'));toggle('cardio','Cardio',session.cardio,d,checks);toggle('steps','10,000 steps','+1 daily point',d,checks);toggle('sleep','Sleep · 8 hours','Recovery is part of the quest',d,checks);checklist.append(checks);
-    const weigh=el('details','card');weigh.append(el('summary','','Morning weigh-in · optional'));const input=el('input');input.type='number';input.min='20';input.max='500';input.step='.1';input.value=d.weight??'';input.id='local-weight';const label=el('label','','Weight (kg) · stored only on this device');label.htmlFor=input.id;input.onchange=()=>{const v=input.value===''?null:Number(input.value);if(v===null||Number.isFinite(v)&&v>=20&&v<=500)update({weight:v},false);};weigh.append(label,input);checklist.append(weigh);
-    const weekCard=el('section','card week-summary');weekCard.append(el('p','eyebrow','MON–SUN / WEEKLY RANK'),el('h2','',s.level+' · '+s.week.total+' pts'),el('p','hint',s.week.free+' / 2 Free picks · '+(s.week.free>2?'Weekly bonus lost':s.week.bonus?'+10 weekly bonus earned':'+10 bonus pending a complete week')),el('p','hint','Rookie <60 · Grinder 60–84 · Beast 85–104 · Champion 105–119 · AJ Mode 120+'));checklist.append(weekCard);
+      for(const [id,name,m] of addons){const eid='addon-'+key+'-'+id,has=state.entries.some(e=>e.id===eid),old=state.entries.find(e=>e.id===eid);
+        const b=button(name+' \u00b7 '+m[0]+' kcal',()=>{if(api.save({...current,entries:has?current.entries.filter(e=>e.id!==eid):[...current.entries,{id:eid,day:key,name,kcal:m[0],protein:m[1],carbs:m[2],fat:m[3],source:'addon',meal:'Snacks'}]})){if(!has)api.popXP();window.CHADUX.toast(has?'Add-on removed':'Add-on logged',()=>api.save({...current,entries:[...current.entries.filter(e=>e.id!==eid),...(old?[old]:[])]}));}},'quest-chip'+(has?' checked':''));b.setAttribute('aria-pressed',has);box.append(b);
+      }checklist.append(box);
+    }
+    let weigh=$('local-weight');if(!weigh){
+      const box=el('section','card'),label=el('label','','Optional weigh-in (kg)');weigh=el('input');weigh.id='local-weight';weigh.type='number';weigh.min='20';weigh.max='500';weigh.step='.1';label.htmlFor=weigh.id;const date=el('p','hint');date.id='weight-date';box.append(date,label,weigh);
+      const waterLabel=el('label','','Adjust water (L)'),water=el('input');water.id='water-amount';water.type='number';water.min='0';water.max='30';water.step='.1';waterLabel.htmlFor=water.id;box.append(waterLabel,water);$('data-settings').before(box);
+      water.onchange=()=>{const value=Number(water.value);if(water.value!==''&&Number.isFinite(value)&&value>=0&&value<=30)update({water:value},false,activeKey(),'Water saved');};
+      weigh.onchange=()=>{const v=weigh.value===''?null:Number(weigh.value);if(v===null||Number.isFinite(v)&&v>=20&&v<=500)update({weight:v},false,activeKey(),'Weigh-in saved');};
+    }
+    weigh.value=d.weight??'';$('water-amount').value=d.water||0;$('weight-date').textContent=key;
+    const weekCard=el('section','card week-summary');weekCard.append(el('h2','',s.level+' \u00b7 '+s.week.total+' pts'),el('p','hint',s.week.free+'/2 Free \u00b7 '+(s.week.free>2?'No bonus':s.week.bonus?'+10 bonus':'+10 pending')));$('weekly-progress').replaceChildren(weekCard);
     renderTraining(state,key);renderCharts(state,key);renderSettings(state);appendBadges(s);
   }
-  function renderTraining(state,key){const box=$('training-content');box.replaceChildren();if(deload(key))box.append(el('div','deload','DELOAD WEEK · HALF THE SETS'));
-    const rules=el('div','card');rules.append(el('h2','','THE RULES'),el('p','','Stop 2 reps before failure. Add reps, then weight.'),el('p','hint','Gym ~3:30 pm. Cardio straight after. Deload: 28 Dec–3 Jan · 8–14 Feb · 22–28 Mar · 3–9 May. Half the sets (round up).'),el('p','red-flags','EASY DAY if sleep <6 h, joint pain, or strength down 2 sessions in a row.'));box.append(rules);
-    const todayIndex=weekday(key),start=monday(key);
-    for(const i of [1,2,3,4,5,6,0]){const session=training[i],isToday=i===todayIndex,sessionKey=shift(start,(i+6)%7),q=daily(state,sessionKey);const card=el('details','card training-level'+(isToday?' is-today':'')+(q.training?' is-done':''));card.open=isToday;const summary=el('summary');summary.className='ch-day'+(isToday?' ch-day--today':'')+(i===0?' ch-day--rest':'')+(q.training?' is-done':'');const muscle=el('span','ch-day__icon');muscle.innerHTML=CHADSprites.sprite(['rest','chest','back','glove','arms','shoulders','legs'][i],32);summary.append(muscle,el('span','', ['SUN','MON','TUE','WED','THU','FRI','SAT'][i]+' / '+session.name),el('small','',isToday?'TODAY':sessionKey));card.append(summary,el('p','muscles',session.muscles));if(session.note)card.append(el('p','hint',session.note));
-      if(isToday){toggle('training','Complete whole session','Tick every exercise at once',q,card);}
-      session.ex.forEach((text,j)=>{const [name,sets]=text.split('|'),row=el('div','exercise'),exDone=!!q.training||!!q.exercises?.[j];let prescription=sets||'';if(deload(sessionKey)&&prescription)prescription=prescription.replace(/^(\d+)(?:\u2013(\d+))?/,(_,a,b)=>Math.ceil(Number(a)/2)+(b?'\u2013'+Math.ceil(Number(b)/2):''));const b=button((exDone?'✓ ':'□ ')+name+(prescription?' · '+prescription:''),()=>{const ex={...q.exercises,[j]:!exDone};if(q.training)session.ex.forEach((_,x)=>ex[x]=x!==j);update({exercises:ex,training:session.ex.every((_,x)=>ex[x])},!exDone);},'exercise-toggle');b.disabled=!isToday;b.setAttribute('aria-pressed',exDone);row.append(b);
-        if(sets&&name!=='Hill sprints'){const log=el('details','top-set');log.append(el('summary','','Log top set / PR'));const form=el('form','top-set-form');const kg=el('input'),reps=el('input');kg.type=reps.type='number';kg.min='0';kg.max='1000';kg.step='.5';kg.placeholder='kg';kg.setAttribute('aria-label',name+' weight kg');reps.min='1';reps.max='200';reps.placeholder='reps';reps.setAttribute('aria-label',name+' reps');kg.required=reps.required=true;const old=q.topSets?.[name];if(old){kg.value=old.kg;reps.value=old.reps;}kg.disabled=reps.disabled=!isToday;const save=el('button','secondary','Save');save.disabled=!isToday;form.append(kg,reps,save);form.onsubmit=e=>{e.preventDefault();const record={kg:Number(kg.value),reps:Number(reps.value)},value=record.kg*(1+record.reps/30);const best=Math.max(0,...Object.values(current.questsV5||{}).map(d=>d.topSets?.[name]).filter(Boolean).map(r=>r.kg*(1+r.reps/30)));update({topSets:{...daily(current,key).topSets,[name]:record}},false);if(value>best){$('celebration').textContent='✦ PERSONAL RECORD · '+name;$('celebration').hidden=false;setTimeout(()=>$('celebration').hidden=true,3500);chime();}};log.append(form);row.append(log);}card.append(row);});card.append(el('p','cardio-note','CARDIO / '+session.cardio));box.append(card);}
+  function renderTraining(state,key){
+    const box=$('training-content');box.replaceChildren();if(deload(key))box.append(el('div','deload','Deload \u00b7 half sets'));
+    const todayIndex=weekday(key),start=monday(key),order=[todayIndex,...[1,2,3,4,5,6,0].filter(i=>i!==todayIndex)];
+    for(const i of order){
+      const session=training[i],isToday=i===todayIndex,sessionKey=shift(start,(i+6)%7),q=daily(state,sessionKey);
+      const card=el('section','card training-level'+(isToday?' is-today':'')+(q.training?' is-done':''));card.dataset.day=sessionKey;
+      const heading=el('div','ch-day');heading.append(el('h2','',session.name),el('span','hint',isToday?(key===dayKey()?'Today':sessionKey):['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][i]+' \u00b7 '+sessionKey));card.append(heading);
+      if(isToday)toggle('training','Session complete',q,card,sessionKey);
+      session.ex.forEach((text,j)=>{
+        const [name,sets]=text.split('|'),row=el('div','exercise'),exDone=!!q.training||!!q.exercises?.[j];let prescription=sets||'';
+        if(deload(sessionKey)&&prescription)prescription=prescription.replace(/^(\d+)(?:\u2013(\d+))?/,(_,a,b)=>Math.ceil(Number(a)/2)+(b?'\u2013'+Math.ceil(Number(b)/2):''));
+        const b=button((exDone?'\u2713 ':'')+name+(prescription?' \u00b7 '+prescription:''),()=>{
+          const now=daily(current,sessionKey),done=!!now.training||!!now.exercises?.[j],ex={...now.exercises,[j]:!done};if(now.training)session.ex.forEach((_,x)=>ex[x]=x!==j);
+          update({exercises:ex,training:session.ex.every((_,x)=>ex[x])},!done,sessionKey,done?'Exercise removed':'Exercise logged');
+        },'exercise-toggle');b.dataset.exercise=String(j);b.setAttribute('aria-pressed',exDone);row.append(b);
+        const info=button('\u24d8',()=>{
+          const nodes=[el('p','',session.muscles),el('p','',session.note||'Stop 2 reps before failure. Add reps, then weight.')];
+          if(sets&&name!=='Hill sprints'){
+            const form=el('form','top-set-form'),kg=el('input'),reps=el('input');kg.type=reps.type='number';kg.min='0';kg.max='1000';kg.step='.5';kg.placeholder='kg';kg.setAttribute('aria-label',name+' weight kg');reps.min='1';reps.max='200';reps.placeholder='reps';reps.setAttribute('aria-label',name+' reps');kg.required=reps.required=true;
+            const old=daily(current,sessionKey).topSets?.[name];if(old){kg.value=old.kg;reps.value=old.reps;}
+            const submit=el('button','secondary','Save top set');submit.type='submit';form.append(kg,reps,submit);
+            form.onsubmit=e=>{e.preventDefault();if(!form.reportValidity())return;const record={kg:Number(kg.value),reps:Number(reps.value)},value=record.kg*(1+record.reps/30),best=Math.max(0,...Object.values(current.questsV5||{}).map(d=>d.topSets?.[name]).filter(Boolean).map(r=>r.kg*(1+r.reps/30)));
+              if(!update({topSets:{...daily(current,sessionKey).topSets,[name]:record}},false,sessionKey,'Top set saved'))return;window.CHADUX.closeSheets();if(value>best){$('celebration').textContent='Personal record \u00b7 '+name;$('celebration').hidden=false;setTimeout(()=>$('celebration').hidden=true,3500);chime();}
+            };nodes.push(form);
+          }window.CHADUX.detail(name,nodes);
+        },'exercise-info text-button');info.setAttribute('aria-label',name+' details and top set');row.append(info);card.append(row);
+      });card.append(el('p','cardio-note',session.cardio));box.append(card);
+    }
   }
   function appendBadges(s){const badges=[['protein7','Protein Streak','7 days at 210 g+',s.maxP>=7],['water7','Hydration Hero','7 days on water target',s.maxW>=7],['zero','Zero-Free Week','Complete Mon–Sun, no Free picks',s.zero],['fight','Fight Night Fuel','Wednesday: water, electrolyte, Strict dinner',s.fight],['perfect','Perfect Day','17 / 17 daily points',s.perfect]];for(const [id,name,hint,unlocked] of badges){const li=el('li','badge '+(unlocked?'unlocked':'locked'));li.dataset.badge=id;li.append(el('span','badge-icon',unlocked?'✦':'◇'),el('strong','',name),el('small','',hint));$('badges').append(li);}const all=$('badges').children;$('badge-count').textContent=[...all].filter(e=>e.classList.contains('unlocked')).length+'/'+all.length;}
   function kitChart(title,series,color,kind='bar'){
@@ -87,13 +190,13 @@
     // Keep every daily value and goal available to screen readers and offline users.
     const values=el('details','chart-values');values.append(el('summary','','Daily values'));
     series.forEach(d=>values.append(el('p','hint',d.key+': '+(d.value==null?'No entry':fmt(d.value))+(d.goal?' / '+fmt(d.goal):''))));
-    if(!series.some(d=>d.value))card.append(el('p','hint',kind==='weight'?'Optional weigh-ins stay on this device. Your trend starts here.':'Your next quest lights up this graph.'));card.append(values);card.paint=()=>kind==='bar'?CHADCharts.barsVsGoal(chart,series.map((d,i)=>({label:i%Math.ceil(series.length/7)===0?d.key.slice(5):'',value:d.value})),series.at(-1).goal,{color,goals:series.map(d=>d.goal),animate:false}):CHADCharts.line(chart,series.map((d,i)=>({label:i%Math.ceil(series.length/7)===0?d.key.slice(5):'',value:d.value})),{color,unit:kind==='weight'?'kg':'g',animate:false});
+    if(!series.some(d=>d.value))card.append(el('p','hint','No data yet'));card.append(values);card.paint=()=>kind==='bar'?CHADCharts.barsVsGoal(chart,series.map((d,i)=>({label:i%Math.ceil(series.length/7)===0?d.key.slice(5):'',value:d.value})),series.at(-1).goal,{color,goals:series.map(d=>d.goal),animate:false}):CHADCharts.line(chart,series.map((d,i)=>({label:i%Math.ceil(series.length/7)===0?d.key.slice(5):'',value:d.value})),{color,unit:kind==='weight'?'kg':'g',animate:false});
     return card;
   }
   let chartRange=7;
-  function renderCharts(state,key){const box=$('charts');box.replaceChildren();const controls=el('div','chart-controls');[7,30].forEach(n=>{const b=button(n+' DAYS',()=>{chartRange=n;renderCharts(current,dayKey());},'secondary'+(chartRange===n?' active':''));b.setAttribute('aria-pressed',chartRange===n);controls.append(b);});box.append(controls);const days=Array.from({length:chartRange},(_,i)=>shift(key,i-chartRange+1));const data=days.map(k=>({key:k,d:daily(state,k)}));box.append(kitChart('CALORIES / GOAL',data.map(({key:k,d})=>({key:k,value:d.totals[0],goal:goals(state,k).target})),'--ch-gold'));box.append(kitChart('PROTEIN / g',data.map(({key:k,d})=>({key:k,value:d.totals[1]})),'--ch-cyan','line'));
+  function renderCharts(state,key){const box=$('charts');box.replaceChildren();const controls=el('div','chart-controls');[7,30].forEach(n=>{const b=button(n+' DAYS',()=>{chartRange=n;renderCharts(current,activeKey());},'secondary'+(chartRange===n?' active':''));b.setAttribute('aria-pressed',chartRange===n);controls.append(b);});box.append(controls);const days=Array.from({length:chartRange},(_,i)=>shift(key,i-chartRange+1));const data=days.map(k=>({key:k,d:daily(state,k)}));box.append(kitChart('CALORIES / GOAL',data.map(({key:k,d})=>({key:k,value:d.totals[0],goal:goals(state,k).target})),'--ch-gold'));box.append(kitChart('PROTEIN / g',data.map(({key:k,d})=>({key:k,value:d.totals[1]})),'--ch-cyan','line'));
     const weight=data.map(({key:k})=>{const values=Array.from({length:7},(_,i)=>daily(state,shift(k,-i)).weight).filter(v=>typeof v==='number'&&v>0);return {key:k,value:values.length?values.reduce((s,v)=>s+v,0)/values.length:null};});box.append(kitChart('WEIGHT / 7-DAY AVERAGE',weight,'--ch-magenta','weight'),kitChart('WATER / L',data.map(({key:k,d})=>({key:k,value:d.water||0,goal:waterGoal(k)})),'--ch-cyan'),kitChart('DAILY SCORE / 17',data.map(({key:k,d})=>({key:k,value:d.score,goal:17})),'--ch-magenta'));
-    const heat=el('section','card chart-card');heat.append(el('h2','ch-h','YOUR 13-WEEK STREAK'),el('p','hint','Each pixel is a day. Brighter = higher grade. B or better keeps the flame alive.'));
+    const heat=el('section','card chart-card');heat.append(el('h2','ch-h','13-week streak'));
     const pixels=Array.from({length:91},(_,i)=>{const k=shift(key,i-90);return {key:k,value:daily(state,k).score/17};});
     const squares=el('div','ch-chart streak-chart');squares.setAttribute('role','img');squares.setAttribute('aria-label','91 days of daily quest scores');heat.append(squares);
     const values=el('details','chart-values');values.append(el('summary','','Daily scores'));pixels.forEach(p=>values.append(el('p','hint',p.key+': '+Math.round(p.value*17)+'/17')));heat.append(values);box.append(heat);
