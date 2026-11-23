@@ -14,7 +14,7 @@ const server=http.createServer((req,res)=>{const file=path.resolve(root,'.'+new 
   await page.goto('http://127.0.0.1:8090/');
   const fixture={schemaVersion:5,target:1900,proteinGoal:220,carbsGoal:150,fatGoal:45,customExtension:{keep:true},legacyRewards:{xp:0,badges:[]},entries:[{id:'synthetic-history',day:'2026-11-23',name:'Synthetic historic meal',kcal:400,protein:30,extra:'keep'}],questsV5:{'2026-11-23':{picks:{L:'M'},water:.5,extension:'keep'}}};
   await page.evaluate(data=>{localStorage.setItem('rec-calories-v1',JSON.stringify(data));localStorage.setItem('unrelated-fixture','preserve');},fixture);await page.reload();
-  assert.equal(await page.locator('.rings .ring').count(),3);
+  assert.equal(await page.locator('.ch-metric').count(),3);
   assert.equal(await page.locator('.today-meals').getAttribute('open'),null);
   assert.equal(await page.locator('#next-up [data-slot=L][data-tier=S]').isVisible(),true);
   assert.equal(await page.locator('#next-up [data-choose-tier=S]').getAttribute('aria-pressed'),'true');

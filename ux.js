@@ -23,11 +23,23 @@
     if(kind==='barcode')$('barcode-camera').scrollIntoView({block:'nearest'});
   }
   function detail(title,nodes){closeSheets();$('detail-title').textContent=title;$('detail-content').replaceChildren(...nodes);$('detail-sheet').showModal();}
-  function group(parent,title,nodes){const d=make('details','card settings-group');d.append(make('summary','',title),...nodes);parent.append(d);return d;}
+  function group(parent,title,nodes){const d=make('details','ch-list settings-group');d.append(make('summary','',title),...nodes);parent.append(d);return d;}
   function setup(actions){
     stopScanner=actions.stopScanner;
-    const scan=$('scan');scan.classList.remove('view','ch-view');scan.hidden=false;$('scan-sheet').append(scan);
-    const form=$('add-form'),old=form.closest('details');$('manual-sheet').append(form);old.remove();
+    document.querySelectorAll('.view > h1,.section-heading h1').forEach(h=>h.classList.add('ch-large__title'));
+    const compact=make('span','ch-header__title','Today');document.querySelector('.ch-header').append(compact);
+    addEventListener('scroll',()=>{document.querySelector('.ch-header').classList.toggle('is-scrolled',scrollY>40);},{passive:true});
+    document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>compact.textContent=b.textContent.trim()));
+    document.querySelectorAll('dialog.ch-sheet').forEach(d=>{
+      if(!d.querySelector('.ch-sheet__grip'))d.prepend(make('div','ch-sheet__grip'));
+      const head=d.querySelector('.sheet-heading');
+      const body=make('div','ch-sheet__body');
+      if(d.id==='confirm-sheet'){const form=d.querySelector('form');body.append(...[...form.children].filter(n=>!n.matches('.ch-sheet__grip,.section-heading')));form.append(body);}
+      else {body.append(...[...d.children].filter(n=>n!==head&&!n.classList.contains('ch-sheet__grip')));d.append(body);}
+    });
+    window.CHADIcons?.mount(document);
+    const scan=$('scan');scan.classList.remove('view','ch-view');scan.hidden=false;document.querySelector('#scan-sheet .ch-sheet__body').append(scan);
+    const form=$('add-form'),old=form.closest('details');document.querySelector('#manual-sheet .ch-sheet__body').append(form);old.remove();
     $('food-name').required=true;$('food-name').placeholder='e.g. Chicken bowl';
     const macros=make('details');macros.append(make('summary','','More nutrition (optional)'));
     // Keep protein, carbohydrate, fat and meal controls available with the same IDs.
@@ -56,15 +68,17 @@
     const backup=[...$('arcade-settings').querySelectorAll('button')].find(b=>b.textContent==='Export local backup');if(backup){const hint=backup.nextElementSibling;$('data-settings').append(backup,hint);}
     const key=CHADQuest.dayKey(),d=CHADQuest.daily(state,key),checklist=$('daily-checklist');
     const ring=$('quest-ring');if(ring){ring.style.setProperty('--p',d.score/17*100);ring.setAttribute('aria-label',`${d.score} of 17 quest points, grade ${d.grade}`);$('quest-total').textContent=d.score;$('quest-grade').textContent='Grade '+d.grade;}
+    const totals=state.entries.filter(e=>e.day===key).reduce((t,e)=>[t[0]+e.kcal,t[1]+e.protein],[0,0]);
+    CHADCharts.rings($('activity-rings'),[totals[0]/state.target,totals[1]/state.proteinGoal,d.score/17],{labels:[$('calorie-ring').getAttribute('aria-label'),$('protein-ring').getAttribute('aria-label'),ring.getAttribute('aria-label')]});
     const blocks=[...checklist.querySelectorAll('.meal-slot')];
-    const next=make('section','next-up');next.id='next-up';next.setAttribute('aria-labelledby','next-title');next.append(Object.assign(make('h2','','Next up'),{id:'next-title'}));
+    const next=make('section','next-up ch-card ch-next');next.id='next-up';next.setAttribute('aria-labelledby','next-title');next.append(Object.assign(make('h2','','Next up'),{id:'next-title'}));
     const meals=make('details','card today-meals');meals.open=mealsOpen;meals.append(make('summary',"",`Today's meals · ${Object.keys(d.picks).length} / 4 logged`));meals.ontoggle=()=>mealsOpen=meals.open;
     blocks.forEach((block,i)=>{
       const slot=CHADPlan[i],cards=[...block.querySelectorAll('.meal-pick')];
       let tier=selectedTiers[slot.id]||d.picks[slot.id]||'S';
-      const control=make('div','tier-control');control.setAttribute('role','group');control.setAttribute('aria-label',slot.name+' meal tier');
-      const sync=()=>{cards.forEach(card=>card.hidden=card.dataset.tier!==tier);control.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.chooseTier===tier));};
-      Object.entries(tiers).forEach(([id,label])=>{const b=make('button','tier-segment',label);b.type='button';b.dataset.chooseTier=id;b.onclick=()=>{tier=id;selectedTiers[slot.id]=id;sync();};control.append(b);});
+      const control=make('div','tier-control ch-seg');control.setAttribute('role','group');control.setAttribute('aria-label',slot.name+' meal tier');
+      const sync=()=>{control.style.setProperty('--n',3);control.style.setProperty('--i',Object.keys(tiers).indexOf(tier));cards.forEach(card=>card.hidden=card.dataset.tier!==tier);control.querySelectorAll('button').forEach(b=>{b.setAttribute('aria-pressed',b.dataset.chooseTier===tier);b.classList.toggle('is-selected',b.dataset.chooseTier===tier);});};
+      Object.entries(tiers).forEach(([id,label])=>{const b=make('button','tier-segment ch-seg__opt ch-seg__opt--'+label.toLowerCase(),label);b.type='button';b.dataset.chooseTier=id;b.onclick=()=>{tier=id;selectedTiers[slot.id]=id;sync();};control.append(b);});
       cards.forEach(card=>{
         const chosen=d.picks[slot.id]===card.dataset.tier;
         card.setAttribute('aria-label',`${chosen?'Undo':'Log'} ${tiers[card.dataset.tier]} ${slot.name}: ${slot.choices.find(c=>c.tier===card.dataset.tier).title}`);
