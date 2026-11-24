@@ -2,8 +2,8 @@
 // npm install --prefix "$env:TEMP/chad-browser-qa" playwright
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),http=require('node:http'),assert=require('node:assert/strict');
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||path.join(os.tmpdir(),'chad-browser-qa/node_modules/playwright'));
-const root=path.resolve(__dirname,'..'),shots=process.env.CHAD_SHOTS||path.resolve(root,'../rec-calories-shots');
-const mime={'.js':'text/javascript','.css':'text/css','.html':'text/html','.webmanifest':'application/manifest+json','.png':'image/png'};
+const root=path.resolve(__dirname,'..'),shots=process.env.CHAD_SHOTS||path.join(os.tmpdir(),'chad-v7-regression');
+const mime={'.js':'text/javascript','.css':'text/css','.html':'text/html','.webmanifest':'application/manifest+json','.svg':'image/svg+xml','.png':'image/png'};
 const server=http.createServer((req,res)=>{const pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);const file=path.join(root,pathname==='/'?'index.html':pathname);if(!file.startsWith(root+path.sep)){res.writeHead(403);return res.end();}fs.readFile(file,(err,data)=>{res.writeHead(err?404:200,{'Content-Type':mime[path.extname(file)]||'text/plain'});res.end(err?'missing':data);});});
 (async()=>{
  await new Promise(r=>server.listen(8087,'127.0.0.1',r));
@@ -29,8 +29,8 @@ const server=http.createServer((req,res)=>{const pathname=decodeURIComponent(new
  assert.deepEqual(errors,[]);assert.deepEqual(consoleErrors,[]);
  console.log('PASS OFF search and lookup (live only when CHAD_LIVE_FOOD=1)');
  // One-tap repeats use the existing journal, retain today's data and do not reuse scan quest source.
- await page.locator('[data-close=scan-sheet]').click();await page.locator('[data-view=today]').click();await page.locator('.journal-section summary').click();await page.locator('#entries .repeat').first().click();saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('rec-calories-v1')));assert.equal(saved.entries.length,2);assert.equal(saved.entries.at(-1).source,'repeat');
- await page.evaluate(()=>CHADUX.openFood('manual'));await page.locator('#food-name').fill('Synthetic manual bowl');await page.locator('#calories').fill('200');await page.locator('#add-form details summary').click();await page.locator('#protein').fill('10');await page.locator('#carbs').fill('25');await page.locator('#fat').fill('5');await page.locator('#add-form button').click();assert.equal(await page.locator('#entries .entry').count(),3);
+ await page.locator('[data-close=scan-sheet]').click();await page.locator('[data-view=today]').click();await page.locator('#entries .repeat').first().click();saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('rec-calories-v1')));assert.equal(saved.entries.length,2);assert.equal(saved.entries.at(-1).source,'repeat');
+ await page.evaluate(()=>CHADUX.openFood('manual'));await page.locator('#food-name').fill('Synthetic manual bowl');await page.locator('#calories').fill('200');await page.locator('#protein').fill('10');await page.locator('#carbs').fill('25');await page.locator('#fat').fill('5');await page.locator('#add-form button').click();assert.equal(await page.locator('#entries .entry').count(),3);
  // All AI network calls are mocked using a synthetic credential, never an actual user key.
  await page.locator('[data-view=settings]').click();await page.evaluate(()=>document.querySelectorAll('#settings details').forEach(d=>d.open=true));await page.locator('#ai-key').fill('synthetic-test-token');await page.locator('#settings-form button').click();assert.equal(await page.locator('#ai-key').getAttribute('type'),'password');
  let mode='success',calls=0;
@@ -48,8 +48,8 @@ const server=http.createServer((req,res)=>{const pathname=decodeURIComponent(new
  await page.locator('[data-view=history]').click();await page.locator('#past-entries .repeat').click();saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('rec-calories-v1')));assert.equal(saved.entries.length,2);assert.notEqual(saved.entries[1].day,'2020-01-01');
  // Restore an empty synthetic journal for uncluttered presentation screenshots.
  await page.evaluate(()=>localStorage.removeItem('rec-calories-v1'));await page.reload();await page.evaluate(()=>navigator.serviceWorker.ready);await page.waitForFunction(()=>navigator.serviceWorker.controller!==null);
- assert.equal(await page.evaluate(()=>caches.has('rec-calories-shell-v6')),true);
- fs.mkdirSync(shots,{recursive:true});await page.evaluate(()=>window.scrollTo(0,0));assert.equal(await page.evaluate(()=>scrollY),0);for(const id of ['calorie-ring','protein-ring']){const box=await page.locator('#'+id).boundingBox();assert.ok(box&&box.y>=0&&box.y+box.height<=932);}await page.emulateMedia({reducedMotion:'reduce',colorScheme:'light'});await page.screenshot({path:path.join(shots,'v5-today-light.png')});
+ assert.equal(await page.evaluate(()=>caches.has('rec-calories-shell-v7')),true);
+ fs.mkdirSync(shots,{recursive:true});await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));assert.equal(await page.evaluate(()=>scrollY),0);for(const id of ['calorie-ring','protein-ring']){const box=await page.locator('#'+id).boundingBox();assert.ok(box&&box.y>=0&&box.y+box.height<=932);}await page.emulateMedia({reducedMotion:'reduce',colorScheme:'light'});await page.screenshot({path:path.join(shots,'v5-today-light.png')});
  const lightBg=await page.locator('body').evaluate(e=>getComputedStyle(e).backgroundColor);await page.emulateMedia({colorScheme:'dark'});const darkBg=await page.locator('body').evaluate(e=>getComputedStyle(e).backgroundColor);assert.notEqual(lightBg,darkBg);await page.screenshot({path:path.join(shots,'v5-today-dark.png')});
  await context.setOffline(true);await page.reload();assert.equal(await page.title(),'CHAD');assert.equal(await page.locator('#remaining').innerText(),'1,900');assert.equal(await page.evaluate(()=>typeof ZXingBrowser.BrowserMultiFormatOneDReader),'function');assert.equal(await page.evaluate(()=>typeof CHADFood.startScanner),'function');assert.deepEqual(errors,[]);
  await context.setOffline(false);await context.close();

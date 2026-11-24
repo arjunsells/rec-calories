@@ -1,108 +1,43 @@
-﻿# CHAD v5
+# CHAD v7
 
-A personal arcade-style daily tracker, built with plain HTML, CSS and JavaScript. No build step, CDN, analytics, account or sync. Install from https://arjunsells.github.io/rec-calories/ using Safari → Share → Add to Home Screen.
+Static, private nutrition and training PWA. Plain HTML/CSS/JavaScript; no build step or shipped dependencies beyond the existing local scanner. The v7 visual kit supplies rings, three meal cards, quest coins, exercise rows, sheets, toasts and floating navigation in light and dark themes.
 
-## Daily quests
+## Daily flow
 
-Today contains four meal slots: Lunch, Pre-gym (2:30–3 pm), Dinner and Dessert. Each has the three original meal-plan picks, exact source macros, quantities, flavour tips and swap fixes. Pick one to log its nutrition and tick the slot. Tap it again to undo; switch tiers without duplicating the meal. “Ate something else” opens Snap + Say. Off-card meals remain in the nutrition journal; meal points require a plan pick.
+Today starts with the selected date, three progress rings and the next meal. Three direct Strict / Medium / Free cards are visible for every slot: Lunch, Pre-gym, Dinner and Dessert. The current Darwin time selects the leading slot; logging it advances to the next unfinished slot. All other slots remain visible below. Tap a card to log, tap again to remove, or switch tiers without duplicating nutrition. Its info button or a long press opens ingredients, macros, tips, swap fixes and alternative food logging.
 
-Meals score Strict 3 / Medium 2 / Free 1. Protein **210 g+** earns 2 points (the PDF's scoring threshold), water target earns 2, and 10k steps earns 1: max 17. The protein ring separately uses the phase target (220 g during Cut). S = 15–17, A = 12–14, B = 9–11, C = 0–8. Grade B+ saves the streak; yesterday keeps it alive while today is unfinished.
+Water bottles add 500 mL per tap. A tap on a full row removes 500 mL. Hydralyte, training, cardio, steps and sleep are direct chips. Every change offers a six-second Undo toast. Precise water adjustments and optional weigh-ins live in Settings for the selected date. Today contains no disclosure controls.
 
-Water targets: Sunday 3.5 L, Monday–Friday 4.5 L, Saturday 5 L. Bottle taps, electrolyte, training, cardio, steps, sleep and optional local weigh-ins complete the checklist. Training includes every exercise in Perfect Week v1, individual/session ticks, optional top sets and PR feedback. Deload weeks automatically halve gym sets, rounding up. Recovery warnings and Sunday-only sauna/ice bath rules are shown.
+Use date arrows or a horizontal swipe on the noninteractive part of Today to change days. Meals, quests, quick adds, food results and repeats use the selected date. Opening the app defaults to today. Returning from Settings or Training preserves the selected date. Historical browsing computes that day's phase goals without overwriting saved goals.
 
-Weekly ranks: Rookie <60, Grinder 60–84, Beast 85–104, Champion 105–119, AJ Mode 120+. A complete seven-day Mon–Sun meal checklist earns +10 only with at most two Free picks (max 129). Bonus stays pending until all seven days are complete. New badges include Protein Streak, Hydration Hero, Zero-Free Week, Fight Night Fuel and Perfect Day; all seven existing badges and six lifetime XP levels remain.
+Training puts the selected day's session first. Every exercise is directly checkable; the remaining days of that week are visible and editable below. Info buttons open top-set / PR sheets. Session completion toggles all exercises. Level-up feedback uses a toast; the level dialog remains available in Progress.
 
-Legacy XP rules remain. Additional checklist XP derives from completed meal slots, bottles, exercises and side quests; undo recalculates it. Rewards earned before migration are retained as a floor. New levels keep the existing celebration. Optional square-wave chimes are OFF by default; theme follows the system with manual light/dark choices. Motion respects reduced-motion preferences.
+The floating Add menu keeps Camera, Barcode, Search and Quick add. Food result review, serving/portion changes, copying results, manual macros, journal repeat/delete, local backups, themes, sound, phase dates, all progress charts, levels, badges, deloads and training notes remain available. Explainers and recovery guidance are in Settings.
 
-## Phases and progress
+The header shows the journey day separately from streaks. Day 1 defaults to 8 October 2026, so 24 November is Day 48. Settings > Goals & AI key includes the editable journey start date, stored as the additive `journeyStartDate` journal setting. The counter follows the viewed Darwin calendar date.
 
-Darwin local calendar dates drive automatic goals:
+## Scoring and data
 
-| Phase | Dates | kcal / P / C / F |
-|---|---|---|
-| Cut | Through 6 Dec 2026 | 1900 / 220 / 150 / 45 |
-| Reset | 7–13 Dec 2026 | 2700 / 200 / 320 / 70 |
-| Bulk | 14 Dec 2026–2 May 2027 | 3000 / 200 / 370 / 80 |
+Existing scoring is unchanged: meal tiers earn 3 / 2 / 1 points; protein at 210 g earns 2; water target earns 2; 10k steps earns 1. Maximum 17. S starts at 15, A at 12, B at 9. B or better maintains a streak. A complete Mon-Sun with at most two Free picks earns the weekly +10 bonus. The protein ring uses the phase goal separately from the scoring threshold.
 
-Edit phase end dates in Settings; manual phase/custom goals override automatic dates. Bulk goals continue after its end until edited. Reset displays separate daily-shake and extra-banana logging; Bulk displays bagel, wrap and shake logging. Add-on macros are approximate and are logged separately, so switching a meal cannot duplicate them. The shake contains 500 mL high-protein milk, 60 g oats and one banana.
+Automatic Darwin phases remain Cut through 6 Dec 2026, Reset through 13 Dec, then Bulk. Dates, manual phases and custom goals are editable. Reset/Bulk add-ons, weekday water targets and all existing training/deload prescriptions remain in the original modules.
 
-Progress has 7-/30-day canvas calories-vs-goal bars, protein, water, scores, a rolling seven-day average of available optional weigh-ins, a 13-week heatmap, XP, levels and badges. Missing measurements are not invented.
+The journal still uses `rec-calories-v1`, schema 5, and `questsV5`. v6 already uses this schema, so no destructive migration is needed. Older entry fields, unknown extensions, legacy goals/rewards and unrelated storage keys are preserved. Unreadable journals pause writes; failed writes retain the saved journal. Undo restores only the affected fields or meal slot, preserving unrelated newer writes. The device-only AI key retains its existing storage key and is excluded from backup exports.
 
-## Preserved logging
+The offline cache is `rec-calories-shell-v7`. PWA identity, scope and start URL remain `./`. All runtime assets, licensed fonts, touch/192/512 icons, separate maskable 512 icon and SVG favicon are cached. Manifest launch colors use navy `#0A1326`; light/dark status-bar metas remain `#F2F2F7` / `#000000`. Both 512 PNGs are below 48 KB. The unused v6 kit and sprites have been removed.
 
-Snap + Say supports photo/text estimates with your own OpenAI key. Free barcode/search uses Open Food Facts, preferring Australia before worldwide fallback. Local ZXing supports camera decoding. Review portions, log, copy a summary, repeat historical meals, delete entries or use manual entry. AI estimates and food lookup require internet. Camera access requires HTTPS and permission.
-
-## Data and privacy
-
-The existing localStorage key `rec-calories-v1` migrates to schema 5. Entries, thumbnails and unknown fields are preserved; v4 goals are retained in `legacyGoals`, and earned XP/badges in `legacyRewards`. Automatic phase goals apply by default. Old photo pruning and quota-driven photo deletion have been removed. Unreadable data or failed writes leave the original storage untouched. Measurements and optional top sets are stored only in localStorage. No user journal, measurement, photo, credential or source-input directory belongs in this public repository.
-
-The existing `rec-calories-ai-key` stays device-only and is sent directly to OpenAI for requested estimates. Local backup export excludes it. Backups can contain private measurements/photos; keep them private. Clearing browser storage removes the journal.
-
-Offline shell: `rec-calories-shell-v5b`. Manifest `id`, `start_url` and `scope` remain `./`.
-
-## Assets and new files
-
-New runtime files (all included in the service-worker shell):
-
-- `theme.css` — supplied light/dark component kit and self-hosted pixel font.
-- `sprites.js` — `CHADSprites` SVG sprite library; flame, tabs, camera and training muscles.
-- `charts.js` — `CHADCharts` canvas bars, lines, heatmap and rings. Small integration extension: `barsVsGoal` accepts `opts.goals` for per-day phase/hydration targets.
-- `plan-data.js` — 12 public meal-plan cards; the input folder itself is excluded.
-- `quest.js` — v5 checklist, calendar, training, scoring, settings and CHADCharts integration.
-- `fonts/press-start-2p.ttf` — self-hosted Press Start 2P from Google Fonts (SIL OFL).
-- `fonts/OFL.txt` — font copyright and license.
-
-New test files: `scripts/quest-check.cjs`, `scripts/v5-browser-check.cjs`. Existing app/browser tests were updated. No new dependencies are shipped. System fonts provide body text. Existing ZXing is MIT (`vendor/ZXING-LICENSE`). Font source: https://github.com/google/fonts/tree/main/ofl/pressstart2p. Meal data follows the supplied plan and includes its approximate takeaway values. External product data: Open Food Facts (ODbL).
-
-The merge removes the old layered visual CSS and SVG chart renderer. `style.css` retains app layout, form/dialog behavior and adapters for the kit. No new runtime dependencies. The floating SNAP button remains available across tabs, hides during Snap + Say, and every view clears its bottom edge. Manual `data-theme` overrides and system theme changes redraw charts; daily values remain available in chart disclosure panels.
-
-Merge file list: `index.html`, `app.js`, `quest.js`, `style.css`, `theme.css`, `sprites.js`, `charts.js`, `sw.js`, `README.md`, `scripts/check.cjs`, `scripts/browser-check.cjs`, `scripts/v5-browser-check.cjs`, `scripts/sw-update-check.cjs`. Screenshots remain in the sibling directory and are not committed.
-
-Complete `shell-v5b` precache list (21 resources):
-
-```text
-./
-index.html
-style.css
-theme.css
-sprites.js
-charts.js
-app.js
-game.js
-plan-data.js
-quest.js
-fonts/press-start-2p.ttf
-fonts/OFL.txt
-scan.js
-food.js
-vendor/zxing-browser.min.js
-vendor/ZXING-LICENSE
-vendor/README.md
-manifest.webmanifest
-icons/apple-touch-icon.png
-icons/icon-192.png
-icons/icon-512.png
-```
-
-## Validation and release
-
-Run:
+## Verification
 
 ```powershell
-node scripts/check.cjs
-node scripts/scan-check.cjs
-node scripts/quest-check.cjs
-# Install tooling outside this repository if needed:
+# Tooling is installed outside the repository if needed:
 npm install --prefix "$env:TEMP/chad-browser-qa" playwright
-node scripts/browser-check.cjs
-node scripts/v5-browser-check.cjs
-node scripts/sw-update-check.cjs
+node scripts/run-all.cjs
 ```
 
-Browser tests use installed headless Edge at 430×932; override `BROWSER_EXECUTABLE` / `PLAYWRIGHT_MODULE` if needed. Food and AI requests are mocked by default; `CHAD_LIVE_FOOD=1` enables live OFF checks. Synthetic fixtures verify v4 migration including old thumbnails and goals, 17=S, undo/switch, streaks, calendar phases, add-ons, deload, training/PR, optional weigh-in persistence, theme/settings, charts, 320/430/680 overflow, reduced motion and offline fonts/scanner. The v5b checks also compare rendered chart pixels across manual theme changes, verify weekday hydration goals and complete shell contents, and confirm the final row clears SNAP on all tabs in light and dark. Screenshots go to sibling `rec-calories-shots`, never the repository.
+Nine deterministic suites cover storage/migration, scoring, mocked AI and food lookup, food fallback failures, older browser regressions, v7 UX, the mobile layout matrix and an actual shipped v6-to-v7 shell upgrade followed by offline reload (v6 commit `5ead80e` is read from Git history). `BROWSER_EXECUTABLE` and `PLAYWRIGHT_MODULE` override the local Edge and Playwright paths. The separate `off-live-check.cjs` is an optional external-service diagnostic, excluded from the deterministic runner.
 
-The worker-upgrade check verifies v5 → v5b cache replacement, offline kit loading, and journal preservation in Edge.
+The v7 matrix uses headless Edge with 393x852 and 375x667 viewports, DPR 3, touch, an iPhone Safari user agent, light/dark modes and simulated top/bottom/side safe areas. It checks all screens/sheets for 44px targets, horizontal overflow, bottom clearance and console/page errors. Each configuration counts actual click events generated by touch taps and asserts one tap each for meal, bottle, quest and exercise. The UX suite checks real protocol touch swipes, long press, historical edits, undo, cross-tab writes, keyboard focus, failed storage and offline use.
 
-Physical iPhone camera scanning, haptics, actual audio playback and installed-PWA update behavior require device testing. Real OpenAI estimates require a user key and are not exercised by automated tests. Open Food Facts can be unavailable; failures preserve manual logging.
+Fixtures exist only in disposable browser storage. Test screenshots go under the OS temporary directory. `node scripts/v7-screenshots.cjs` renders a disposable shell copy and writes the six review screenshots plus two icon images into the sibling `rec-calories-shots` directory. Override with `CHAD_SHOTS`; `CHAD_DESIGN_KIT` selects the kit containing the home-screen mock. No real AI request, user profile, personal journal or credential is used. Physical iPhone Safari, installed-PWA splash/update behavior, real cameras, haptics, audio and live AI estimates require device testing. The user-agent emulation does not run WebKit.
 
-Deploy by pushing `main` to GitHub Pages, then check index, manifest, worker, scripts, stylesheet and font with cache-busting requests. Never add credentials, personal logs, screenshots or local dependencies.
+See [V7-UX.md](V7-UX.md) for the original interaction handoff. The visual merge makes bottles glyphs inside one water button, places quest text in `.ch-qchip__label`, and splits exercise names/prescriptions into spans. Stable action hooks remain available.

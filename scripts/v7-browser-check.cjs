@@ -1,0 +1,72 @@
+// Isolated disposable contexts only. No user profile or fixture file is read.
+const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),http=require('node:http'),assert=require('node:assert/strict');
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||path.join(os.tmpdir(),'chad-browser-qa/node_modules/playwright'));
+const root=path.resolve(__dirname,'..');
+const server=http.createServer((req,res)=>{const file=path.resolve(root,'.'+new URL(req.url,'http://localhost').pathname.replace(/\/$/,'/index.html'));if(!file.startsWith(root+path.sep)){res.writeHead(403);return res.end();}const mime={'.js':'text/javascript','.css':'text/css','.html':'text/html','.webmanifest':'application/manifest+json','.svg':'image/svg+xml','.png':'image/png','.ttf':'font/ttf'};fs.readFile(file,(e,data)=>{res.writeHead(e?404:200,{'Content-Type':mime[path.extname(file)]||'text/plain'});res.end(e?'missing':data);});});
+(async()=>{
+ await new Promise(r=>server.listen(8090,'127.0.0.1',r));
+ const browser=await chromium.launch({executablePath:process.env.BROWSER_EXECUTABLE||'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',headless:true});
+ try{
+  const context=await browser.newContext({viewport:{width:393,height:852},deviceScaleFactor:3,isMobile:true,hasTouch:true,timezoneId:'America/New_York',reducedMotion:'reduce',userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'});
+  const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error'&&!m.text().includes('net::ERR_FAILED'))errors.push(m.text());});
+  await page.clock.install({time:new Date('2026-11-24T12:00:00+09:30')});await page.goto('http://127.0.0.1:8090/');assert.deepEqual(errors,[],'boot errors');
+  await page.evaluate(()=>{const s=JSON.parse(localStorage.getItem('rec-calories-v1'));s.customExtension={keep:true};s.questsV5={'2026-11-23':{water:.5,extension:'keep'}};s.entries=[{id:'synthetic-history',day:'2026-11-23',name:'Synthetic historic meal',kcal:400,protein:30,extra:'keep'}];localStorage.setItem('rec-calories-v1',JSON.stringify(s));localStorage.setItem('unrelated-fixture','preserve');});await page.reload();
+  const saved=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('rec-calories-v1'))),key='2026-11-24';
+  assert.equal(await page.locator('#journey-day').innerText(),'Day 48');
+  await page.locator('#next-day').tap();assert.equal(await page.locator('#journey-day').innerText(),'Day 49');
+  await page.locator('#previous-day').tap();await page.locator('#previous-day').tap();assert.equal(await page.locator('#journey-day').innerText(),'Day 47');
+  await page.locator('#return-today').tap();
+  await page.locator('[data-view=settings]').tap();await page.evaluate(()=>document.querySelector('#settings-form').closest('details').open=true);
+  assert.equal(await page.locator('#journey-start-date').inputValue(),'2026-10-08');
+  await page.locator('#journey-start-date').fill('2026-10-09');await page.locator('#settings-form button').tap();
+  assert.equal((await saved()).journeyStartDate,'2026-10-09');await page.reload();
+  assert.equal(await page.locator('#journey-day').innerText(),'Day 47');
+  await page.locator('[data-view=settings]').tap();await page.evaluate(()=>document.querySelector('#settings-form').closest('details').open=true);
+  await page.locator('#journey-start-date').fill('2026-10-08');await page.locator('#settings-form button').tap();await page.locator('[data-view=today]').tap();
+  // Calendar dates stay Darwin-based even with a New York browser timezone.
+  for(const [instant,day] of [['2026-11-24T14:29:59Z','Day 48'],['2026-11-24T14:30:00Z','Day 49']]){await page.clock.setFixedTime(new Date(instant));await page.reload();assert.equal(await page.locator('#journey-day').innerText(),day);}
+  await page.clock.setFixedTime(new Date('2026-11-24T12:00:00+09:30'));await page.reload();
+  assert.equal(await page.locator('#today details,#today summary,#training details,#training summary').count(),0);assert.equal(await page.locator('#today .meal-pick:visible').count(),12);assert.equal(await page.locator('#next-up [data-slot=L]').count(),3);
+  await page.evaluate(()=>{window.qaTaps=0;document.addEventListener('click',()=>window.qaTaps++,true);});
+  const tap=async locator=>{await locator.scrollIntoViewIfNeeded();await locator.tap();};
+  const oneTap=async(locator,check)=>{await page.evaluate(()=>window.qaTaps=0);await tap(locator);assert.equal(await page.evaluate(()=>window.qaTaps),1);await check();};
+  await oneTap(page.locator('[data-slot=L][data-tier=S]'),async()=>assert.equal((await saved()).questsV5[key].picks.L,'S'));assert.equal(await page.locator('#next-up').getAttribute('data-meal-slot'),'P');
+  await oneTap(page.locator('[data-water]').first(),async()=>assert.equal((await saved()).questsV5[key].water,.5));await tap(page.locator('#undo-toast button'));assert.equal((await saved()).questsV5[key].water,undefined);
+  await oneTap(page.locator('[data-quest=electrolyte]'),async()=>assert.equal((await saved()).questsV5[key].electrolyte,true));await tap(page.locator('[data-quest=electrolyte]'));assert.equal((await saved()).questsV5[key].electrolyte,false);
+  await tap(page.locator('[data-view=training]'));assert.equal(await page.locator('.training-level').first().getAttribute('data-day'),key);
+  await oneTap(page.locator('.is-today .exercise-toggle').first(),async()=>assert.equal((await saved()).questsV5[key].exercises[0],true));await tap(page.locator('.is-today .exercise-toggle').first());assert.equal((await saved()).questsV5[key].exercises[0],false);
+  await tap(page.locator('.training-level[data-day="2026-11-23"] .exercise-toggle').first());assert.equal((await saved()).questsV5['2026-11-23'].exercises[0],true);assert.equal((await saved()).questsV5[key].exercises[0],false);
+  await tap(page.locator('[data-view=today]'));await tap(page.locator('[data-slot=L][data-tier=M]'));assert.equal((await saved()).entries.filter(e=>e.day===key&&e.planSlot==='L').length,1);
+  await tap(page.locator('#undo-toast button'));assert.equal((await saved()).questsV5[key].picks.L,'S');await tap(page.locator('[data-slot=L][data-tier=S]'));assert.equal((await saved()).questsV5[key].picks.L,undefined);await tap(page.locator('#undo-toast button'));assert.equal((await saved()).questsV5[key].picks.L,'S');
+  for(let i=0;i<9;i++)await tap(page.locator('[data-water]').first());assert.equal((await saved()).questsV5[key].water,4.5);await tap(page.locator('[data-water]').last());assert.equal((await saved()).questsV5[key].water,4);await tap(page.locator('#undo-toast button'));assert.equal((await saved()).questsV5[key].water,4.5);
+  await tap(page.locator('[data-meal-slot=L] .meal-info').first());assert.equal(await page.locator('#detail-sheet').isVisible(),true);assert.ok(await page.locator('#detail-content li').count());await page.keyboard.press('Escape');
+  const meal=page.locator('[data-slot=P][data-tier=S]');await meal.scrollIntoViewIfNeeded();const box=await meal.boundingBox();await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.clock.runFor(600);await page.mouse.up();assert.equal(await page.locator('#detail-sheet').isVisible(),true);assert.equal((await saved()).questsV5[key].picks.P,undefined);await page.keyboard.press('Escape');
+  await tap(page.locator('#previous-day'));assert.equal(await page.locator('#date-label').innerText(),'23 NOV 2026');await tap(page.locator('[data-slot=D][data-tier=M]'));assert.equal((await saved()).questsV5['2026-11-23'].picks.D,'M');await tap(page.locator('[data-water]').first());assert.equal((await saved()).questsV5['2026-11-23'].water,1);await tap(page.locator('[data-quest=sleep]'));assert.equal((await saved()).questsV5['2026-11-23'].sleep,true);
+  await tap(page.locator('#today-scan'));await tap(page.locator('[data-add=manual]'));await page.locator('#food-name').fill('Synthetic quick meal');await page.locator('#calories').fill('123');await tap(page.locator('#add-form button'));assert.equal((await saved()).entries.at(-1).day,'2026-11-23');
+  await page.evaluate(()=>scrollTo(0,0));const cdp=await context.newCDPSession(page);await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:320,y:180}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:100,y:185}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});assert.equal(await page.locator('#day-title').innerText(),'Today');
+  await tap(page.locator('#previous-day'));await tap(page.locator('#return-today'));assert.equal(await page.locator('#return-today').isVisible(),false);
+  await page.evaluate(()=>scrollTo(0,0));
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:30,y:470}]});
+  for(const y of [430,370,300])await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:35,y}]});
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  assert.equal(await page.locator('#journey-day').innerText(),'Day 48','vertical drag keeps the date');
+  assert.ok(await page.evaluate(()=>scrollY)>0,'vertical drag scrolls normally');
+  const got=await saved();assert.equal(got.entries[0].extra,'keep');assert.equal(got.questsV5['2026-11-23'].extension,'keep');assert.deepEqual(got.customExtension,{keep:true});assert.equal(got.schemaVersion,5);
+  await page.evaluate(()=>dispatchEvent(new StorageEvent('storage',{key:'rec-calories-v1'})));assert.equal(await page.locator('#add-form').count(),1);
+  for(const [time,slot] of [['15:00:00','P'],['19:00:00','D'],['22:00:00','E']]){await page.clock.setFixedTime(new Date('2026-11-24T'+time+'+09:30'));await page.reload();assert.equal(await page.locator('#next-up').getAttribute('data-meal-slot'),slot);}
+  await tap(page.locator('#today-scan'));assert.deepEqual(await page.locator('[data-add]').evaluateAll(bs=>bs.map(b=>b.dataset.add)),['camera','barcode','search','manual']);await tap(page.locator('[data-add=camera]'));await tap(page.locator('#scan-settings'));assert.equal(await page.locator('#ai-key').isVisible(),true);
+  let requests=[];await page.route('https://*.openfoodfacts.org/**',route=>{requests.push(route.request().url());return route.abort('failed');});await tap(page.locator('#today-scan'));await tap(page.locator('[data-add=search]'));await page.locator('#food-search').fill('yopro');await tap(page.locator('#search-form button'));await page.waitForFunction(()=>document.getElementById('scan-status').textContent.includes('unavailable right now'));assert.equal(requests.length,4);await tap(page.locator('#scan-manual'));assert.equal(await page.locator('#manual-sheet').isVisible(),true);await page.keyboard.press('Escape');
+  await tap(page.locator('[data-view=today]'));
+  // An undo must not replace newer fields or entries written by another tab.
+  const beforeWater=(await saved()).questsV5[key].water;await tap(page.locator('[data-water]').first());
+  await page.evaluate(()=>{const s=JSON.parse(localStorage.getItem('rec-calories-v1'));s.customExtension.newer=true;s.entries.push({...s.entries[0],id:'other-tab'});localStorage.setItem('rec-calories-v1',JSON.stringify(s));dispatchEvent(new StorageEvent('storage',{key:'rec-calories-v1'}));});
+  await tap(page.locator('#undo-toast button'));assert.equal((await saved()).questsV5[key].water,beforeWater);assert.equal((await saved()).customExtension.newer,true);assert.ok((await saved()).entries.some(e=>e.id==='other-tab'));
+  // Failed storage leaves journal and pressed state unchanged, with an honest error.
+  const beforeFailure=await saved();await page.evaluate(()=>{window.qaSetItem=Storage.prototype.setItem;Storage.prototype.setItem=()=>{throw new DOMException('Synthetic quota','QuotaExceededError')};});
+  await tap(page.locator('[data-quest=cardio]'));assert.deepEqual(await saved(),beforeFailure);assert.match(await page.locator('#message').innerText(),/Could not save/);await page.evaluate(()=>Storage.prototype.setItem=window.qaSetItem);
+  const keyboardMeal=page.locator('[data-slot=L][data-tier=S]');await keyboardMeal.focus();await page.keyboard.press('Space');assert.equal(await page.evaluate(()=>document.activeElement.dataset.slot),'L');
+  const targetBefore=(await saved()).target;await page.evaluate(()=>CHADUX.navigate(20));assert.equal(await page.locator('#target-label').innerText(),'3,000');assert.equal((await saved()).target,targetBefore);await tap(page.locator('#return-today'));
+  await page.evaluate(()=>navigator.serviceWorker.ready);await page.waitForFunction(()=>navigator.serviceWorker.controller);await context.setOffline(true);await page.reload();assert.equal(await page.locator('#today .meal-pick:visible').count(),12);assert.deepEqual(errors,[]);
+  console.log('PASS v7 UX: meal=1 tap, bottle=1 tap, quest=1 tap, exercise=1 tap; direct/toast undo, full water row, tier replacement, info/long press without logging, date arrows/real touch swipe/past editing including quick add/other-day exercise, v6 data preserved, cross-tab, Darwin slots, four Add actions, lookup recovery, offline, zero unexpected console/page errors.');await context.close();
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>server.close());
