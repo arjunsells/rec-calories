@@ -1,5 +1,5 @@
 // Open Food Facts client with stubbed fetchers and an in-memory store. No network, no real storage.
-const assert = require('node:assert/strict'), food = require('../food8.js');
+const assert = require('node:assert/strict'), food = require('../food9.js');
 const product = { code: '1', product_name: 'YoPRO synthetic test', brands: 'Synthetic', nutriments: { 'energy-kcal_100g': 100, proteins_100g: 10, carbohydrates_100g: 5, fat_100g: 2 } };
 const ok = products => ({ ok: true, json: async () => ({ products }) });
 const busy = () => ({ ok: false, status: 503 });
@@ -143,6 +143,10 @@ const base = () => ({ storage: store(), sleep: async () => {}, online: true });
   await assert.rejects(food.lookup('x', () => { throw Error('Must not fetch'); }, base()), /digits/);
   await assert.rejects(food.lookup('87654321', () => { throw Error('must not fetch offline'); }, { ...base(), online: false }), error => error.kind === 'offline');
   assert.equal((await food.lookup('12345678', () => { throw Error('must not fetch offline'); }, { ...opts, online: false, fresh: true })).kcal, 100);
+
+  // v9: what comes back from Open Food Facts is shown in metric only.
+  found = await food.find('synthetic metric', { ...base(), fetcher: async () => ok([{ ...product, code: '9', product_name: 'Synthetic US cereal', serving_size: '1 cup (30 g)', serving_quantity: 30 }, { ...product, code: '10', product_name: 'Synthetic soda', serving_size: '12 fl oz (355 ml)' }]) });
+  assert.deepEqual(found.items.map(i => i.portion), ['30 g', '355 mL']);
 
   console.log('PASS OFF client: AU-first CGI chain, 503/CORS/timeout/bad-JSON retries with 600 ms and 1.3 s backoff, world widening, final empty answer, 7-request ceiling, search-a-licious probe/skip/promotion, v2 name guard, memory and persisted cache, forced refresh, stale-on-error, offline message with Quick add, cancellation, timeout, bounded and fault-tolerant cache, barcode retry/cache/definitive answers.');
 })().catch(e => { console.error(e); process.exitCode = 1; });

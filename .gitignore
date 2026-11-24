@@ -8,3 +8,5 @@ auth.json
 node_modules/
 __pycache__/
 .qa/
+# Local notes about a personal AI proxy (machine names, paths): never in the public repo.
+AI-PROXY.md

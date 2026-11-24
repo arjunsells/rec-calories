@@ -1,5 +1,5 @@
 // LIVE Open Food Facts diagnostic (opt-in, not part of run-all): which endpoints a real browser can read from the
-// app's origin, with their status and CORS header, and what the shipped food8.js chain does with them right now.
+// app's origin, with their status and CORS header, and what the shipped food9.js chain does with them right now.
 // Isolated headless profile; no account, key or saved user data. Requests are paced (OFF asks for <= 10 searches/min).
 //   node scripts/off-live-check.cjs                      from https://arjunsells.github.io/rec-calories/
 //   node scripts/off-live-check.cjs http://127.0.0.1:8080/   from another origin serving this folder
@@ -37,7 +37,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     }
     console.log('SUMMARY readable-from-browser per endpoint: ' + JSON.stringify(tally));
     // The shipped implementation, live, with a fresh cache each time: which endpoint answered and how many tries it took.
-    await page.addScriptTag({ content: fs.readFileSync(path.join(root, 'food8.js'), 'utf8') });
+    await page.addScriptTag({ content: fs.readFileSync(path.join(root, 'food9.js'), 'utf8') });
     let answered = 0;
     for (const query of ['weet-bix', 'yopro', 'chobani', 'up&go', 'protein yoghurt']) {
       const outcome = await page.evaluate(async query => {

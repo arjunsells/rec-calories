@@ -18,20 +18,21 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     const settle = () => page.waitForFunction(() => !document.querySelector('.ch-page-ghost,.xp-pop,.is-closing,.is-dragging,.just-on,.just-off,.is-entering') && document.getAnimations().every(a => a.animationName === 'ch-life' || a.playState !== 'running'), null, { timeout: 5000 });
     const today = await page.evaluate(() => CHADQuest.dayKey()), day = async () => (await saved(page)).questsV5?.[today] || {};
 
-    // 1. One tap on a meal: saved at once; haptic tick; the card pops; XP floats; numbers count; ring glides; rows reorder.
+    // 1. One tap on a meal: saved at once; haptic tick; the card pops and its tick lands in place; XP floats; numbers count;
+    //    ring glides; a beat later the next meal takes the top and the logged one ticks into its row.
     const slot = await page.locator('#next-up').getAttribute('data-meal-slot'), card = page.locator(`[data-slot=${slot}][data-tier=S]`);
     const kcal = await page.evaluate(slot => Math.round(CHADPlan.find(s => s.id === slot).choices[0].macros[0]).toLocaleString(), slot);
-    const before = await page.locator('#daily-checklist [data-meal-slot]').evaluateAll(n => n.map(e => e.dataset.mealSlot).join(''));
     await card.tap();
     assert.equal((await day()).picks[slot], 'S', 'the journal is written before anything animates');
     assert.ok((await page.evaluate(() => window.qaBuzz.length)) >= 1, 'haptic feedback fired');
     const mid = await page.evaluate(() => ({ text: document.getElementById('consumed').textContent, p1: +getComputedStyle(document.getElementById('activity-rings')).getPropertyValue('--p1'), pop: !!document.querySelector('.ch-meal.just-on'), floater: document.querySelector('.xp-pop')?.textContent || '', gliding: [...document.querySelectorAll('[data-flip]')].filter(e => e.getAnimations().length).length, toast: !document.getElementById('undo-toast').hidden }));
     assert.equal(mid.pop, true, 'the tapped card pops'); assert.match(mid.floater, /^\+\d+ XP$/); assert.equal(mid.toast, true);
-    assert.ok(mid.gliding >= 2, 'the slots glide to their new order');
+    assert.equal(await page.locator('#next-up').getAttribute('data-meal-slot'), slot, 'the logged meal holds its place for a beat'); assert.equal(await card.getAttribute('aria-pressed'), 'true');
     const seen = new Set([mid.text]); for (let i = 0; i < 8; i++) { await sleep(40); seen.add(await page.locator('#consumed').evaluate(e => e.textContent)); }
     assert.ok(seen.size >= 3, 'the calorie number counts up: ' + [...seen].join(' '));
-    const after = await page.locator('#daily-checklist [data-meal-slot]').evaluateAll(n => n.map(e => e.dataset.mealSlot).join(''));
-    assert.notEqual(after, before); assert.equal(after.at(-1), slot, 'the logged slot moved to the end');
+    await page.waitForFunction(slot => document.getElementById('next-up')?.dataset.mealSlot !== slot, slot, { timeout: 2000 });
+    assert.equal(await page.locator('#next-up.is-arriving').count(), 1, 'the next meal rises into the top spot');
+    assert.equal(await page.locator(`[data-meal-row=${slot}]`).evaluate(e => e.classList.contains('just-on') && e.classList.contains('is-logged')), true, 'and the logged one ticks into its row');
     await settle();
     assert.equal(await page.locator('#consumed').evaluate(e => e.textContent), kcal, 'and lands on the exact value');
     const target = await page.evaluate(() => +document.getElementById('activity-rings').style.getPropertyValue('--p1'));
@@ -41,7 +42,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     // 2. Undo from the toast: instant state, the toast leaves, the card settles.
     const buzz = await page.evaluate(() => window.qaBuzz.length);
     await page.locator('#undo-toast button').tap();
-    assert.equal((await day()).picks[slot], undefined); assert.ok(await page.evaluate(() => window.qaBuzz.length) > buzz);
+    assert.equal((await day()).picks?.[slot], undefined, "Undo leaves no trace"); assert.ok(await page.evaluate(() => window.qaBuzz.length) > buzz);
     await page.locator('#undo-toast').waitFor({ state: 'hidden' }); await settle();
     // A toast left alone removes itself after six seconds.
     await page.locator('[data-quest=sleep]').tap(); assert.equal(await page.locator('.quest-chip.just-on').count(), 1);
@@ -119,7 +120,8 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     await page.locator('[data-view=today]').tap(); await settle();
 
     // 7. A perfect day closes the rings: confetti, a success buzz, and it cleans up.
-    for (const id of ['L', 'P', 'D', 'E']) await page.locator(`[data-slot=${id}][data-tier=S]`).tap();
+    // Any meal that is not on top opens from its row first; each log is given its beat before the next tap.
+    for (const id of ['L', 'P', 'D', 'E']) { const option = page.locator(`[data-slot=${id}][data-tier=S]`); if (!await option.count()) await page.locator(`[data-meal-row=${id}]`).tap(); await option.tap(); await sleep(760); }
     while (!(await page.locator('.water-row.is-full').count())) await page.locator('.water-row').tap();
     await page.evaluate(() => { window.qaBuzz.length = 0; });
     await page.locator('[data-quest=steps]').tap();
@@ -137,13 +139,13 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     await page.locator('[data-quest=cardio]').tap(); assert.equal(await page.evaluate(() => window.qaBuzz.length), 0, 'no haptics when switched off');
     await page.evaluate(() => CHADUX.hideToast(true)); await settle();
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.locator('[data-slot=L][data-tier=S]').tap();                       // remove lunch
+    await page.locator('[data-meal-row=L]').tap(); await page.locator('[data-slot=L][data-tier=S]').tap();     // open lunch, tap its logged option: removed
     const still = await page.evaluate(() => ({ floater: !!document.querySelector('.xp-pop'), animations: document.getAnimations().length, consumed: document.getElementById('consumed').textContent, expected: Math.round(JSON.parse(localStorage.getItem('rec-calories-v1')).entries.filter(e => e.day === CHADQuest.dayKey()).reduce((s, e) => s + e.kcal, 0)).toLocaleString() }));
     assert.equal(still.floater, false); assert.equal(still.animations, 0); assert.equal(still.consumed, still.expected, 'numbers jump straight to the value');
-    await page.locator('#next-day').tap(); assert.equal(await page.locator('.ch-page-ghost').count(), 0);
+    await page.keyboard.press('ArrowRight'); assert.equal(await page.locator('.ch-page-ghost').count(), 0);
     await page.locator('#today-scan').tap(); await page.keyboard.press('Escape'); assert.equal(await page.locator('#add-sheet').isVisible(), false, 'sheets close at once');
     assert.deepEqual(errors, []);
-    console.log('PASS v8 motion: data-first taps with haptic tick, card pop, XP floater, count-up, spring ring fill, FLIP reorder; Undo toast in/out and 6 s lifetime; animated close by button/Escape/backdrop; drag-to-dismiss with finger tracking, backdrop fade, threshold, flick, rubber band and scroll hand-off; interactive day swipe with ghost push and spring-back; sliding tab pill and view entrance; 17/17 confetti with success haptic; haptics-off and reduced-motion honoured; everything cleans up; zero console/page errors.');
+    console.log('PASS v9 motion: data-first taps with haptic tick, card pop and in-place tick, XP floater, count-up, spring ring fill, next meal rising into the top spot and the logged one ticking into its row; Undo toast in/out and 6 s lifetime; animated close by button/Escape/backdrop; drag-to-dismiss with finger tracking, backdrop fade, threshold, flick, rubber band and scroll hand-off; interactive day swipe with ghost push and spring-back; sliding tab pill and view entrance; 17/17 confetti with success haptic; haptics-off and reduced-motion honoured; everything cleans up; zero console/page errors.');
     await context.close();
   } finally { await browser.close(); server.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

@@ -1,7 +1,7 @@
 // Feature regression across every tab. All journals and measurements here are synthetic and live in a temporary browser profile.
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os'), assert = require('node:assert/strict');
-const { serve, launch, watch, saved, shellFiles, root, CACHE, NOON } = require('./harness.cjs');
-const shots = process.env.CHAD_SHOTS || path.join(os.tmpdir(), 'chad-v8-regression');
+const { serve, launch, watch, saved, shellFiles, CACHE, NOON } = require('./harness.cjs');
+const shots = process.env.CHAD_SHOTS || path.join(os.tmpdir(), 'chad-v9-regression');
 
 (async () => {
   const server = await serve(8088), browser = await launch();
@@ -10,8 +10,14 @@ const shots = process.env.CHAD_SHOTS || path.join(os.tmpdir(), 'chad-v8-regressi
     const errors = watch(page);
     await page.clock.install({ time: new Date(NOON) });
     const chartPixels = () => page.evaluate(() => [...document.querySelectorAll('#charts canvas')].map(c => { const bytes = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let hash = 0; for (let i = 0; i < bytes.length; i++) hash = (hash * 31 + bytes[i]) | 0; return hash; }));
-    const go = async () => { await page.goto('http://127.0.0.1:8088/'); await page.waitForFunction(() => window.CHADQuest && document.querySelector('.meal-pick')); await page.evaluate(() => document.fonts.ready); };
-    const pick = (slot, tier) => page.locator(`[data-slot=${slot}][data-tier=${tier}]`).click();
+    const go = async () => { await page.goto('http://127.0.0.1:8088/'); await page.waitForFunction(() => window.CHADQuest && document.querySelector('#daily-checklist .ch-card')); await page.evaluate(() => document.fonts.ready); };
+    // A meal option: on the top meal it is right there; any other meal opens from its row first. Taps are paced past
+    // the 300 ms in which a card ignores a second touch after the meals move.
+    const pick = async (slot, tier) => {
+      await page.waitForTimeout(320);
+      if (!await page.locator(`[data-slot=${slot}][data-tier=${tier}]`).count()) await page.locator(`[data-meal-row=${slot}]`).click();
+      await page.locator(`[data-slot=${slot}][data-tier=${tier}]`).click();
+    };
     const score = () => page.locator('#quest-total').innerText().then(s => s + ' / 17');
     const tab = view => page.locator(`[data-view=${view}]`).click();
     const theme = value => page.locator(`#theme-mode [data-theme-option=${value}]`).click();
@@ -24,25 +30,30 @@ const shots = process.env.CHAD_SHOTS || path.join(os.tmpdir(), 'chad-v8-regressi
     assert.equal(await page.locator('#consumed').innerText(), '1,894'); assert.equal(await page.locator('#protein-total').innerText(), '220');
     assert.match(await page.locator('#calorie-ring').getAttribute('aria-label'), /^1,894\.1 of 1,900 calories$/, 'exact totals stay in the labels');
     assert.match(await page.locator('#protein-ring').getAttribute('aria-label'), /^219\.7 of 220 grams protein$/);
+    assert.equal(await page.locator('#carbs-total').innerText(), '178'); assert.equal(await page.locator('#fat-total').innerText(), '38', 'carbs and fat in the hero');
+    assert.match(await page.locator('#carbs-meter').getAttribute('aria-label'), /^177\.8 of 150 grams carbs$/);
     assert.equal(await page.locator('#remaining').innerText(), '6'); assert.equal(await page.locator('#remaining-label').innerText(), 'left');
     assert.equal(await score(), '14 / 17');
-    assert.equal(await page.locator('.meal-slot.is-logged').count(), 4, 'logged slots fold down');
-    for (let i = 0; i < 9; i++) await page.locator('[data-water]').first().click();
+    assert.equal(await page.locator('#next-up').count(), 0, 'with every meal logged nothing needs to stay open');
+    assert.equal(await page.locator('.meal-row.is-logged').count(), 4, 'logged meals are quiet rows');
+    for (let i = 0; i < 9; i++) await page.locator('.water-row').click();
     await page.locator('[data-quest=steps]').click();
     assert.equal(await score(), '17 / 17'); assert.equal(await page.locator('#quest-grade').innerText(), 'S');
     assert.equal(await page.locator('#home-streak').getAttribute('aria-label'), '1 day streak');
     assert.equal(await page.locator('#week-strip .is-selected').getAttribute('class').then(c => c.includes('is-s')), true, 'an S day is gold in the week strip');
     assert.equal((await saved(page)).entries.length, 4);
     await page.reload(); assert.equal(await score(), '17 / 17');
-    // Switch tier without duplicating; tap again removes.
+    // Switch tier without duplicating; tap the logged option again to remove it.
     await pick('L', 'M'); assert.equal((await saved(page)).entries.length, 4); assert.equal(await score(), '16 / 17');
     await pick('L', 'M'); assert.equal((await saved(page)).entries.length, 3); assert.equal(await score(), '12 / 17');
-    assert.equal(await page.locator('#next-up').getAttribute('data-meal-slot'), 'L', 'an unlogged slot leads again');
+    await page.locator('[data-meal-toggle=L]').click();
+    assert.equal(await page.locator('#next-up').getAttribute('data-meal-slot'), 'L', 'an unlogged meal leads again');
     await pick('L', 'S');
     // Going over target says so.
     await page.evaluate(() => CHADUX.openFood('manual')); await page.locator('#food-name').fill('Synthetic extra'); await page.locator('#calories').fill('300'); await page.locator('#add-form button').click();
     assert.equal(await page.locator('#remaining-label').innerText(), 'over'); assert.equal(await page.locator('#remaining').innerText(), '294');
-    await page.locator('#undo-toast button').click(); assert.equal(await page.locator('#remaining-label').innerText(), 'left');
+    assert.equal(await page.locator('#extras').isVisible(), true); assert.equal(await page.locator('#entries .entry').count(), 1, 'plan meals live in their rows; other food is listed below');
+    await page.locator('#undo-toast button').click(); assert.equal(await page.locator('#remaining-label').innerText(), 'left'); assert.equal(await page.locator('#extras').isVisible(), false);
     for (const field of ['electrolyte', 'cardio', 'sleep']) await page.locator(`[data-quest=${field}]`).click();
     assert.equal(await page.locator('#today .quest-chip[aria-pressed=true]').count(), 4);
 
@@ -69,11 +80,16 @@ const shots = process.env.CHAD_SHOTS || path.join(os.tmpdir(), 'chad-v8-regressi
     await page.locator('#detail-sheet input').nth(1).fill('7'); await page.locator('#detail-sheet .top-set-form button').click();
     await page.clock.runFor(4000);
     assert.equal(await page.locator('#celebration').isVisible(), false, 'a lower set is not a record');
+    assert.equal(await page.locator('.is-today .exercise-info').count(), 7, 'every Pull move has a top set to record');
+    await page.locator('.training-row[data-day="2026-11-25"]').click(); assert.match(await page.locator('.training-level').innerText(), /Muay thai only/);
+    assert.equal(await page.locator('.training-level .exercise-info').count(), 0, 'no details button where there is nothing to record (warm-up, class, stretch)'); await page.locator('#training-today').click();
     const session = page.locator('.is-today [data-quest=training]');
     assert.equal((await session.innerText()).trim(), 'Complete session');
     await session.click(); assert.equal(await page.locator('.is-today .exercise-toggle[aria-pressed=true]').count(), 7);
     assert.equal((await session.innerText()).trim(), 'Session complete'); assert.equal(await page.locator('#training-week .is-selected').getAttribute('class').then(c => c.includes('is-s')), true);
-    await session.click(); assert.equal(await page.locator('.is-today .exercise-toggle[aria-pressed=true]').count(), 0);
+    await page.waitForTimeout(420); await session.click();
+    assert.equal(await page.locator('.is-today .exercise-toggle[aria-pressed=true]').count(), 1, 'reopening gives back the one exercise ticked before');
+    assert.match(await page.locator('.week-rows').innerText(), /Mon[\s\S]*Push/i); assert.equal(await page.locator('.training-row').count(), 6);
     await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: path.join(shots, 'training.png') });
 
     // Saved v4 data, photos, extension fields, goals, and earned rewards survive the migration.
@@ -101,6 +117,7 @@ const shots = process.env.CHAD_SHOTS || path.join(os.tmpdir(), 'chad-v8-regressi
     assert.equal(await page.evaluate(() => [...document.querySelectorAll('#charts canvas')].every(c => c.width > 80 && c.height > 50)), true);
     assert.equal(await page.locator('#badges .badge').count(), 12); assert.ok(await page.locator('#badges .badge.unlocked').count() >= 4);
     assert.match(await page.locator('#badge-count').innerText(), /^\d+\/12$/);
+    assert.ok(await page.locator('#past-entries .entry-open').count() >= 29, 'past entries open their sheet');
     // Level details.
     await page.locator('#open-level').click(); assert.equal(await page.locator('#level-up').isVisible(), true);
     assert.equal(await page.locator('#level-list li').count(), 6); assert.equal(await page.locator('#level-list .is-current').count(), 1);
@@ -122,7 +139,8 @@ const shots = process.env.CHAD_SHOTS || path.join(os.tmpdir(), 'chad-v8-regressi
     }
     await page.getByRole('button', { name: /Daily shake ·/ }).click();
     assert.equal((await saved(page)).entries.at(-1).source, 'addon'); assert.equal(await page.getByRole('button', { name: /Daily shake ·/ }).getAttribute('aria-pressed'), 'true');
-    await page.getByRole('button', { name: /Daily shake ·/ }).click();
+    assert.equal(await page.locator('#extras').isVisible(), false, 'an add-on shows as its pill, not twice');
+    await page.waitForTimeout(420); await page.getByRole('button', { name: /Daily shake ·/ }).click();
     assert.equal((await saved(page)).entries.some(e => e.id === 'addon-2026-12-14-shake'), false);
     await page.clock.setFixedTime(new Date('2026-12-28T12:00:00+09:30')); await page.reload(); await tab('training');
     assert.equal(await page.locator('.deload').isVisible(), true); assert.match(await page.locator('.is-today .exercise-toggle').first().innerText(), /2 × 6/);
@@ -159,13 +177,13 @@ const shots = process.env.CHAD_SHOTS || path.join(os.tmpdir(), 'chad-v8-regressi
     await page.evaluate(() => navigator.serviceWorker.ready); await page.waitForFunction(() => navigator.serviceWorker.controller);
     assert.equal(await page.evaluate(cache => caches.has(cache), CACHE), true);
     await context.setOffline(true); await page.reload();
-    assert.equal(await page.locator('.meal-pick').count(), 12);
+    assert.equal(await page.locator('#daily-checklist [data-meal-row], #daily-checklist [data-meal-slot]').count() >= 4, true, 'every meal is on screen offline');
     await page.evaluate(() => document.fonts.load('12px "Press Start 2P"')); assert.equal(await page.evaluate(() => document.fonts.check('12px "Press Start 2P"')), true);
     assert.equal(await page.evaluate(() => typeof CHADFood.startScanner), 'function');
     assert.deepEqual(await page.evaluate(async cache => (await (await caches.open(cache)).keys()).map(r => new URL(r.url).pathname).sort(), CACHE), shellFiles().map(f => new URL(f, 'http://127.0.0.1:8088/').pathname).sort());
     for (const file of shellFiles().filter(f => f !== './')) assert.equal(await page.evaluate(async file => (await fetch(file)).status, file), 200, file + ' offline');
     assert.deepEqual(errors, []);
-    console.log('PASS regression Edge 390x844: 17=S with whole-number hero and exact labels, folded slots, undo/switch/persist, over-target; weigh-in and water edits; training rows, top sets on rows, PR, whole session; v4 migration incl photos/goals/rewards; 30-day streak, nine canvases, heatmap, 7/30 range, badges, level details, manual theme pixel redraw, daily water goals; phases/add-ons/deload; theme hint, haptics/sound switches, phase dates; 320/430/680 no overflow; dock clearance both themes; offline complete shell, font, scanner; zero JS/console errors. Screenshots: ' + shots);
+    console.log('PASS regression Edge 390x844: 17=S with whole-number hero (kcal, protein, carbs, fat) and exact labels, logged meals as rows, switch/remove/persist through rows, other food listed once, over-target; weigh-in and water edits; training rows, top sets on rows, PR, whole session on and off keeping earlier ticks, the week as rows; v4 migration incl photos/goals/rewards; 30-day streak, nine canvases, heatmap, 7/30 range, badges, level details, manual theme pixel redraw, daily water goals; phases/add-ons/deload; theme hint, haptics/sound switches, phase dates; 320/430/680 no overflow; dock clearance both themes; offline complete shell, font, scanner; zero JS/console errors. Screenshots: ' + shots);
     await context.close();
   } finally { await browser.close(); server.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });
