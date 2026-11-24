@@ -1,5 +1,5 @@
 'use strict';
-// CHAD v10 · Gym mode: the guided workout. One exercise at a time with big set dots; logging a set starts the rest
+// CHAD v11 · Gym mode: the guided workout. One exercise at a time with big set dots; logging a set starts the rest
 // timer (60-120 s by exercise, +15 s, Skip), which counts from timestamps so it keeps true time through a locked screen.
 // kg and reps are pre-filled from last time, with the overload hint ("add reps first, then weight"). The screen stays
 // awake (Wake Lock, taken again whenever the page comes back), it works offline, and it resumes after the app closes.
@@ -56,7 +56,6 @@
       <section class="ch-gym__done" id="gym-done" aria-labelledby="gym-done-title" hidden>
         <div class="ch-gym__trophy" id="gym-trophy">${icon('trophy', 44, { weight: 1.8 })}</div>
         <h2 id="gym-done-title"></h2>
-        <p class="ch-gym__xp"><b id="gym-done-xp">0</b> XP</p>
         <div class="ch-gym__stats"><div><b id="gym-done-volume">0</b><span>kg volume</span></div><div><b id="gym-done-time">0</b><span>minutes</span></div><div><b id="gym-done-sets">0</b><span>sets</span></div></div>
         <ul class="ch-gym__prs" id="gym-done-prs"></ul>
         <p class="ch-gym__next" id="gym-done-next"></p>
@@ -145,7 +144,7 @@
     const nowW = workout(key), left = T().progress(state, key);
     ui.rest = left.done < left.total ? { until: at + e.rest * 1000, total: e.rest * 1000, at } : null;
     saveUI();
-    M()?.mark(null, null, () => { const dot = root.querySelector(`.ch-gym__dot[data-set="${n - 1}"]`); M()?.pulse(dot, 'just-on'); const gain = api.xpGain?.(); if (dot && gain > 0) M()?.floater(dot, '+' + gain + ' XP'); }); M()?.flush();
+    M()?.mark(null, null, () => { const dot = root.querySelector(`.ch-gym__dot[data-set="${n - 1}"]`); M()?.pulse(dot, 'just-on'); }); M()?.flush();
     if (record > 0 && e.kind !== 'time' && T().strength(set) > record + 1e-9 && !celebrated.has(key + ':' + e.name)) { celebrated.add(key + ':' + e.name); api.celebrate('Personal record · ' + e.name); M()?.haptic('success'); }
     // Exercise done: the next one slides in after a beat, while the rest timer keeps running.
     if (complete(nowW, e)) { clearTimeout(advanceTimer); const at2 = ui.ex; advanceTimer = setTimeout(() => { if (!ui || ui.ex !== at2 || root.hidden) return; const j = nextIncomplete(workout(ui.key), at2); if (j >= 0) go(j - at2, true); }, 700); }
@@ -167,8 +166,8 @@
       if (api.change({ label: 'Workout ended · nothing logged', kind: 'off', day: key, forward: st => api.patchDay(st, key, { workout: undefined }, was), backward: st => api.patchDay(st, key, { workout: w }) })) { ui = null; saveUI(); hide(); api.refresh(); }
       return;
     }
-    const end = Date.now(), training = d.training, xp = sets * T().SET_XP + (training ? 0 : 10 * (window.CHADQuest?.sessionLength(key) || s.ex.length));
-    finished = { key, xp };
+    const end = Date.now(), training = d.training;
+    finished = { key };
     const ok = api.change({ label: s.name + ' done · ' + sets + (sets === 1 ? ' set' : ' sets'), kind: 'on', day: key, onApply: () => api.chime?.([523, 659, 784, 1047]),
       forward: st => { const cur = st.questsV5?.[key]?.workout; return cur ? api.patchDay(st, key, { workout: { ...cur, end }, training: true }) : st; },
       backward: st => { const cur = st.questsV5?.[key]?.workout; if (!cur) return st; const { end: _, ...open } = cur; return api.patchDay(st, key, { workout: open, training }); } });
@@ -289,7 +288,7 @@
     const sum = T().summary(state, finished.key), s = T().plan(finished.key);
     root.classList.add('is-finished'); $('gym-done').hidden = false; $('gym-rest').hidden = true;
     $('gym-done-title').textContent = sum.name + ' done';
-    const counts = [['gym-done-xp', finished.xp, n => '+' + Math.round(n)], ['gym-done-volume', sum.volume, n => Math.round(n).toLocaleString('en-AU')], ['gym-done-time', sum.minutes || 0, n => String(Math.round(n))], ['gym-done-sets', sum.sets, n => String(Math.round(n))]];
+    const counts = [['gym-done-volume', sum.volume, n => Math.round(n).toLocaleString('en-AU')], ['gym-done-time', sum.minutes || 0, n => String(Math.round(n))], ['gym-done-sets', sum.sets, n => String(Math.round(n))]];
     for (const [id, value, format] of counts) { const node = $(id); if (node.__done === finished.key + value) continue; node.__done = finished.key + value; node.__chTo = null; if (M()) M().count(node, value, { format, from: 0, duration: 900 }); else node.textContent = format(value); }
     const prs = $('gym-done-prs');
     const shown = sum.prs.slice(0, 3), more = sum.prs.length - shown.length;
