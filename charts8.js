@@ -1,23 +1,16 @@
-/* CHAD v7 — charts7.js · canvas charts, SVG Activity rings and a count-up. No dependencies.
-   Drop-in for charts6.js (same window.CHADCharts API). What changed:
-     rings()   new markup: gradient strokes, soft glow (dark theme), round caps, spring fill, and values above 1
-               lap the ring with a shadowed head (v6 clamped at 1; pass {max:1} to keep that).
-     count()   NEW  count-up for a number element.
-     heatmap() default colour is gold (v6: green). Bars get a soft vertical gradient. Everything else as v6.
+/* CHAD v8 — charts8.js · canvas charts and SVG Activity rings. No dependencies.
    window.CHADCharts:
      barsVsGoal(el, data, goal, opts)  data: [n | null | {label, value}]
                                        opts: {highlight:index, unit:'', goalLabel:'Goal', goals:[per-bar goal], color, overColor}
      line(el, data, opts)              data: [n | null | {label, value}]   opts: {goal:n, color:'--ch-blue', unit:''}
      heatmap(el, data, opts)           data: [0..1 | null] oldest first, 7 per column   opts: {color:'--ch-gold', max:1, rows:7, today:index}
      ring(el, pct, opts)               pct 0..100+   opts: {color:'--ch-ring-move', label:'72%', sub:'kcal', width:px}
-     rings(el, values, opts)           Activity rings (SVG). values: up to 3 numbers, 0..1 = one lap (outer → inner:
-                                       calories, protein, score). opts: {labels:['Calories 72%', …], max:2, animate:false}
-                                       Call again with new values to animate to them. Styled by .ch-rings in theme7.css.
-     count(el, to, opts)               animates el.textContent from its current number to `to`.
-                                       opts: {duration:700, decimals:0, from:n, format:fn(n)->string, animate:false}
+     rings(el, values, opts)           Activity rings (SVG). values: up to 3 numbers, 0..1 = one lap (outer -> inner:
+                                       calories, protein, score). Call again with new values to animate to them.
+                                       Fires a bubbling "ch:ringclosed" event (detail.index) when a ring first reaches 1.
      redraw()                          re-render canvases (auto on resize / theme change)
    `el` is a <canvas> or any block element (a canvas is created inside; give it a height, e.g. class="ch-chart").
-   Colours come from theme7.css variables read on `el`; colour opts take a CSS variable name ('--ch-pink') or any CSS colour.
+   Colours come from theme8.css variables read on `el`. Count-up lives in motion8.js.
    Animation is skipped when prefers-reduced-motion is set or opts.animate === false. */
 (function (root) {
   'use strict';
@@ -132,7 +125,7 @@
       var top = 20, bot = hasLabels ? 20 : 4, H = h - top - bot, n = d.length || 1;
       var goals = opts.goals || d.map(function () { return goal; });
       var max = Math.max.apply(null, d.map(function (p) { return p.value || 0; }).concat(goals, [goal || 0, 1])) * 1.1;
-      var slot = w / n, bw = Math.max(2, Math.min(24, slot * 0.5)), r = Math.min(8, bw / 2);
+      var slot = w / n, bw = Math.max(2, Math.min(22, slot * 0.56)), r = Math.min(7, bw / 2);
       var over = col(el, opts.overColor, T.magenta), under = col(el, opts.color, T.cyan);
       var hi = opts.highlight;
       ctx.fillStyle = T.line; ctx.fillRect(0, top + H, w, 1);
@@ -142,8 +135,8 @@
         if (p.value == null) { ctx.fillStyle = T.track; rrect(ctx, x, base - 4, bw, 4, 2); ctx.fill(); return; }
         var bh = Math.max(3, p.value / max * H * t);
         var c = (goals[i] && p.value > goals[i]) ? over : under;
-        if (hi === i) c = T.gold;
         ctx.save(); ctx.beginPath(); ctx.rect(x - 1, top - 4, bw + 2, H + 4); ctx.clip();
+        ctx.globalAlpha = hi == null || hi === i ? 1 : 0.55;                      // the selected day reads first
         ctx.fillStyle = c; rrect(ctx, x, base - bh, bw, bh + r, r); ctx.fill();
         var g = ctx.createLinearGradient(0, base - bh, 0, base);          // lift the top, settle the base
         g.addColorStop(0, 'rgba(255,255,255,.22)'); g.addColorStop(0.5, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(0,0,0,.14)');
@@ -222,7 +215,7 @@
       if (t >= 1) {
         ctx.fillStyle = T.surface; ctx.beginPath(); ctx.arc(last.x, last.y, 7, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = c; ctx.beginPath(); ctx.arc(last.x, last.y, 4.5, 0, Math.PI * 2); ctx.fill();
-        label(ctx, fmt(lv) + (opts.unit ? ' ' + opts.unit : ''), w - 2, 16, T.text, 'right', 15, 700, NUM);
+        label(ctx, fmt(opts.whole ? Math.round(lv) : lv) + (opts.unit ? ' ' + opts.unit : ''), w - 2, 16, T.text, 'right', 15, 700, NUM);
       }
       if (hasLabels) {
         var step = Math.ceil(d.length / 7);
@@ -319,41 +312,29 @@
     if (!el.querySelector('.ch-rings__svg') || el.__chRingsN !== n) {
       el.__chRingsId = el.__chRingsId || ('chr' + (++uid) + '-');
       el.__chRingsN = n;
-      el.classList.add('ch-rings', 'ch-rings--7');
+      el.classList.add('ch-rings', 'ch-rings--8');
       el.innerHTML = ringsMarkup(n, el.__chRingsId);
       fresh = true;
     }
     el.setAttribute('role', 'img');
     if (opts.labels) el.setAttribute('aria-label', opts.labels.join(', '));
+    var prev = el.__chVals, closed = [];
+    if (prev && opts.celebrate !== false) values.forEach(function (val, i) { if (prev[i] != null && prev[i] < 1 && +val >= 1) closed.push(i); });
+    el.__chVals = values.map(function (val) { return +val || 0; });
     var apply = function () {
       values.forEach(function (val, i) { el.style.setProperty('--p' + (i + 1), String(Math.max(0, Math.min(max, +val || 0)))); });
     };
+    if (closed.length && root.CustomEvent) {            // a ring just closed: glow, and let the app celebrate
+      el.classList.remove('is-closed'); void el.offsetWidth; el.classList.add('is-closed');
+      root.clearTimeout(el.__chClosed); el.__chClosed = root.setTimeout(function () { el.classList.remove('is-closed'); }, 1000);
+      el.dispatchEvent(new CustomEvent('ch:ringclosed', { bubbles: true, detail: { index: closed[0], all: closed } }));
+    }
     if (still(opts)) {                     // jump: suspend the CSS transition for this write
       el.style.transition = 'none'; apply(); el.getBoundingClientRect(); el.style.transition = '';
       return;
     }
     if (fresh) el.getBoundingClientRect();  // commit the empty state so the first set animates
     root.requestAnimationFrame(apply);
-  }
-
-  /* ---- count-up ---- */
-  function count(el, to, opts) {
-    if (!el) return;
-    opts = opts || {};
-    to = +to || 0;
-    var dec = opts.decimals || 0;
-    var f = opts.format || function (n) { return n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec }); };
-    var from = opts.from != null ? +opts.from : (el.__chCount != null ? el.__chCount : (parseFloat(String(el.textContent).replace(/[^0-9.\-]/g, '')) || 0));
-    if (el.__chCountRaf) cancelAnimationFrame(el.__chCountRaf);
-    el.__chCount = to;
-    if (still(opts) || from === to) { el.textContent = f(to); return; }
-    var t0 = 0, dur = opts.duration || 700, k = Math.pow(10, dec);
-    (function tick(now) {
-      if (!t0) t0 = now || performance.now();
-      var p = Math.min(1, ((now || t0) - t0) / dur), e = 1 - Math.pow(1 - p, 4);
-      el.textContent = f(p < 1 ? Math.round((from + (to - from) * e) * k) / k : to);
-      if (p < 1) el.__chCountRaf = requestAnimationFrame(tick);
-    })(0);
   }
 
   function redraw(animated) {
@@ -373,5 +354,5 @@
     }
   }
 
-  root.CHADCharts = { barsVsGoal: barsVsGoal, line: line, heatmap: heatmap, ring: ring, rings: rings, count: count, redraw: redraw, version: 7 };
+  root.CHADCharts = { barsVsGoal: barsVsGoal, line: line, heatmap: heatmap, ring: ring, rings: rings, redraw: redraw, version: 8 };
 })(window);
