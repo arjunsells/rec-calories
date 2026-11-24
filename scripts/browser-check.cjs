@@ -31,15 +31,17 @@ const product = { code: '9300652010794', product_name: 'Weet-Bix synthetic QA', 
     assert.equal(await page.locator('#search-panel').isVisible(), false, 'barcode mode shows only barcode controls');
     await page.locator('#barcode').fill('9300652010794'); await page.locator('#barcode-form button').click();
     await page.locator('#confirm-sheet').waitFor({ state: 'visible', timeout: 45000 });
-    assert.match(await page.locator('#scan-items').innerText(), /Weet/i);
-    const kcal = parseFloat((await page.locator('#scan-total').innerText()).replaceAll(',', ''));
-    assert.match(await page.locator('#result-macros').innerText(), /Protein[\s\S]*Carbs[\s\S]*Fat/, 'the review shows P/C/F too');
-    await page.locator('#portion-slider').fill('1.5');
-    assert.equal(parseFloat((await page.locator('#scan-total').innerText()).replaceAll(',', '')), Math.round(kcal * 1.5));
+    assert.match(await page.locator('#result-name').inputValue(), /Weet/i);
+    const card = () => page.evaluate(() => ['grams', 'kcal', 'protein', 'carbs', 'fat'].map(k => document.getElementById('result-' + k).value));
+    const kcal = Number((await card())[1]);
+    if (!process.env.CHAD_LIVE_FOOD) assert.deepEqual(await card(), ['40', '160', '4', '24', '1.2'], 'one 40 g serving, all four macros, editable');
+    // The weight scales everything: 1.5 servings.
+    const grams = Number((await card())[0]); await page.locator('#result-grams').fill(String(grams * 1.5));
+    assert.equal(Number((await card())[1]), Math.round(kcal * 1.5));
     await page.locator('#scan-confirm-form button[type=submit]').click();
     assert.equal(await page.locator('#confirm-sheet').isVisible(), false);
     let journal = await saved(page);
-    assert.equal(journal.entries.at(-1).source, 'barcode'); assert.equal(journal.entries.at(-1).kcal, Math.round(kcal * 1.5)); assert.match(journal.entries.at(-1).portion, /40 g/);
+    assert.equal(journal.entries.at(-1).source, 'barcode'); assert.equal(journal.entries.at(-1).kcal, Math.round(kcal * 1.5)); assert.equal(journal.entries.at(-1).portion, `${grams * 1.5} g`);
     assert.match(await page.locator('#undo-toast').innerText(), /Weet/i);
     if (!process.env.CHAD_LIVE_FOOD) {
       assert.equal(off.filter(u => u.includes('/product/')).length, 1);
@@ -120,11 +122,11 @@ const product = { code: '9300652010794', product_name: 'Weet-Bix synthetic QA', 
     const image = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 1800; c.height = 1200; return c.toDataURL('image/png').split(',')[1]; });
     const upload = () => page.locator('#photo-input').setInputFiles({ name: 'synthetic.png', mimeType: 'image/png', buffer: Buffer.from(image, 'base64') });
     await upload(); await page.locator('#confirm-sheet').waitFor({ state: 'visible' });
-    assert.equal((await page.locator('#scan-total').innerText()).replace(/\s+/g, ''), '400kcal');
-    await page.locator('#portion-slider').fill('2'); assert.match(await page.locator('#result-macros').innerText(), /60\s*g\s*Protein/);
+    assert.deepEqual(await card(), ['200', '400', '30', '40', '12'], 'the "200 g" portion is the weight');
+    await page.locator('#result-grams').fill('400'); assert.deepEqual(await card(), ['400', '800', '60', '80', '24']);
     await page.locator('#scan-confirm-form button[type=submit]').click();
     assert.equal((await saved(page)).entries.at(-1).source, 'photo');
-    for (const [next, pattern] of [['401', /OpenAI didn’t accept your key/], ['bad', /can’t read/]]) {
+    for (const [next, pattern] of [['401', /OpenAI didn’t accept your key/], ['bad', /garbled/]]) {
       mode = next; await page.evaluate(() => CHADUX.openFood('camera')); await upload();
       await page.locator('#snap-ways').waitFor({ state: 'visible' });
       assert.match(await page.locator('#snap-ways').innerText(), pattern); assert.equal(await page.locator('#confirm-sheet').isVisible(), false);

@@ -153,7 +153,7 @@ console.log('PASS: OFF serving/100g normalization, metric portions, brand, kJ co
 const html = fs.readFileSync('index.html', 'utf8'), sw = fs.readFileSync('sw.js', 'utf8'), css = fs.readFileSync('theme9.css', 'utf8');
 assert.match(html, /<title>\s*CHAD/); assert.match(html, /apple-mobile-web-app-title[^>]+CHAD/); assert.match(sw, /const CACHE = 'rec-calories-shell-v9';/);
 const shell = [...sw.match(/^const SHELL = (.+);$/m)[1].matchAll(/'([^']+)'/g)].map(m => m[1]);
-const runtime = ['index.html', 'theme9.css', 'icons8.js', 'motion8.js', 'charts8.js', 'game.js', 'scan9.js', 'food9.js', 'plan9.js', 'quest9.js', 'ux9.js', 'app9.js', 'fonts/press-start-2p.ttf', 'fonts/OFL.txt', 'vendor/zxing-browser.min.js', 'vendor/ZXING-LICENSE', 'vendor/README.md', 'manifest.webmanifest', 'icons/icon.svg', 'icons/apple-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'];
+const runtime = ['index.html', 'theme9.css', 'icons8.js', 'motion8.js', 'charts8.js', 'game.js', 'scan9.js', 'food9.js', 'plan9.js', 'quest9.js', 'ux9.js', 'app9.js', 'fonts/press-start-2p.ttf', 'fonts/OFL.txt', 'vendor/zxing-browser.min.js', 'vendor/ZXING-LICENSE', 'vendor/README.md', 'manifest.webmanifest', 'icons/icon.svg', 'icons/apple-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/mark.svg'];
 for (const file of runtime) { assert.ok(fs.existsSync(file), `${file} exists`); assert.ok(shell.includes(`./${file}`), `${file} cached`); }
 assert.deepEqual(shell.filter(f => f !== './').sort(), runtime.map(f => './' + f).sort(), 'the shell lists exactly the runtime files');
 // Every local script and stylesheet the page loads is in the offline shell, and nothing loads from another origin.
@@ -185,17 +185,25 @@ for (const file of ['index.html', 'plan9.js', 'quest9.js', 'ux9.js', 'app9.js', 
   const found = visible(file).match(/\b(?:lbs?|pounds?|oz|ounces?|cups?|ft|feet|inch(?:es)?|tsp|tbsp|teaspoons?|tablespoons?|fahrenheit|°F|miles?)\b/i);
   assert.equal(found, null, `${file} is metric only (found "${found?.[0]}")`);
 }
-// Nothing private or secret is shipped: no keys, tokens or personal proxy hosts in the app or the docs.
-const shipped = [...fs.readdirSync('.').filter(f => /\.(js|html|css|webmanifest|md)$/.test(f) && !/^(CLAUDE-)?JOB|^AI-PROXY/.test(f)), ...fs.readdirSync('docs').map(f => 'docs/' + f), ...fs.readdirSync('scripts').map(f => 'scripts/' + f)];
+// Nothing private or secret is shipped: no keys or tokens anywhere. The one personal host is the built-in proxy address,
+// once, in scan9.js (an address is not a secret; the token that unlocks it never ships). Tests use RECScan.DEFAULT_PROXY.
+const shipped = [...fs.readdirSync('.').filter(f => /\.(js|html|css|webmanifest|md)$/.test(f) && !/^(CLAUDE-)?JOB|^AI-PROXY/.test(f)), ...fs.readdirSync('docs').map(f => 'docs/' + f), ...fs.readdirSync('scripts').map(f => 'scripts/' + f), ...fs.readdirSync('icons').filter(f => f.endsWith('.svg')).map(f => 'icons/' + f)];
+const builtIn = new URL(scan.DEFAULT_PROXY).host;
+assert.match(scan.DEFAULT_PROXY, /^https:\/\//); assert.equal(fs.readFileSync('scan9.js', 'utf8').split(builtIn).length - 1, 1, 'the built-in proxy address is written once');
 for (const file of shipped) {
   const text = fs.readFileSync(file, 'utf8');
   assert.equal(/sk-[A-Za-z0-9_-]{20,}/.test(text), false, `${file} has no API key`);
   assert.equal(/\b[a-f0-9]{64}\b/i.test(text), false, `${file} has no 64-hex token`);
-  assert.equal(/\.ts\.net\b|tailscale|ngrok/i.test(text) && !file.startsWith('scripts/'), false, `${file} names no personal tunnel host`);
+  assert.equal(/\.ts\.net\b|tailscale|ngrok/i.test(file === 'scan9.js' ? text.replace(builtIn, '') : text) && !file.startsWith('scripts/'), false, `${file} names no personal tunnel host`);
+  assert.equal(/[#&]k=[A-Za-z0-9]{16,}/.test(text), false, `${file} holds no setup link with a token`);
   assert.equal(/Bearer (?!synthetic-)[A-Za-z0-9_-]{12,}/.test(text), false, `${file} has no literal bearer token`);
 }
 // The proxy example asks the model exactly what the app's own-key route asks.
 const worker = fs.readFileSync('docs/proxy-example.js', 'utf8'), prompt = vm.runInNewContext(worker.match(/const PROMPT = ([\s\S]+?);\r?\n/)[1]);
 assert.equal(prompt, scan.PROMPT, 'one prompt for both routes');
 assert.equal(/OPENAI_API_KEY\s*=\s*['"]/.test(worker), false, 'the worker reads its key from a secret only');
-console.log('PASS: CHAD manifest identity, opaque PNG icons, complete local shell-v9 (exact list), removed v8 files, motion/dark/dock CSS guards, metric-only text, no keys/tokens/tunnel hosts, one prompt for app and proxy example.');
+// The mascot mark in the Progress header: a small, self-contained vector (no scripts, no outside references).
+const mark = fs.readFileSync('icons/mark.svg', 'utf8');
+assert.match(html, /<img class="ch-mark" src="\.\/icons\/mark\.svg"/); assert.equal(/<script|\son[a-z]+=|<image|foreignObject|(?:href|src)="(?!#)/i.test(mark), false, 'mark.svg is plain vector art'); assert.ok(mark.length < 40000);
+assert.equal(fs.existsSync('scripts/make-icons.cjs'), false, 'the old flame-icon generator is gone, so it cannot overwrite the mascot icons');
+console.log('PASS: CHAD manifest identity, opaque PNG icons, complete local shell-v9 (exact list), removed v8 files, motion/dark/dock CSS guards, metric-only text, no keys/tokens/setup links, one built-in proxy address (scan9.js only), plain-vector header mark, one prompt for app and proxy example.');

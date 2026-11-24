@@ -106,6 +106,7 @@
         <section id="history" class="view ch-view" hidden>
           <header class="ch-datebar">
             <div class="ch-datebar__title"><h1 class="ch-datebar__day">Progress</h1></div>
+            <img class="ch-mark" src="./icons/mark.svg" alt="" width="48" height="48" decoding="async" aria-hidden="true">
           </header>
           <section class="ch-card ch-levelcard" aria-label="Level">
             <div class="ch-levelcard__top">
@@ -181,23 +182,29 @@
           <h2 class="ch-list-h">Advanced</h2>
           <div class="ch-list">
             <details class="ch-disclosure ch-advanced" id="advanced-settings">
-              <summary><span>AI photo estimates</span><span class="ch-cell__value"><i class="ch-dot" id="ai-dot" aria-hidden="true"></i><span id="ai-mode">Off</span></span></summary>
+              <summary><span>AI photo estimates</span><span class="ch-cell__value"><i class="ch-dot" id="ai-dot" aria-hidden="true"></i><span id="ai-mode">Not set up</span></span></summary>
               <div class="ch-advanced__body">
-                <label class="ch-label" for="ai-proxy">Proxy URL or setup link</label>
-                <input class="ch-input" id="ai-proxy" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="https://your-proxy.example">
-                <label class="ch-label" for="ai-token">Access token</label>
-                <input class="ch-input" id="ai-token" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Optional">
-                <p class="ch-hint">CHAD posts <code>{image, hint, units:"metric"}</code> and expects <code>{name, kcal, protein, carbs, fat}</code> back. AI keys stay inside your proxy. The token is kept on this device only: never shown, never in a backup. See the README and docs/proxy-example.js.</p>
+                <div class="ch-aistatus" id="ai-status" role="status">
+                  <strong id="ai-status-title">Not set up</strong>
+                  <p id="ai-status-text">Paste the setup link from your CHAD proxy to turn on photo estimates.</p>
+                </div>
                 <div class="ch-advanced__actions">
-                  <button id="ai-test" type="button" class="ch-btn ch-btn--sm" hidden>Test connection</button>
+                  <button id="ai-test" type="button" class="ch-btn ch-btn--sm" hidden>Test</button>
                   <button id="ai-disconnect" type="button" class="ch-btn ch-btn--sm ch-btn--danger" hidden>Disconnect</button>
                 </div>
-                <p id="ai-test-status" class="ch-hint" role="status"></p>
-                <details class="ch-sub">
-                  <summary>Use my own OpenAI key instead</summary>
-                  <label class="ch-label" for="ai-key">OpenAI key</label>
+                <label class="ch-label" for="ai-link">Paste setup link</label>
+                <input class="ch-input ch-input--secret" id="ai-link" type="text" inputmode="url" enterkeyhint="done" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="https://…/rec-calories/#ai=…&amp;k=…">
+                <p class="ch-hint">The home-screen app keeps its own storage, so paste the link here once. The token stays on this device: never shown again, never in a backup.</p>
+                <details class="ch-sub" id="ai-more">
+                  <summary>Other ways to connect</summary>
+                  <label class="ch-label" for="ai-proxy">Proxy URL</label>
+                  <input class="ch-input" id="ai-proxy" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Built-in CHAD proxy">
+                  <label class="ch-label" for="ai-token">Access token</label>
+                  <input class="ch-input" id="ai-token" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Not set">
+                  <p class="ch-hint">CHAD posts <code>{image, text}</code> with an <code>X-Chad-Token</code> header and expects <code>{name, grams, kcal, protein_g, carbs_g, fat_g}</code> back. See the README and docs/proxy-example.js.</p>
+                  <label class="ch-label" for="ai-key">Your own OpenAI key</label>
                   <input class="ch-input" id="ai-key" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Paste key">
-                  <p class="ch-hint">Used only when no proxy is set. Kept in this browser only, never in a backup, sent only to OpenAI. Leave blank to remove it.</p>
+                  <p class="ch-hint">Used only when no proxy is set up. Kept in this browser only, never in a backup, sent only to OpenAI. Leave blank to remove it.</p>
                 </details>
               </div>
             </details>
@@ -282,8 +289,22 @@
                 <textarea class="ch-input" id="food-description" maxlength="500" placeholder="200 g chicken breast with rice"></textarea>
               </div>
               <button id="describe-button" type="button" class="secondary ch-btn ch-btn--block" hidden>Estimate</button>
+              <div id="snap-analysing" class="ch-analysing" hidden>
+                <div class="ch-analysing__art" aria-hidden="true">
+                  <img id="analysing-image" alt="" hidden>
+                  <span class="ch-analysing__glyph"><i data-icon="sparkles" data-size="40"></i></span>
+                  <i class="ch-analysing__sweep"></i>
+                </div>
+                <div class="ch-analysing__words" role="status" aria-live="polite">
+                  <strong id="analysing-title">Analysing…</strong>
+                  <p id="analysing-text">About 10 s</p>
+                </div>
+                <div class="ch-analysing__bar" aria-hidden="true"><i></i></div>
+                <button id="analysing-cancel" type="button" class="ch-btn ch-btn--sm">Cancel</button>
+              </div>
               <div id="snap-ways" class="ch-ways" hidden>
                 <div class="ch-ways__head" role="status"><strong id="snap-ways-title">Find it</strong><p id="snap-ways-text"></p></div>
+                <button id="snap-setup" type="button" class="ch-btn ch-btn--primary ch-btn--block" hidden><i data-icon="key" data-size="20"></i>Set up AI again</button>
                 <div class="ch-ways__actions">
                   <button type="button" class="ch-way" data-snap="search"><i data-icon="magnifier"></i>Search</button>
                   <button type="button" class="ch-way" data-snap="barcode"><i data-icon="barcode"></i>Barcode</button>
@@ -389,26 +410,33 @@
       </dialog>
 
       <dialog class="ch-sheet" id="confirm-sheet" aria-labelledby="confirm-title">
-        <form id="scan-confirm-form">
+        <form id="scan-confirm-form" novalidate>
           <div class="ch-sheet__grip" aria-hidden="true"></div>
           <div class="sheet-heading ch-sheet__head">
             <h2 id="confirm-title" class="ch-sheet__title">Your meal, decoded.</h2>
             <button id="cancel-scan" type="button" class="ch-sheet__close" aria-label="Close"><i data-icon="xmark" data-size="22"></i></button>
           </div>
           <div class="ch-sheet__body">
-            <div id="scan-items"></div>
-            <p id="scan-parts" class="ch-hint" hidden></p>
-            <p id="confidence" class="ch-hint"></p>
-            <div id="scan-total" class="result-total"></div>
-            <div id="result-macros"></div>
-            <div class="ch-field" id="serving-control" hidden>
-              <label class="ch-label" for="serving-grams">Serving size (g)</label>
-              <input class="ch-input" id="serving-grams" type="number" inputmode="decimal" min="1" max="5000" value="100">
+            <div class="ch-result">
+              <img id="result-photo" class="ch-result__photo" alt="Your photo" hidden>
+              <div class="ch-result__id">
+                <label class="ch-sr" for="result-name">Food name</label>
+                <textarea class="ch-result__name" id="result-name" rows="1" maxlength="80" autocomplete="off" autocapitalize="sentences" enterkeyhint="done" spellcheck="false" required></textarea>
+                <p id="confidence" class="ch-result__meta"></p>
+              </div>
             </div>
-            <div class="ch-field">
-              <label class="ch-label" for="portion-slider">Portion <strong id="portion-label">1×</strong></label>
-              <input class="ch-input" id="portion-slider" type="range" min="0.5" max="2" step="0.1" value="1" data-nodrag>
+            <div class="ch-nums">
+              <label class="ch-num ch-num--kcal"><span class="ch-num__k">Energy<small>kcal</small></span><input id="result-kcal" type="number" inputmode="decimal" min="1" max="50000" step="any" required></label>
+              <label class="ch-num ch-num--g"><span class="ch-num__k">Weight<small>g</small></span><input id="result-grams" type="number" inputmode="decimal" min="1" max="20000" step="any" placeholder="–"></label>
+              <label class="ch-num ch-num--p"><span class="ch-num__k">Protein<small>g</small></span><input id="result-protein" type="number" inputmode="decimal" min="0" max="5000" step="any"></label>
+              <label class="ch-num ch-num--c"><span class="ch-num__k">Carbs<small>g</small></span><input id="result-carbs" type="number" inputmode="decimal" min="0" max="5000" step="any"></label>
+              <label class="ch-num ch-num--f"><span class="ch-num__k">Fat<small>g</small></span><input id="result-fat" type="number" inputmode="decimal" min="0" max="5000" step="any"></label>
             </div>
+            <p id="result-hint" class="ch-hint ch-result__hint">Change the weight and the rest follows.</p>
+            <details id="result-parts" class="ch-sub ch-parts" hidden>
+              <summary id="result-parts-title">What’s in it</summary>
+              <ul id="result-parts-list"></ul>
+            </details>
             <div class="ch-field">
               <label class="ch-label" for="scan-meal">Meal</label>
               <select class="ch-input" id="scan-meal">
@@ -419,7 +447,7 @@
               </select>
             </div>
             <button class="primary ch-btn ch-btn--primary ch-btn--block" type="submit">Log it</button>
-            <button id="copy-result" type="button" class="secondary ch-btn ch-btn--block">Copy summary</button>
+            <button id="copy-result" type="button" class="ch-link ch-link--center">Copy summary</button>
           </div>
         </form>
       </dialog>

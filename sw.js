@@ -1,7 +1,7 @@
 'use strict';
 // Bump CACHE with every release: a changed worker is what tells installed copies to update.
 const CACHE = 'rec-calories-shell-v9';
-const SHELL = ['./', './index.html', './theme9.css', './icons8.js', './motion8.js', './charts8.js', './game.js', './scan9.js', './food9.js', './plan9.js', './quest9.js', './ux9.js', './app9.js', './fonts/press-start-2p.ttf', './fonts/OFL.txt', './vendor/zxing-browser.min.js', './vendor/ZXING-LICENSE', './vendor/README.md', './manifest.webmanifest', './icons/icon.svg', './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png'];
+const SHELL = ['./', './index.html', './theme9.css', './icons8.js', './motion8.js', './charts8.js', './game.js', './scan9.js', './food9.js', './plan9.js', './quest9.js', './ux9.js', './app9.js', './fonts/press-start-2p.ttf', './fonts/OFL.txt', './vendor/zxing-browser.min.js', './vendor/ZXING-LICENSE', './vendor/README.md', './manifest.webmanifest', './icons/icon.svg', './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/mark.svg'];
 self.addEventListener('install', event => {
   // cache: 'reload' skips the HTTP cache, so a new shell can never be assembled from stale files.
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL.map(url => new Request(url, { cache: 'reload' })))).then(() => self.skipWaiting()));

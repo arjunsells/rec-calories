@@ -16,7 +16,7 @@ function serve(port, options = {}) {
   });
   return new Promise(resolve => server.listen(port, '127.0.0.1', () => resolve(server)));
 }
-const launch = () => chromium.launch({ executablePath: process.env.BROWSER_EXECUTABLE || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true });
+const launch = (args = []) => chromium.launch({ executablePath: process.env.BROWSER_EXECUTABLE || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true, args });
 const IPHONE = { deviceScaleFactor: 3, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' };
 // Collects uncaught errors and console errors; `ignore` filters expected network noise.
 function watch(page, ignore = () => false) {

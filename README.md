@@ -32,33 +32,35 @@ Everything is metric: kg, g, L, mL, kcal (the plan's teaspoons are grams now, wi
 
 ## AI photo estimates
 
-No key is ever in this repository. The AI layer is pluggable and set per device in **Settings › Advanced › AI photo estimates**:
+No key or token is ever in this repository. **Snap + Say** sends a photo and/or a sentence to an estimator and shows the answer as one editable card.
 
-1. **Proxy (recommended).** A URL (empty by default) and an optional access token. CHAD posts JSON and expects JSON:
+1. **The CHAD proxy (built in).** Its address is in `scan9.js` (an address is not a secret). Nothing is sent to it until this device has its **access token**, which arrives once in a setup link and is kept only in this browser, never shown again, never in a backup or a log.
 
    ```
-   POST <proxy URL>                 a URL with no path posts to /estimate
-   Content-Type: application/json   X-Chad-Token: <token>  (only if one is saved)
-   { "image": "data:image/jpeg;base64,…" | "<base64>" | null, "hint": "what you typed", "units": "metric" }
+   POST <proxy>/estimate   Content-Type: application/json   X-Chad-Token: <token>
+   { "image": "data:image/jpeg;base64,…" | null, "text": "200 g chicken and rice", "hint": (same), "units": "metric" }
 
-   200 { "name": "Chicken burrito bowl", "kcal": 640, "protein": 42, "carbs": 70, "fat": 18,
-         "items": [{ "name": "Rice", "portion": "200 g", "kcal": 260, "protein": 5, "carbs": 57, "fat": 1 }],   optional
-         "confidence": 0.7 }                                                                                    optional, 0..1
-   GET  /health -> { "ok": true }   (the Test connection button; no token, no AI call)
+   200 { "name": "Grilled chicken and rice", "grams": 350, "kcal": 520, "protein_g": 66, "carbs_g": 42, "fat_g": 7.7,
+         "confidence": 0.93, "items": [{ "name": "Chicken breast", "grams": 200, "kcal": 330, … }] }
+   GET  /health -> { "ok": true }          no token, no AI
    ```
 
-   kcal for energy, grams for macros, metric portions. For proxies built to the same idea the request also carries `"text"` (the same words as `hint`) and the answer may use `protein_g`, `carbs_g`, `fat_g` and `grams`. A 503 is retried once after three seconds; the client waits up to 100 s. Photos are resized to 1024 px JPEG first and are never stored.
-2. **[`docs/proxy-example.js`](docs/proxy-example.js)** is a small Cloudflare Worker for this contract: the provider key is an encrypted Worker secret, CORS allows only your Pages origin, an optional token, JSON only, image type and size checks, 10 requests a minute per IP (or a Workers Rate Limiting binding) and an optional daily cap. It sends the same prompt as the app.
-3. **Setup link.** Opening `…/rec-calories/#ai=<encoded proxy URL>&k=<token>` reads the link once, wipes it from the address bar and asks before connecting. Pasting the same link into the proxy field works too (useful for the installed app, which has its own storage). The token is never shown again.
-4. **Own OpenAI key (hidden fallback).** Under "Use my own OpenAI key instead". Used only when no proxy is set, kept only in this browser, sent only to OpenAI.
+   `protein` / `carbs` / `fat` and `"portion": "150 g"` are accepted too. Photos are resized on the phone to 1024 px (long edge), JPEG 0.8, and are held in memory only. The client gives up after 100 s. Errors: 401 "AI needs setting up again" with a button to the setup link field; 413 "That photo is too big"; 429 "The AI needs a breather"; 503 says so and retries once after 3 s; 502 and other 5xx "The AI couldn't finish that one" with **Try again** and Quick add; no connection "AI is offline. Describe it or use Quick add / barcode." Every error keeps Search, Barcode and Quick add (the words go along).
+2. **Setup link.** `https://arjunsells.github.io/rec-calories/#ai=<encoded proxy URL>&k=<token>`. On load the link is saved, wiped from the address bar with `history.replaceState`, and a quiet "AI connected" toast (with Undo) appears. A link to the built-in proxy connects without a question; a link to any other address, opened from outside the app, asks first. A link with only `#k=<token>` is for the built-in proxy. The home-screen app has its own storage, so **Settings › Advanced › Paste setup link** takes the whole link, just the hash, or `ai=…&k=…`; the field is masked and emptied at once.
+3. **Settings › Advanced › AI photo estimates.** A status line (Not set up, Connected, Offline, Set up again, Own key), **Test** (GET /health, then an empty POST that the proxy turns away with 400 before any AI runs, or 401 when the token is wrong) and **Disconnect** (with Undo). "Other ways to connect" holds a proxy URL of your own (https, or loopback http for testing; a URL without a path posts to /estimate), a token field, and your own OpenAI key as the hidden fallback.
+4. **Route.** The proxy once a token (or an address of your own) is saved; otherwise your own OpenAI key; otherwise no request at all, and the camera flow still works: take or choose a photo, say what it is, then Search, Barcode or Quick add.
+5. **The card.** Name, weight (g), kcal, protein, carbs and fat, all editable; one tap on **Log it** logs (Undo/Redo as everywhere). Changing the weight scales kcal and P/C/F from the answer's per-gram rates; a number typed straight in overrides its rate, and later weight changes scale from it. Confidence sits quietly under the name; the breakdown is folded under "What's in it" and left out when it only repeats the meal. The photo thumbnail is shown from memory and dropped when the card closes. Barcode and search results use the same card (per serving or per 100 g).
+6. **[`docs/proxy-example.js`](docs/proxy-example.js)** is a small Cloudflare Worker for the same contract if you ever want a hosted proxy: the provider key is an encrypted Worker secret, CORS allows only your Pages origin, an optional token, JSON only, image type and size checks, 10 requests a minute per IP and an optional daily cap.
 
-With neither, or when the estimator fails (offline, CORS, timeout, 4xx/5xx, unreadable answer, no food), nothing breaks: take or choose a photo, say what it is, and log it from Search (the words carry over), Barcode or Quick add, with plain, friendly copy. Proxy URL, token and key live under their own `localStorage` keys (`chad.aiProxyUrl`, `chad.aiProxyToken`, `rec-calories-ai-key`) and are never in the journal or a backup.
+Proxy URL, token and key live under their own `localStorage` keys (`chad.aiProxyUrl`, `chad.aiProxyToken`, `rec-calories-ai-key`) and are never in the journal or a backup.
+
+On the PC that runs the proxy, its name resolves to a tailnet address, which Edge and Chrome there treat as the local network: they ask before a public page may reach it, and a headless test browser simply blocks it. A phone on mobile data reaches the proxy through its public address, and so does the live check.
 
 ## What v9 changed
 
 - **Less on screen.** Visible buttons, links and inputs on Today at 393x852 with iPhone safe areas (`node scripts/v9-button-count.cjs`, same synthetic data for both): a mid-evening day with two meals logged goes from **32 → 18** at first paint and **50 → 21** over the full scroll; an empty day from **26 → 17** and **44 → 19**. No more per-card info buttons, day arrows or always-on week strip, and plan meals are not listed twice.
 - **Reversible everything**, metric only and all four macros, the pluggable AI layer: see above.
-- **Look.** The v8 design language, theme tokens, rings, gold "done" states, motion and icon are unchanged.
+- **Look.** The v8 design language, theme tokens, rings, gold "done" states and motion are unchanged. The app icon is the new CHAD mascot (see [BRANDING.md](BRANDING.md)), and its head-and-shoulders mark sits in the Progress header.
 
 ## Food lookup reliability
 
@@ -84,22 +86,22 @@ Thirteen deterministic suites (`BROWSER_EXECUTABLE` and `PLAYWRIGHT_MODULE` over
 
 | Suite | Covers |
 |---|---|
-| `check` | storage, v4/v7/v8 journals, reversible goals, entry sheet, OFF normalisation and metric portions, metric-only text, no keys/tokens, exact shell manifest, opaque icons |
-| `scan-check` | AI client: routes, URL rules, setup links, the proxy contract both ways, token header, gentle typed failures, busy retry, health, own-key contract |
+| `check` | storage, v4/v7/v8 journals, reversible goals, entry sheet, OFF normalisation and metric portions, metric-only text, no keys/tokens/setup links, the proxy address only in `scan9.js`, exact shell manifest, opaque icons, a plain-vector header mark |
+| `scan-check` | AI client: routes (no token, nothing sent), URL rules, setup links, the contract both ways, grams, token header, typed gentle failures incl. 502, timeout vs cancel, busy retry, health and token check, own-key contract |
 | `quest-check` | scoring, phases, deloads, v9 scoring equal to shipped v8 on random journals, plan macros unchanged |
 | `food-check` | the OFF retry chain, cache, offline, cancellation, barcode retries, metric portions (stubbed network) |
 | `browser-check` | Snap + Say without AI, barcode, search, entry sheet, recents, own-key AI flows, offline |
 | `regression-check` | every tab: 17 = S, rows, training and PRs, charts, badges, phases, settings, offline shell |
 | `v9-browser-check` | fewer controls, one tap per action, week strip, arrow keys, real touch swipes, Day 48/49, rows opening in place, Undo/Redo, recovery |
 | `v9-undo-check` | 28 Undo paths with exact journal, XP, streak and score; accidental double taps; no XP farming; celebrations once |
-| `v9-ai-check` | a mock proxy on another origin: estimates, every failure's fallback, timeout, setup link, disconnect, own key, backups without AI settings; the Worker example under Node |
+| `v9-ai-check` | a mock proxy on another origin and the built-in address (answered in the browser): setup links, Settings status/Test/paste/Disconnect, the analysing card and Cancel, 1024 px uploads, the editable card with weight scaling and overrides, every failure's words and fix, timeout, backups without AI settings, a 375x667 card; the Worker example under Node |
 | `v9-design-check` | 393x852 and 375x667, DPR 3, light/dark, safe areas: 44 px targets, nothing spills, no overflow, dock pixels |
 | `v9-motion-check` | animations on: haptics, count-up, the next meal rising into place, sheet drag, day swipe, confetti, preferences |
 | `sw-update-check` | real upgrade from the shipped v8 worker (from Git), offline, and the next-release reload path |
 | `v9-button-count` | Today controls in shipped v8 against v9 (first paint and full scroll) |
 
-`node scripts/off-live-check.cjs` is an opt-in live diagnostic of the food endpoints. `node scripts/v9-screenshots.cjs` renders a disposable copy with synthetic data into the sibling `rec-calories-shots` folder (`--review` for every screen into the ignored `.qa/v9-review`). `node scripts/make-icons.cjs` redraws the app icon.
+`node scripts/off-live-check.cjs` is an opt-in live diagnostic of the food endpoints. `node scripts/v9-ai-live-check.cjs` is the opt-in live check of Snap + Say against the real CHAD proxy: it reads this machine's token from `%USERPROFILE%\.chad-proxy\token` into memory only (never printed, logged or saved; output is scrubbed), serves the working tree under the Pages origin inside the browser so CORS is real, and makes one text and one photo estimate at 393x852 @3x, one text estimate at 375x667, and two rejected calls with a made-up token (`CHAD_LIVE_PHOTO=<file>` picks the photo). `node scripts/v9-screenshots.cjs` renders a disposable copy with synthetic data into the sibling `rec-calories-shots` folder (`--review` for every screen into the ignored `.qa/v9-review`).
 
-Fixtures exist only in disposable browser storage; screenshots and test storage are outside the repository. No real AI request, user profile, personal journal or credential is used. Emulation is Chromium with an iPhone user agent, not WebKit: a physical iPhone, the installed-PWA update flow, real cameras, iOS haptics, the software keyboard, a deployed proxy and live AI estimates need device checks.
+Fixtures exist only in disposable browser storage; screenshots and test storage are outside the repository. The thirteen suites make no real AI request and use no user profile, personal journal or credential. Emulation is Chromium with an iPhone user agent, not WebKit: a physical iPhone, the installed-PWA update flow, real cameras, iOS haptics and the software keyboard need device checks.
 
 [V6-UX.md](V6-UX.md) and [V7-UX.md](V7-UX.md) are the earlier interaction handoffs. Stable hooks: `.meal-pick[data-slot][data-tier]`, `#next-up`, `[data-meal-row]`, `[data-meal-toggle]`, `.water-row`, `.water-minus`, `[data-water]`, `.quest-chip[data-quest]`, `.training-level[data-day]`, `.training-row[data-day]`, `.exercise-toggle[data-exercise]`, `#week-toggle`, `.entry-open`, and the sheet ids.

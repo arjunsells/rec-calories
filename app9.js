@@ -119,7 +119,7 @@
         return patchDay(out, e.day, { picks: { ...s.questsV5?.[e.day]?.picks, [e.planSlot]: tier } }, was);
       } });
   }
-  let scanner = null, draft = [], draftSource = 'photo', scannerSession = 0;
+  let scanner = null, scannerSession = 0;
 
   function render() {
     const focused = document.activeElement, view = focused?.closest?.('.view')?.id; let restore = [];
@@ -271,76 +271,173 @@
     change({ label: 'Settings saved', kind: 'save', forward: s => assign(s, fields), backward: s => assign(s, before), after: fillGoals });
   };
 
-  /* ---- review + log a found or estimated food ---- */
-  function openResult(items, source, info = {}) {
-    const ai = source === 'photo' || source === 'text';
-    draft = items; draftSource = source;
-    $('confirm-title').textContent = ai ? 'Your meal, decoded.' : 'Review and log';
-    $('scan-items').replaceChildren(...draft.map(item => node('h3', '', item.name)));
-    const parts = (info.parts || []).map(p => p.name + (p.portion ? ' (' + p.portion + ')' : '')).join(' · ');
-    $('scan-parts').textContent = parts; $('scan-parts').hidden = !parts;
-    $('confidence').textContent = ai ? ['AI estimate', typeof info.confidence === 'number' ? Math.round(info.confidence * 100) + '% sure' : '', 'check the portions'].filter(Boolean).join(' · ') : `Open Food Facts · ${items[0].portion} · check the label`;
-    $('portion-slider').value = '1'; $('serving-control').hidden = items[0].basis !== '100g'; $('serving-grams').value = '100';
+  /* ---- review + log: one editable card for photo, words, barcode and search results ---- */
+  // Name, weight, kcal and P/C/F are all editable; one tap on Log it logs. The weight scales energy and macros from
+  // per-gram rates taken from the original answer (no rounding drift). A number typed straight in overrides its rate, so
+  // a later weight change scales from what you typed. The photo thumbnail is only ever in memory: never stored.
+  const NUMS = ['kcal', 'protein', 'carbs', 'fat'], numField = k => $('result-' + k);
+  const roundNum = (k, v) => k === 'kcal' ? Math.round(v) : Math.round(v * 10) / 10;
+  const numText = (k, v) => String(roundNum(k, v));
+  let card = null;
+  function openResult(item, source, info = {}) {
+    const ai = source === 'photo' || source === 'text', grams = item.grams || (item.basis === '100g' ? 100 : item.servingGrams) || null;
+    card = { item, source, ai, rate: grams ? Object.fromEntries(NUMS.map(k => [k, (item[k] || 0) / grams])) : null };
+    $('confirm-title').textContent = ai ? 'Your meal, decoded.' : 'Check and log';
+    $('result-name').value = item.name || '';
+    $('result-grams').value = grams ? String(Math.round(grams * 10) / 10) : '';
+    NUMS.forEach(k => { numField(k).value = numText(k, item[k] || 0); });
+    const sure = typeof info.confidence === 'number' ? Math.round(info.confidence * 100) : null, meta = $('confidence');
+    meta.textContent = ai ? ['AI estimate', sure === null ? 'check the portions' : `${sure}% sure`].join(' · ') : ['Open Food Facts', item.brand, 'check the label'].filter(Boolean).join(' · ');
+    meta.classList.toggle('is-low', ai && sure !== null && sure < 45);
+    if (meta.classList.contains('is-low')) meta.textContent += ' · worth a check';
+    $('result-hint').hidden = !grams;
+    const shot = $('result-photo'); shot.hidden = !info.photo; if (info.photo) shot.src = info.photo; else shot.removeAttribute('src');
+    // The breakdown stays folded, and is left out when it only repeats the meal.
+    const parts = (info.parts || []).filter(p => p && p.name), noisy = !parts.length || (parts.length === 1 && (parts[0].kcal === item.kcal || parts[0].name.toLowerCase() === String(item.name).toLowerCase()));
+    $('result-parts').hidden = noisy; $('result-parts').open = false;
+    $('result-parts-title').textContent = noisy ? '' : `What’s in it · ${parts.length} item${parts.length === 1 ? '' : 's'}`;
+    $('result-parts-list').replaceChildren(...(noisy ? [] : parts.slice(0, 12)).map(p => { const li = node('li'); li.append(node('span', '', p.name), node('small', '', [p.portion, `${whole(p.kcal)} kcal`].filter(Boolean).join(' · '))); return li; }));
     $('scan-meal').value = window.CHADUX.foodMeal() || defaultMeal();
-    updateResult(); window.CHADUX.closeSheets(); window.CHADUX.showSheet($('confirm-sheet'));
+    window.CHADUX.closeSheets(); window.CHADUX.showSheet($('confirm-sheet')); fitName();
   }
-  function result() { const m = Number($('portion-slider').value) * (draft[0]?.basis === '100g' ? Number($('serving-grams').value) / 100 : 1); return draft.map(i => ({ ...i, kcal: Math.round(i.kcal * m), protein: Math.round(i.protein * m * 10) / 10, carbs: Math.round(i.carbs * m * 10) / 10, fat: Math.round(i.fat * m * 10) / 10, portion: `${fmt(m)}× ${i.portion}` })); }
-  function updateResult() {
-    const t = totals(result());
-    $('portion-label').textContent = `${$('portion-slider').value}×`;
-    $('scan-total').innerHTML = `${whole(t.kcal)}<small>kcal</small>`;
-    const tiles = CHADUX.macroTiles([t.kcal, t.protein, t.carbs, t.fat]); tiles.firstChild.remove(); tiles.classList.add('ch-macros--3');
-    $('result-macros').replaceChildren(tiles);
+  // The name is a title: as tall as its text (up to three lines, smaller type when long), and Return means done.
+  function fitName() {
+    const name = $('result-name'); name.classList.toggle('is-long', name.value.length > 30);
+    name.style.height = 'auto'; name.style.height = Math.min(name.scrollHeight + 8, parseFloat(getComputedStyle(name).maxHeight) || 94) + 'px';   // + the 8 px bottom border
   }
-  $('portion-slider').oninput = updateResult; $('serving-grams').oninput = updateResult; $('cancel-scan').onclick = () => window.CHADUX.closeSheet($('confirm-sheet'));
-  $('copy-result').onclick = async () => { const t = totals(result()); try { await navigator.clipboard.writeText(`${draft.map(i => i.name).join(' + ')} · ${fmt(t.kcal)} kcal · P ${fmt(t.protein)} g C ${fmt(t.carbs)} g F ${fmt(t.fat)} g`); message('Summary copied.'); } catch { message('Clipboard unavailable. Try from HTTPS.', true); } };
+  $('result-name').addEventListener('input', fitName);
+  $('result-name').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('result-name').blur(); } });
+  $('result-grams').addEventListener('input', () => {
+    if (!card) return;
+    const g = Number($('result-grams').value);
+    if (!$('result-grams').value || !valid(g, 1, 20000)) return;             // half typed or empty: the numbers wait
+    if (!card.rate) { card.rate = Object.fromEntries(NUMS.map(k => [k, (Number(numField(k).value) || 0) / g])); $('result-hint').hidden = false; return; }   // first weight for an answer without one
+    NUMS.forEach(k => { numField(k).value = numText(k, card.rate[k] * g); });
+  });
+  NUMS.forEach(k => numField(k).addEventListener('input', () => {
+    const g = Number($('result-grams').value), v = Number(numField(k).value);
+    if (card?.rate && valid(g, 1, 20000) && numField(k).value !== '' && valid(v, 0, 50000)) card.rate[k] = v / g;   // typed: overrides, and scales from here
+  }));
+  // What would be logged right now, or a field to fix.
+  function cardEntry() {
+    const n = Object.fromEntries(NUMS.map(k => [k, numField(k).value === '' && k !== 'kcal' ? 0 : Number(numField(k).value)]));
+    if (numField('kcal').value === '' || !valid(n.kcal, 1, 50000)) return { fix: 'kcal', text: 'Energy needs a number from 1 to 50,000 kcal.' };
+    for (const k of ['protein', 'carbs', 'fat']) if (!valid(n[k], 0, 5000)) return { fix: k, text: `${k[0].toUpperCase() + k.slice(1)} needs a number from 0 to 5,000 g.` };
+    const raw = $('result-grams').value, g = Number(raw);
+    if (raw !== '' && !valid(g, 1, 20000)) return { fix: 'grams', text: 'Weight needs a number from 1 to 20,000 g.' };
+    const name = $('result-name').value.replace(/\s+/g, ' ').trim().slice(0, 80) || (card.ai ? 'AI estimate' : 'Food');
+    return { name, kcal: roundNum('kcal', n.kcal), protein: roundNum('protein', n.protein), carbs: roundNum('carbs', n.carbs), fat: roundNum('fat', n.fat), portion: raw !== '' ? `${fmt(g)} g` : card.item.portion || (card.ai ? 'AI estimate' : '') };
+  }
+  $('cancel-scan').onclick = () => window.CHADUX.closeSheet($('confirm-sheet'));
+  // The photo leaves with the sheet (the close event is queued, so a sheet opened again in the meantime keeps its own).
+  $('confirm-sheet').addEventListener('close', () => { if (!$('confirm-sheet').open) $('result-photo').removeAttribute('src'); });
+  $('copy-result').onclick = async () => {
+    const e = card && cardEntry(); if (!e || e.fix) return message(e?.text || 'Nothing to copy.', true);
+    try { await navigator.clipboard.writeText(`${e.name}${e.portion ? ' · ' + e.portion : ''} · ${fmt(e.kcal)} kcal · P ${fmt(e.protein)} g C ${fmt(e.carbs)} g F ${fmt(e.fat)} g`); message('Summary copied.'); }
+    catch { message('Clipboard unavailable. Try from HTTPS.', true); }
+  };
   $('scan-confirm-form').onsubmit = e => {
-    e.preventDefault(); if (!draft.length) return;
-    const items = result();
-    if (!items.every(i => valid(i.kcal, 1, 50000) && ['protein', 'carbs', 'fat'].every(k => valid(i[k], 0, 5000)))) return message('Check serving size and nutrition limits.', true);
-    const day = selectedKey(), entries = items.map((item, i) => ({ ...item, id: newId(i), day, meal: $('scan-meal').value, source: draftSource }));
-    if (!logEntries(entries, `${entries.length === 1 ? entries[0].name : entries.length + ' items'} · ${whole(totals(entries).kcal)} kcal`)) return;
-    window.CHADUX.closeSheets(); showView('today'); popXP();
+    e.preventDefault(); if (!card) return;
+    const values = cardEntry();
+    if (values.fix) { message(values.text, true); numField(values.fix).focus(); return; }
+    const entry = { ...values, id: newId(), day: selectedKey(), meal: $('scan-meal').value, source: card.source };
+    M()?.mark(`#entries [data-entry="${entry.id}"]`, 'just-on');
+    if (!logEntries([entry], `${entry.name} · ${whole(entry.kcal)} kcal`)) return;
+    card = null; window.CHADUX.closeSheets(); showView('today'); popXP();
   };
 
   /* ---- Snap + Say: your proxy (or your own key) estimates; with neither, say what it is and log it another way ---- */
-  let photo = null, scanBusy = false;
+  let photo = null, scan = null, aiRejected = false;           // scan: the estimate in flight, with its own cancel
   const aiRoute = () => { let store = null; try { store = localStorage; } catch { /* storage blocked: no AI route */ } return RECScan.settings(store); };
-  function ways(title, text) { $('snap-ways-title').textContent = title; $('snap-ways-text').textContent = text; $('snap-ways').hidden = false; }
+  // Every way an estimate can go wrong, in plain words, with the one fix that helps (if any). The three ways to log it
+  // anyway (search, barcode, quick add) are always there underneath.
+  const TROUBLE = {
+    network: ['AI is offline', 'Describe it or use Quick add / barcode.', 'retry'],
+    timeout: ['That took too long', 'Try again, or log it another way.', 'retry'],
+    busy: ['The AI is busy', 'Try again in a moment, or log it another way.', 'retry'],
+    failed: ['The AI couldn’t finish that one', 'Try again, or Quick add it.', 'retry'],
+    http: ['The AI isn’t answering', 'Try again soon, or log it another way.', 'retry'],
+    parse: ['That answer came back garbled', 'Try again, or log it another way.', 'retry'],
+    limit: ['The AI needs a breather', 'Lots of scans lately. Try again in a few minutes, or log it another way.'],
+    large: ['That photo is too big', 'Try another photo, or say what it is.'],
+    empty: ['No food spotted', 'Try another photo, or say what it is.'],
+    auth: ['AI needs setting up again', 'This device’s access wasn’t accepted. Paste a fresh setup link, or log it another way.', 'setup'],
+    key: ['OpenAI didn’t accept your key', 'Check it in Settings › Advanced, or log it another way.', 'setup']
+  };
+  // The Estimate button above doubles as "Try again" when trying again can help, and steps aside when only a fresh
+  // setup link can (the card's own button goes to it).
+  function ways(title, text, fix) {
+    $('snap-ways-title').textContent = title; $('snap-ways-text').textContent = text;
+    $('snap-setup').hidden = fix !== 'setup';
+    $('describe-button').textContent = fix === 'retry' ? 'Try again' : 'Estimate';
+    if (aiRoute().mode !== 'none') $('describe-button').hidden = fix === 'setup';
+    $('snap-ways').hidden = false;
+  }
   function snapState() {
     const on = aiRoute().mode !== 'none';
-    $('describe-button').hidden = !on;
-    $('snap-hint').textContent = on ? 'Estimates can miss portions. Check before logging.' : 'Photo estimates are off. Settings › Advanced turns them on.';
+    analysing(null);
+    $('describe-button').hidden = !on; $('describe-button').textContent = 'Estimate';
+    $('snap-hint').textContent = on ? 'Estimates can miss portions. Check before logging.' : 'AI estimates aren’t set up on this device. Settings › Advanced connects them.';
     if (on) $('snap-ways').hidden = true; else ways('Find it', 'Say what it is, then pick how to log it.');
   }
   function clearPhoto() { photo = null; $('photo-preview').hidden = true; $('photo-image').removeAttribute('src'); $('camera-label').textContent = 'Take or choose a photo'; }
+  // The analysing card: the photo (or a sparkle for words) under a slow scan line, a bar that eases towards done over
+  // about ten seconds, honest words as time passes, and Cancel. null puts the photo and words back on screen.
+  function analysing(shot, words) {
+    const on = shot !== null, panel = $('snap-analysing');
+    $('camera-panel').classList.toggle('is-analysing', on); panel.hidden = !on;
+    if (!on) return;
+    $('analysing-image').hidden = !shot; if (shot) $('analysing-image').src = shot; else $('analysing-image').removeAttribute('src');
+    panel.classList.toggle('has-photo', !!shot);
+    $('analysing-title').textContent = 'Analysing…'; $('analysing-text').textContent = shot || !words ? 'About 10 s' : `“${words.length > 60 ? words.slice(0, 58) + '…' : words}” · about 10 s`;
+    panel.style.setProperty('--p', '.04');
+  }
   async function estimate() {
-    if (scanBusy) return;
+    if (scan) return;
     const hint = $('food-description').value.trim(), route = aiRoute();
     if (!photo && !hint) { $('scan-status').textContent = RECScan.MESSAGES.input; $('food-description').focus(); return; }
     if (route.mode === 'none') return snapState();
-    const trigger = $('describe-button'), source = photo ? 'photo' : 'text';
-    scanBusy = true; $('snap-ways').hidden = true; $('scan-status').textContent = 'Decoding your meal…'; $('camera-button').disabled = trigger.disabled = true; trigger.classList.add('is-loading');
-    const slow = setTimeout(() => { if (scanBusy) $('scan-status').textContent = 'Still working on it. Estimates can take a few seconds…'; }, 9000);
+    const source = photo ? 'photo' : 'text', shot = photo?.thumbnail || '', run = scan = { controller: new AbortController(), timers: [] };
+    const say = (title, text) => { if (scan === run) { $('analysing-title').textContent = title; $('analysing-text').textContent = text; } };
+    $('snap-ways').hidden = true; $('scan-status').textContent = ''; $('food-description').blur(); $('describe-button').textContent = 'Estimate';
+    analysing(shot, hint); M()?.haptic('tap');
+    // The bar eases towards done: about 70% at ten seconds, never quite full until the answer is in.
+    const started = Date.now(), tick = () => { if (scan === run) $('snap-analysing').style.setProperty('--p', (0.04 + 0.9 * (1 - Math.exp((started - Date.now()) / 7000))).toFixed(3)); };
+    run.ticker = setInterval(tick, 400); tick();
+    run.timers.push(setTimeout(() => say('Analysing…', 'Almost there'), 12000), setTimeout(() => say('Still analysing…', 'Bigger meals take a little longer'), 25000), setTimeout(() => say('Still analysing…', 'Taking longer than usual. Cancel any time.'), 60000));
     try {
-      const r = await RECScan.estimate({ image: photo?.image || null, hint }, { proxy: route.proxy, token: route.token, key: route.key });
-      $('scan-status').textContent = '';
-      clearPhoto();
+      const r = await RECScan.estimate({ image: photo?.image || null, hint }, { ...route, signal: run.controller.signal, onStatus: s => s === 'busy' ? say('The AI is busy', 'Trying again in a moment…') : say('Analysing…', 'Second go') });
+      if (aiRejected) { aiRejected = false; aiStatus(); }
+      clearPhoto(); $('food-description').value = '';                               // photo and words leave with their estimate
+      const review = () => openResult(r.meal, source, { parts: r.parts, confidence: r.confidence, photo: shot });
       // Closed the sheet while waiting? The estimate waits in a toast instead of popping up unasked.
-      if ($('scan-sheet').open) openResult(r.items, source, r);
-      else CHADUX.toast('Your estimate is ready', () => openResult(r.items, source, r), { action: 'Review', icon: 'sparkles', life: 12000 });
+      if ($('scan-sheet').open) { M()?.haptic('success'); review(); }
+      else CHADUX.toast('Your estimate is ready', review, { action: 'Review', icon: 'sparkles', life: 12000 });
     } catch (error) {
+      if (error.kind === 'cancelled') return;                                         // back to the photo and the words, nothing lost
+      if (error.kind === 'auth') { aiRejected = true; aiStatus(); }
       // Never a dead end: whatever went wrong, the food can still be logged from here.
-      $('scan-status').textContent = '';
-      ways('Let’s find it another way', `${error.message} Say what it is above, then pick how to log it.`);
-      M()?.haptic('warn');
-    } finally { clearTimeout(slow); scanBusy = false; $('camera-button').disabled = trigger.disabled = false; trigger.classList.remove('is-loading'); }
+      const [title, text, fix] = TROUBLE[error.kind] || [error.message, 'Say what it is above, then pick how to log it.'];
+      if ($('scan-sheet').open) { ways(title, text, fix); M()?.haptic('warn'); }
+      else message(`${title}. ${text}`, true);
+    } finally {
+      run.timers.forEach(clearTimeout); clearInterval(run.ticker);
+      if (scan === run) { scan = null; analysing(null); }
+    }
+  }
+  // Settings › Advanced, opened at the setup link field (or the own-key field), for a fresh link.
+  function goSetup() {
+    const key = aiRoute().mode === 'key';
+    showView('settings'); $('advanced-settings').open = true; if (key) $('ai-more').open = true;
+    $('advanced-settings').scrollIntoView({ block: 'start' }); $(key ? 'ai-key' : 'ai-link').focus({ preventScroll: true });
   }
   $('camera-button').onclick = () => $('photo-input').click();
+  $('analysing-cancel').onclick = () => { if (!scan) return; scan.controller.abort(); M()?.haptic('off'); };
+  $('snap-setup').onclick = goSetup;
   $('photo-clear').onclick = () => { clearPhoto(); if (aiRoute().mode === 'none') snapState(); };
   $('photo-input').onchange = async () => {
     const file = $('photo-input').files[0]; $('photo-input').value = '';
-    if (!file) return;
+    if (!file || scan) return;
     try { photo = await RECScan.compress(file); }
     catch (error) { clearPhoto(); ways('That photo didn’t open', `${error.message}`); return; }
     $('photo-image').src = photo.thumbnail; $('photo-preview').hidden = false; $('camera-label').textContent = 'Use another photo';
@@ -350,75 +447,115 @@
   $('describe-button').onclick = () => estimate();
   document.querySelectorAll('[data-snap]').forEach(b => b.onclick = () => {
     const kind = b.dataset.snap, words = $('food-description').value.trim();
+    $('food-description').value = '';                                               // the words go along; they never linger for the next meal
     window.CHADUX.openFood(kind, window.CHADUX.foodMeal());
     if (kind === 'search' && words.length >= 2) { $('food-search').value = words.slice(0, 100); runSearch(words); }
     if (kind === 'manual' && words) $('food-name').value = words.slice(0, 80);
   });
 
-  /* ---- Settings › Advanced: the AI proxy (URL, optional token) and the hidden own-key fallback. Device only: never in
-     the journal, never in a backup, and the token is never shown again once saved. ---- */
+  /* ---- Settings › Advanced: AI status (Test, Disconnect), the setup link, and other ways to connect (a proxy of your
+     own, a token, the hidden own-key fallback). Device only: never in the journal, never in a backup, and a token is
+     never shown again once saved. ---- */
   const local = {
     get: k => { try { return localStorage.getItem(k) || ''; } catch { return ''; } },
     set: (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); return true; } catch { return false; } }
   };
-  let healthRun = 0;
-  function aiStatus(state) {
-    const r = aiRoute();
-    $('ai-mode').textContent = r.mode === 'key' ? 'Own key' : r.mode === 'none' ? 'Off' : state === 'ok' ? 'Connected' : state === 'bad' ? 'Not reachable' : state === 'checking' ? 'Checking…' : 'Proxy';
-    $('ai-dot').className = 'ch-dot' + (r.mode === 'proxy' && state ? ' is-' + state : r.mode !== 'none' ? ' is-set' : '');
-    $('ai-test').hidden = $('ai-disconnect').hidden = r.mode !== 'proxy';
-    if (document.activeElement !== $('ai-proxy')) $('ai-proxy').value = r.proxy;
+  let checkRun = 0, aiCheck = '';                                // '', 'checking', 'ok', 'offline', 'rejected'
+  function aiStatus(next) {
+    if (next !== undefined) aiCheck = next;
+    const r = aiRoute(), where = r.custom ? new URL(r.proxy).host : 'your CHAD proxy';
+    const state = r.mode !== 'proxy' ? r.mode : aiCheck === 'checking' ? 'checking' : aiRejected ? 'rejected' : aiCheck || 'set';
+    const [title, text, dot, short] = {
+      none: ['Not set up', 'Paste the setup link from your CHAD proxy to turn on photo estimates.', '', 'Not set up'],
+      key: ['Own OpenAI key', 'Photo estimates go straight to OpenAI with your key.', 'set', 'Own key'],
+      set: ['Set up', `Photo estimates go through ${where}.`, 'set', 'On'],
+      checking: ['Checking…', `Looking for ${where}.`, 'checking', 'Checking…'],
+      ok: ['Connected', `Photo estimates go through ${where}.`, 'ok', 'Connected'],
+      offline: ['Offline', r.custom ? 'Couldn’t reach your proxy. Check the address, and that it allows this site.' : 'Couldn’t reach the CHAD proxy. Is the PC on? Quick add and barcode still work.', 'bad', 'Offline'],
+      rejected: ['Set up again', 'The proxy didn’t accept this device’s token. Paste a fresh setup link.', 'bad', 'Set up again']
+    }[state];
+    $('ai-status-title').textContent = title; $('ai-status-text').textContent = text; $('ai-status').dataset.state = dot || 'off';
+    $('ai-mode').textContent = short; $('ai-dot').className = 'ch-dot' + (dot ? ' is-' + dot : '');
+    $('ai-test').hidden = r.mode !== 'proxy'; $('ai-disconnect').hidden = r.mode === 'none';
+    if (document.activeElement !== $('ai-proxy')) $('ai-proxy').value = r.saved;
     if (document.activeElement !== $('ai-token')) $('ai-token').value = '';              // never shown again, and never wiped while being typed
-    $('ai-token').placeholder = r.token ? 'Saved on this device' : 'Optional';
+    $('ai-token').placeholder = r.token ? 'Saved on this device' : 'Not set';
     if (document.activeElement !== $('ai-key')) $('ai-key').value = r.key;
   }
+  // Reachable (GET /health), and is the token accepted (an empty POST the proxy turns away before any AI runs)?
   async function checkHealth() {
-    const r = aiRoute(), run = ++healthRun;
-    if (r.mode !== 'proxy') return aiStatus();
+    const r = aiRoute(), run = ++checkRun;
+    if (r.mode !== 'proxy') { aiStatus(''); return ''; }
     aiStatus('checking');
-    const ok = await RECScan.health(r.proxy);
-    if (run === healthRun) aiStatus(ok ? 'ok' : 'bad');
-    return ok;
+    const result = await RECScan.check(r.proxy, r.token);
+    if (run !== checkRun) return result;
+    if (result === 'rejected') aiRejected = true; else if (result === 'ok') aiRejected = false;
+    aiStatus(result);
+    return result;
   }
-  // Several device keys as one reversible change.
+  // Several device keys as one reversible change. Resolves with the check that follows it.
   function deviceChange(label, next) {
     const before = Object.fromEntries(Object.keys(next).map(k => [k, local.get(k)]));
-    const apply = values => Object.entries(values).every(([k, v]) => local.set(k, v));
-    if (!apply(next)) { apply(before); message('Could not save on this device.', true); aiStatus(); return false; }
-    $('ai-test-status').textContent = ''; M()?.haptic('on'); checkHealth();
+    const apply = values => { aiRejected = false; return Object.entries(values).every(([k, v]) => local.set(k, v)); };
+    if (!apply(next)) { apply(before); message('Could not save on this device.', true); aiStatus(); return null; }
+    M()?.haptic('on');
+    const checked = checkHealth();
     const announce = () => CHADUX.toast(label, undo, { kind: 'save' });
     const undo = () => { if (!apply(before)) return; checkHealth(); M()?.haptic('off'); CHADUX.toast('Undone', redo, { kind: 'off', action: 'Redo' }); };
     const redo = () => { if (!apply(next)) return; checkHealth(); announce(); };
     announce();
-    return true;
+    return checked;
   }
+  // A setup link (…/#ai=<proxy URL>&k=<token>). One for the built-in CHAD proxy connects at once; one opened from
+  // outside the app that points somewhere else asks first, so a stranger's link can't send your photos elsewhere.
+  function connectLink(link, from) {
+    let url;
+    try { url = RECScan.checkProxy(link.url); } catch (error) { message(error.message, true); return null; }
+    const builtIn = RECScan.isDefault(url);
+    if (builtIn && !link.token) { message('That setup link has no access token. Copy the whole link.', true); return null; }
+    if (from === 'hash' && !builtIn) { offerSetup(url, link.token); return null; }
+    const checked = deviceChange('AI connected', { [RECScan.PROXY_KEY]: url, [RECScan.TOKEN_KEY]: link.token });
+    checked?.then(result => { if (result === 'rejected') message('The proxy didn’t take that link’s token. Ask for a fresh setup link.', true); });
+    return checked;
+  }
+  // Pasted or typed: the field is emptied straight away, because the link carries the token.
+  function takePasted() {
+    const raw = $('ai-link').value.trim(); if (!raw) return;
+    $('ai-link').value = '';
+    const link = RECScan.setupLink(raw);
+    if (!link) { message(RECScan.MESSAGES.link, true); return; }
+    if (connectLink(link, 'paste')) $('ai-link').blur();
+  }
+  $('ai-link').addEventListener('input', e => { if (/^insertFrom|^insertReplacementText/.test(e.inputType || '')) takePasted(); });
+  $('ai-link').addEventListener('change', takePasted);
+  $('ai-link').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); takePasted(); } });
   $('ai-proxy').onchange = () => {
-    const raw = $('ai-proxy').value.trim(), link = RECScan.setupLink(raw);
+    const raw = $('ai-proxy').value.trim(), link = /(^|[#?&])(ai|k)=/.test(raw) ? RECScan.setupLink(raw) : null;
+    if (link) { $('ai-proxy').value = ''; connectLink(link, 'paste'); return; }
     let url = '';
-    try { url = link ? RECScan.checkProxy(link.url) : raw ? RECScan.checkProxy(raw) : ''; } catch (error) { message(error.message, true); aiStatus(); return; }
-    if (link) return deviceChange('AI scans connected', { [RECScan.PROXY_KEY]: url, [RECScan.TOKEN_KEY]: link.token });
+    try { url = raw ? RECScan.checkProxy(raw) : ''; } catch (error) { message(error.message, true); aiStatus(); return; }
     if (url === local.get(RECScan.PROXY_KEY)) return aiStatus();
     deviceChange(url ? 'AI proxy saved' : 'AI proxy removed', url ? { [RECScan.PROXY_KEY]: url } : { [RECScan.PROXY_KEY]: '', [RECScan.TOKEN_KEY]: '' });
   };
   $('ai-token').onchange = () => { const token = $('ai-token').value.trim(); $('ai-token').value = ''; if (token && token !== local.get(RECScan.TOKEN_KEY)) deviceChange('Access token saved', { [RECScan.TOKEN_KEY]: token }); };
   $('ai-key').onchange = () => { const key = $('ai-key').value.trim(); if (key !== local.get(RECScan.KEY_KEY)) deviceChange(key ? 'Key saved on this device' : 'Key removed', { [RECScan.KEY_KEY]: key }); };
-  $('ai-disconnect').onclick = () => deviceChange('AI proxy disconnected', { [RECScan.PROXY_KEY]: '', [RECScan.TOKEN_KEY]: '' });
+  $('ai-disconnect').onclick = () => {
+    const mode = aiRoute().mode;
+    if (mode === 'proxy') deviceChange('AI disconnected', { [RECScan.PROXY_KEY]: '', [RECScan.TOKEN_KEY]: '' });
+    else if (mode === 'key') deviceChange('Key removed', { [RECScan.KEY_KEY]: '' });
+  };
   $('ai-test').onclick = async () => {
-    $('ai-test').disabled = true; $('ai-test-status').textContent = 'Checking your proxy…';
-    const ok = await checkHealth();
-    $('ai-test-status').textContent = ok ? 'Connected. Photo estimates go through your proxy.' : 'Couldn’t reach it. Check the address, and that the proxy is running and allows this site.';
-    $('ai-test').disabled = false;
+    $('ai-test').disabled = true;
+    const result = await checkHealth();
+    $('ai-test').disabled = false; M()?.haptic(result === 'ok' ? 'success' : 'warn');
   };
   $('advanced-settings').addEventListener('toggle', () => { if ($('advanced-settings').open) checkHealth(); });
-  // A one-time setup link (…/#ai=<proxy URL>&k=<token>) is read once, wiped from the address bar, and only used after a tap.
-  function offerSetup(link) {
-    let url;
-    try { url = RECScan.checkProxy(link.url); } catch (error) { message(error.message, true); return; }
+  function offerSetup(url, token) {
     const connect = node('button', 'ch-btn ch-btn--block ch-btn--gold', 'Connect'), later = node('button', 'ch-link ch-link--center', 'Not now');
     connect.type = later.type = 'button';
-    connect.onclick = () => { window.CHADUX.closeSheets(); deviceChange('AI scans connected', { [RECScan.PROXY_KEY]: url, [RECScan.TOKEN_KEY]: link.token }); };
+    connect.onclick = () => { window.CHADUX.closeSheets(); deviceChange('AI connected', { [RECScan.PROXY_KEY]: url, [RECScan.TOKEN_KEY]: token }); };
     later.onclick = () => window.CHADUX.closeSheets();
-    window.CHADUX.detail('Connect photo estimates?', [node('p', 'ch-setup', `Snap + Say will send your photos and notes to ${new URL(url).host}${link.token ? ' with this device’s access token' : ''}. You can disconnect in Settings › Advanced.`), connect, later]);
+    window.CHADUX.detail('Connect photo estimates?', [node('p', 'ch-setup', `Snap + Say will send your photos and notes to ${new URL(url).host}${token ? ' with this device’s access token' : ''}. You can disconnect in Settings › Advanced.`), connect, later]);
   }
 
   /* ---- food finder: live search with debounce, cancel, saved results and an honest offline state ---- */
@@ -453,7 +590,7 @@
         const b = node('button', 'food-result'), kcal = node('b', '', whole(item.kcal)), sub = node('small'); b.type = 'button'; b.style.animationDelay = `${Math.min(i, 8) * 25}ms`; kcal.append(node('small', '', 'kcal'));
         const label = [item.brand, item.portion].filter(Boolean).join(' · '); sub.append(label ? label + ' · ' : '', CHADUX.pcf(item.protein, item.carbs, item.fat));
         b.append(node('strong', '', item.name), sub, kcal);
-        b.onclick = () => openResult([item], item.source); return b;
+        b.onclick = () => openResult(item, item.source); return b;
       }));
       $('scan-status').textContent = `${found.items.length} result${found.items.length === 1 ? '' : 's'}` + (found.from === 'cache' ? ' · saved on this device' : found.from === 'stale' ? ' · saved earlier, could not refresh' : '');
     } catch (e) {
@@ -466,7 +603,7 @@
   async function findBarcode(code) {
     if (barcodeBusy) return;
     barcodeBusy = true; foodLoading('Looking up the barcode…');
-    try { const item = await CHADFood.lookup(code); $('food-results').replaceChildren(); $('scan-status').textContent = ''; openResult([item], 'barcode'); }
+    try { const item = await CHADFood.lookup(code); $('food-results').replaceChildren(); $('scan-status').textContent = ''; openResult(item, 'barcode'); }
     catch (e) {
       M()?.haptic('warn');
       if (e.kind === 'offline') foodState('offline', 'You are offline', e.message, () => findBarcode(code));
@@ -501,13 +638,14 @@
     window.CHADUX.onFoodOpen = kind => {
       $('food-state').hidden = true;
       if (kind === 'search') { if ($('food-search').value.trim().length < 2) foodIdle(); } else { $('food-results').replaceChildren(); $('scan-status').textContent = ''; }
-      if (kind === 'camera') { clearPhoto(); snapState(); }
+      if (kind === 'camera' && !scan) { clearPhoto(); snapState(); }             // an estimate in flight keeps its card
     };
   }
   window.CHADUX?.setup({ stopScanner, render });
   read(); render(); fillGoals(); aiStatus(); if (storageReadable) save(state); $('meal').value = defaultMeal();
-  // A setup link may open the app, or arrive in a tab that is already open.
-  const takeLink = () => { const link = RECScan.setupLink(location.hash); if (!link) return; try { history.replaceState(null, '', location.pathname + location.search); } catch { /* the hash simply stays */ } offerSetup(link); };
+  // A setup link may open the app, or arrive in a tab that is already open. It is wiped from the address bar before
+  // anything else happens, then saved: a quiet "AI connected" toast, with Undo.
+  const takeLink = () => { const link = RECScan.setupLink(location.hash); if (!link) return; try { history.replaceState(null, '', location.pathname + location.search); } catch { /* the hash simply stays */ } connectLink(link, 'hash'); };
   takeLink(); addEventListener('hashchange', takeLink);
 
   /* ---- offline shell ---- */

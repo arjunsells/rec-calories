@@ -1,7 +1,9 @@
-// Snap + Say end to end against a mock local AI proxy on another origin (so CORS is real), plus the example Cloudflare
-// Worker run under Node with a stubbed provider. Synthetic token and key only: no real AI request, no credential.
+// Snap + Say end to end against a mock AI proxy on another origin (so CORS is real) and the built-in proxy address
+// answered inside the browser (so no test ever reaches the real one), plus the example Cloudflare Worker run under Node
+// with a stubbed provider. Synthetic tokens and key only: no real AI request, no credential.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), http = require('node:http'), { pathToFileURL } = require('node:url');
 const { serve, launch, watch, saved, IPHONE, NOON, root } = require('./harness.cjs');
+const scan = require('../scan9.js');
 const TOKEN = 'synthetic-token-qa', APP = 'http://127.0.0.1:8096', PROXY = 'http://127.0.0.1:8095';
 const MEAL = { name: 'Synthetic burrito bowl', kcal: 640, protein: 42, carbs: 70, fat: 18, items: [{ name: 'Rice', portion: '200 g', kcal: 260, protein: 5, carbs: 57, fat: 1 }, { name: 'Chicken', portion: '150 g', kcal: 380, protein: 37, carbs: 13, fat: 17 }], confidence: 0.7 };
 
@@ -42,25 +44,42 @@ async function workerChecks() {
   console.log('PASS docs/proxy-example.js under Node: CORS preflight for the allowed origin only, /health, origin + token + JSON checks, image type and size limits, the key from env only, the shared prompt, notes as data, text/hint aliases, 10/min per-IP limit, Rate Limiting binding, unconfigured key.');
 }
 
+// JPEG width and height from its frame header: the phone-side resize is checked on what the proxy receives.
+function jpegSize(dataURL) {
+  const b = Buffer.from(String(dataURL).split(',')[1] || '', 'base64');
+  for (let i = 2; i + 9 < b.length;) {
+    if (b[i] !== 0xFF) return null;
+    const marker = b[i + 1], length = b.readUInt16BE(i + 2);
+    if (marker >= 0xC0 && marker <= 0xCF && ![0xC4, 0xC8, 0xCC].includes(marker)) return { width: b.readUInt16BE(i + 7), height: b.readUInt16BE(i + 5) };
+    i += 2 + length;
+  }
+  return null;
+}
+
 (async () => {
   await workerChecks();
-  // The mock proxy: a different origin than the app, so the browser enforces CORS exactly as on a phone.
-  let mode = 'ok', proxyCalls = [], stalled = [], health = 0;
+  // The mock proxy: a different origin than the app, so the browser enforces CORS exactly as on a phone. Like the CHAD
+  // proxy it checks the token first, then answers an empty body with 400 (that is the Settings token check).
+  let mode = 'ok', proxyCalls = [], probes = [], stalled = [], health = 0, aborted = 0;
   const proxy = http.createServer((req, res) => {
     const cors = mode === 'nocors' ? {} : { 'Access-Control-Allow-Origin': req.headers.origin || '*', 'Access-Control-Allow-Headers': 'Content-Type, X-Chad-Token', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' };
     const send = (status, body) => { res.writeHead(status, { ...cors, 'Content-Type': 'application/json' }); res.end(typeof body === 'string' ? body : JSON.stringify(body)); };
     if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
     if (req.method === 'GET' && req.url === '/health') { health++; return send(200, { ok: true, busy: 0 }); }
     let raw = ''; req.on('data', c => raw += c); req.on('end', () => {
-      proxyCalls.push({ url: req.url, headers: req.headers, body: JSON.parse(raw || '{}') });
-      if (req.headers['x-chad-token'] !== TOKEN) return send(401, { error: 'token' });
-      if (mode === 'slow') return stalled.push(res);
+      const body = JSON.parse(raw || '{}'), call = { url: req.url, headers: req.headers, body };
+      if (!body.image && !body.text) probes.push(call); else proxyCalls.push(call);
+      if (req.headers['x-chad-token'] !== TOKEN) return send(401, { error: 'unauthorized' });
+      if (!body.image && !body.text) return send(400, { error: 'send image and/or text' });
+      if (mode === 'slow') { res.on('close', () => { if (!res.writableEnded) aborted++; }); return stalled.push(res); }
       if (mode === 'busy-once') { mode = 'ok'; return send(503, { error: 'busy' }); }
-      if (mode === 'ok') return send(200, MEAL);
-      if (mode === 'aliases') return send(200, { name: 'Half a roast chicken', grams: 350, kcal: 760, protein_g: 95, carbs_g: 0, fat_g: 42, confidence: 0.65, items: [], ms: 7000 });
-      if (mode === 'empty') return send(200, { name: '', kcal: 0, protein: 0, carbs: 0, fat: 0, items: [] });
+      if (mode === 'ok' || mode === 'nocors') return send(200, MEAL);
+      if (mode === 'aliases') return send(200, { name: 'Half a roast chicken', grams: 350, kcal: 760, protein_g: 95, carbs_g: 0, fat_g: 42, confidence: 0.65, items: [{ name: 'Roast chicken', grams: 350, kcal: 760, protein_g: 95, carbs_g: 0, fat_g: 42 }], ms: 7000 });
+      if (mode === 'empty') return send(200, { name: 'Not food', grams: 0, kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, confidence: 0, items: [] });
       if (mode === 'badjson') return send(200, '{not json');
-      if (mode === 'nocors') return send(200, MEAL);
+      if (mode === 'limit') return send(429, { error: 'rate limited, try again soon' });
+      if (mode === 'large') return send(413, { error: 'too large (max 8MB)' });
+      if (mode === 'f502') return send(502, { error: 'estimate failed, try again' });
       return send(500, { error: 'estimate failed' });
     });
   });
@@ -68,7 +87,19 @@ async function workerChecks() {
   const server = await serve(8096), browser = await launch();
   try {
     const context = await browser.newContext({ viewport: { width: 393, height: 852 }, ...IPHONE, reducedMotion: 'reduce', acceptDownloads: true });
-    const page = await context.newPage(), errors = watch(page, text => /ERR_FAILED|401|500|503|CORS|Access-Control|net::/.test(text));
+    // The built-in address is answered inside the browser: no test ever reaches the real proxy.
+    const builtIn = [];
+    await context.route(url => url.href.startsWith(scan.DEFAULT_PROXY), route => {
+      const req = route.request(), cors = { 'Access-Control-Allow-Origin': APP, 'Access-Control-Allow-Headers': 'Content-Type, X-Chad-Token', 'Access-Control-Allow-Methods': 'GET, POST' };
+      if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+      const body = req.method() === 'POST' ? JSON.parse(req.postData() || '{}') : null, json = (status, data) => route.fulfill({ status, headers: cors, contentType: 'application/json', body: JSON.stringify(data) });
+      builtIn.push({ url: req.url(), method: req.method(), token: req.headers()['x-chad-token'], body });
+      if (req.url().endsWith('/health')) return json(200, { ok: true, busy: 0 });
+      if (req.headers()['x-chad-token'] !== TOKEN) return json(401, { error: 'unauthorized' });
+      if (!body.image && !body.text) return json(400, { error: 'send image and/or text' });
+      return json(200, { name: 'Synthetic chicken wings', grams: 240, kcal: 635, protein_g: 57, carbs_g: 0, fat_g: 45, confidence: 0.73, items: [] });
+    });
+    const page = await context.newPage(), errors = watch(page, text => /ERR_FAILED|ERR_CONNECTION|status of [45][0-9]{2}|CORS|Access-Control|net::/.test(text));        // the mocked failures log network lines
     const openai = []; await page.route('https://api.openai.com/**', route => { openai.push({ auth: route.request().headers().authorization, body: route.request().postDataJSON() }); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(MEAL) } }] }) }); });
     await page.clock.install({ time: new Date(NOON) });
     await page.goto(APP + '/');
@@ -77,8 +108,14 @@ async function workerChecks() {
     const image = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 1600; c.height = 1200; const x = c.getContext('2d'); x.fillStyle = '#c84'; x.fillRect(0, 0, 1600, 1200); return c.toDataURL('image/png').split(',')[1]; });
     const photo = () => page.locator('#photo-input').setInputFiles({ name: 'synthetic.png', mimeType: 'image/png', buffer: Buffer.from(image, 'base64') });
     const gentle = async () => { const words = await page.locator('#snap-ways').innerText(); assert.doesNotMatch(words, /error|fail|\b\d{3}\b|undefined|TypeError|CORS|exception/i, 'gentle words: ' + words); return words; };
+    const card = () => page.evaluate(() => ['name', 'grams', 'kcal', 'protein', 'carbs', 'fat'].map(k => document.getElementById('result-' + k).value));
+    const keys = () => page.evaluate(() => [localStorage.getItem('chad.aiProxyUrl'), localStorage.getItem('chad.aiProxyToken')]);
+    const toastText = () => page.locator('#undo-toast').innerText();
+    const advanced = async () => { await tap(page.locator('[data-view=settings]')); if (!await page.locator('#advanced-settings').evaluate(d => d.open)) await page.locator('#advanced-settings > summary').click(); };
+    const status = () => page.locator('#ai-status-title').innerText();
+    const clearAI = async () => { await page.evaluate(() => ['chad.aiProxyUrl', 'chad.aiProxyToken', 'rec-calories-ai-key'].forEach(k => localStorage.removeItem(k))); await page.goto(APP + '/'); };
 
-    // 1. No AI set up: the camera flow still works. Photo, say what it is, then search / barcode / quick add.
+    // 1. No AI set up: no request anywhere (the built-in address needs a token first), and the camera flow still works.
     assert.equal(await page.evaluate(() => [localStorage.getItem('chad.aiProxyUrl'), localStorage.getItem('chad.aiProxyToken'), localStorage.getItem('rec-calories-ai-key')].join('')), '', 'nothing set by default');
     await snap();
     assert.equal(await page.locator('#describe-button').isVisible(), false); assert.match(await gentle(), /Say what it is/);
@@ -87,99 +124,191 @@ async function workerChecks() {
     await page.locator('#food-description').fill('Synthetic chicken wrap'); await tap(page.locator('[data-snap=manual]'));
     assert.equal(await page.locator('#manual-sheet').isVisible(), true); assert.equal(await page.locator('#food-name').inputValue(), 'Synthetic chicken wrap'); await page.keyboard.press('Escape');
     await snap(); assert.equal(await page.locator('#photo-preview').isVisible(), false, 'a photo is never kept'); await tap(page.locator('[data-snap=barcode]')); assert.equal(await page.locator('#scan').getAttribute('data-mode'), 'barcode'); await page.keyboard.press('Escape');
-    assert.equal(proxyCalls.length + openai.length, 0, 'no AI request without an AI route');
+    await advanced(); assert.equal(await status(), 'Not set up'); assert.equal(await page.locator('#ai-mode').innerText(), 'Not set up');
+    assert.equal(await page.locator('#ai-test').isVisible(), false); assert.equal(await page.locator('#ai-disconnect').isVisible(), false);
+    assert.equal(proxyCalls.length + probes.length + health + builtIn.length + openai.length, 0, 'no request without a token, key or address of your own');
 
-    // 2. Settings › Advanced: proxy URL and token, a free health check, the token never shown again.
-    await tap(page.locator('[data-view=settings]')); await page.locator('#advanced-settings > summary').click();
-    await page.locator('#ai-proxy').fill(PROXY); await page.locator('#ai-proxy').press('Tab');
-    await page.locator('#ai-token').fill(TOKEN); await page.locator('#ai-token').press('Tab');
-    assert.equal(await page.locator('#ai-token').inputValue(), '', 'the token is never displayed'); assert.equal(await page.locator('#ai-token').getAttribute('placeholder'), 'Saved on this device');
-    await tap(page.locator('#ai-test')); await page.waitForFunction(() => /Connected/.test(document.getElementById('ai-test-status').textContent));
-    assert.equal(await page.locator('#ai-mode').innerText(), 'Connected'); assert.match(await page.locator('#ai-dot').getAttribute('class'), /is-ok/); assert.ok(health >= 1);
+    // 2. A setup link for the built-in proxy: stored, wiped from the address bar, a quiet "AI connected" toast. No tap.
+    const builtInLink = APP + '/#ai=' + encodeURIComponent(scan.DEFAULT_PROXY.replace(/\/$/, '')) + '&k=' + TOKEN;
+    await page.goto(builtInLink); await page.locator('#undo-toast').filter({ hasText: 'AI connected' }).waitFor();
+    assert.equal(await page.evaluate(() => location.hash), '', 'the token leaves the address bar at once'); assert.equal(await page.evaluate(() => location.href.includes('k=')), false);
+    assert.equal(await page.locator('#detail-sheet').isVisible(), false, 'the built-in proxy connects without a question');
+    assert.deepEqual(await keys(), [scan.DEFAULT_PROXY, TOKEN]);
+    await page.waitForFunction(() => document.getElementById('ai-status-title').textContent === 'Connected');
+    const check = builtIn.filter(r => r.method === 'POST'); assert.equal(check.length, 1); assert.deepEqual(check[0].body, {}, 'the token check sends nothing to estimate'); assert.equal(check[0].token, TOKEN);
+    assert.ok(builtIn.some(r => r.url === scan.DEFAULT_PROXY + 'health'));
+    await tap(page.locator('#undo-toast button')); assert.deepEqual(await keys(), [null, null], 'Undo disconnects');
+    await tap(page.locator('#undo-toast button')); assert.deepEqual(await keys(), [scan.DEFAULT_PROXY, TOKEN], 'Redo connects again');
+    await clearAI(); await page.goto(APP + '/#k=' + TOKEN); await page.locator('#undo-toast').filter({ hasText: 'AI connected' }).waitFor();
+    assert.deepEqual(await keys(), [scan.DEFAULT_PROXY, TOKEN], 'a token-only link is for the built-in proxy');
+    // A Snap + Say estimate through the built-in address (intercepted): the photo, the token, a card to check.
+    await snap(); await page.locator('#food-description').fill('wings'); await tap(page.locator('#describe-button')); await page.locator('#confirm-sheet').waitFor({ state: 'visible' });
+    assert.deepEqual(await card(), ['Synthetic chicken wings', '240', '635', '57', '0', '45']); assert.equal(builtIn.at(-1).url, scan.DEFAULT_PROXY + 'estimate'); assert.equal(builtIn.at(-1).body.text, 'wings');
+    await page.keyboard.press('Escape');
+    // A wrong token in a link: saved (it is what was pasted), then flagged at once.
+    await clearAI(); await page.goto(APP + '/#k=synthetic-wrong'); await page.locator('#message').filter({ hasText: 'didn’t take that link’s token' }).waitFor();
+    await advanced(); await page.waitForFunction(() => document.getElementById('ai-status-title').textContent === 'Set up again'); assert.match(await page.locator('#ai-status-text').innerText(), /fresh setup link/);
+
+    // 3. A link to any other proxy, opened from outside the app, asks first.
+    await clearAI();
+    const link = APP + '/#ai=' + encodeURIComponent(PROXY) + '&k=' + TOKEN;
+    await page.goto(link); await page.locator('#detail-sheet').waitFor({ state: 'visible' });
+    assert.equal(await page.evaluate(() => location.hash), '', 'wiped before the question');
+    assert.match(await page.locator('#detail-content').innerText(), /127\.0\.0\.1:8095/); assert.deepEqual(await keys(), [null, null], 'nothing saved before Connect');
+    await tap(page.locator('#detail-sheet').getByRole('button', { name: 'Not now' })); assert.deepEqual(await keys(), [null, null]);
+    await page.goto(link); await tap(page.locator('#detail-sheet').getByRole('button', { name: 'Connect' }));
+    assert.deepEqual(await keys(), [PROXY + '/', TOKEN]); assert.match(await toastText(), /AI connected/);
+
+    // 4. Settings › Advanced: status, Test (health + token check), the setup link field, other ways to connect.
+    await advanced(); await page.waitForFunction(() => document.getElementById('ai-status-title').textContent === 'Connected');
+    assert.equal(await page.locator('#ai-mode').innerText(), 'Connected'); assert.match(await page.locator('#ai-dot').getAttribute('class'), /is-ok/); assert.match(await page.locator('#ai-status-text').innerText(), /127\.0\.0\.1:8095/);
+    const probesBefore = probes.length; await tap(page.locator('#ai-test')); await page.waitForFunction(() => document.getElementById('ai-status-title').textContent === 'Connected');
+    assert.ok(probes.length > probesBefore && health >= 2, 'Test checks health and the token'); assert.equal(probes.at(-1).headers['x-chad-token'], TOKEN); assert.equal(proxyCalls.length, 0, 'and never runs an estimate');
+    await page.evaluate(() => localStorage.setItem('chad.aiProxyToken', 'synthetic-wrong')); await tap(page.locator('#ai-test'));
+    await page.waitForFunction(() => document.getElementById('ai-status-title').textContent === 'Set up again'); assert.match(await page.locator('#ai-dot').getAttribute('class'), /is-bad/);
+    // Paste the setup link (the installed app has its own storage): saved, and the field is emptied at once.
+    await page.evaluate(() => { localStorage.removeItem('chad.aiProxyUrl'); localStorage.removeItem('chad.aiProxyToken'); }); await page.goto(APP + '/'); await advanced();
+    assert.equal(await page.locator('#ai-link').evaluate(e => getComputedStyle(e).webkitTextSecurity), 'disc', 'the pasted link is masked');
+    await page.locator('#ai-link').fill(link); await page.locator('#ai-link').press('Enter');
+    assert.deepEqual(await keys(), [PROXY + '/', TOKEN]); assert.equal(await page.locator('#ai-link').inputValue(), '', 'the field never keeps the token'); assert.match(await toastText(), /AI connected/);
+    await page.locator('#ai-link').fill('#ai=' + encodeURIComponent(PROXY) + '&k=' + TOKEN); await page.locator('#ai-link').press('Enter'); assert.deepEqual(await keys(), [PROXY + '/', TOKEN], 'just the hash works too');
+    await page.locator('#ai-link').fill('hello there'); await page.locator('#ai-link').press('Enter');
+    assert.match(await page.locator('#message').innerText(), /isn’t a CHAD setup link/); assert.equal(await page.locator('#ai-link').inputValue(), ''); assert.deepEqual(await keys(), [PROXY + '/', TOKEN]);
+    await page.locator('#ai-more > summary').click();
+    assert.equal(await page.locator('#ai-proxy').inputValue(), PROXY + '/', 'the address shows, never the token'); assert.equal(await page.locator('#ai-token').inputValue(), ''); assert.equal(await page.locator('#ai-token').getAttribute('placeholder'), 'Saved on this device');
     for (const bad of ['http://proxy.example', 'not a url']) { await page.locator('#ai-proxy').fill(bad); await page.locator('#ai-proxy').press('Tab'); assert.match(await page.locator('#message').innerText(), /https/); assert.equal(await page.evaluate(() => localStorage.getItem('chad.aiProxyUrl')), PROXY + '/', 'a bad address is refused'); }
+    await page.locator('#ai-token').fill(TOKEN); await page.locator('#ai-token').press('Tab'); assert.equal(await page.locator('#ai-token').inputValue(), '', 'the token is never displayed');
 
-    // 3. A photo estimate through the proxy: the contract, the token header, metric, and a review before logging.
-    await tap(page.locator('[data-view=today]')); await snap();
+    // 5. A photo estimate: the analysing card (photo, about 10 s, Cancel), the contract, then one editable card.
+    mode = 'slow'; await tap(page.locator('[data-view=today]')); await snap();
     assert.equal(await page.locator('#describe-button').isVisible(), true); assert.equal(await page.locator('#snap-ways').isVisible(), false);
-    await page.locator('#food-description').fill('burrito bowl, no beans'); await photo(); await page.locator('#confirm-sheet').waitFor({ state: 'visible' });
+    await page.locator('#food-description').fill('burrito bowl, no beans'); await photo(); await page.locator('#snap-analysing').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#analysing-title').innerText(), 'Analysing…'); assert.equal(await page.locator('#analysing-text').innerText(), 'About 10 s');
+    assert.match(await page.locator('#analysing-image').getAttribute('src'), /^data:image\/jpeg;base64,/); assert.equal(await page.locator('#analysing-cancel').isVisible(), true);
+    for (const id of ['camera-button', 'food-description', 'describe-button']) assert.equal(await page.locator('#' + id).isVisible(), false, id + ' steps aside while analysing');
+    await new Promise(resolve => { const wait = () => stalled.length ? resolve() : setTimeout(wait, 20); wait(); });
+    await page.clock.runFor(10000);
+    const bar = Number(await page.locator('#snap-analysing').evaluate(e => e.style.getPropertyValue('--p'))); assert.ok(bar > 0.6 && bar < 0.9, 'about 70% at ten seconds: ' + bar);
+    stalled.shift().writeHead(200, { 'Access-Control-Allow-Origin': APP, 'Content-Type': 'application/json' }).end(JSON.stringify(MEAL));
+    await page.locator('#confirm-sheet').waitFor({ state: 'visible' }); mode = 'ok';
     const sent = proxyCalls.at(-1);
-    assert.equal(sent.url, '/estimate'); assert.equal(sent.headers['x-chad-token'], TOKEN); assert.equal(sent.headers.authorization, undefined); assert.equal(sent.headers.cookie, undefined);
-    assert.match(sent.body.image, /^data:image\/jpeg;base64,/); assert.equal(sent.body.hint, 'burrito bowl, no beans'); assert.equal(sent.body.text, 'burrito bowl, no beans'); assert.equal(sent.body.units, 'metric');
-    assert.match(await page.locator('#scan-items').innerText(), /Synthetic burrito bowl/); assert.equal((await page.locator('#scan-total').innerText()).replace(/\s+/g, ''), '640kcal');
-    assert.match(await page.locator('#result-macros').innerText(), /42[\s\S]*Protein[\s\S]*70[\s\S]*Carbs[\s\S]*18[\s\S]*Fat/); assert.match(await page.locator('#scan-parts').innerText(), /Rice \(200 g\)/); assert.match(await page.locator('#confidence').innerText(), /70% sure/);
+    assert.equal(sent.url, '/estimate'); assert.equal(sent.headers['x-chad-token'], TOKEN); assert.equal(sent.headers.authorization, undefined); assert.equal(sent.headers.cookie, undefined); assert.equal(sent.headers.referer, undefined);
+    assert.match(sent.body.image, /^data:image\/jpeg;base64,/); assert.deepEqual(jpegSize(sent.body.image), { width: 1024, height: 768 }, '1600 × 1200 goes as 1024 px JPEG');
+    assert.equal(sent.body.text, 'burrito bowl, no beans'); assert.equal(sent.body.hint, 'burrito bowl, no beans'); assert.equal(sent.body.units, 'metric');
+    assert.deepEqual(await card(), ['Synthetic burrito bowl', '350', '640', '42', '70', '18'], 'name, weight (200 + 150 g), kcal and P/C/F');
+    assert.match(await page.locator('#confidence').innerText(), /AI estimate · 70% sure/); assert.match(await page.locator('#result-photo').getAttribute('src'), /^data:image\/jpeg/);
+    assert.equal(await page.locator('#result-parts').isVisible(), true); assert.equal(await page.locator('#result-parts').evaluate(d => d.open), false, 'the breakdown starts folded');
+    assert.match(await page.locator('#result-parts-title').innerText(), /What’s in it · 2 items/); assert.match(await page.locator('#result-parts-list').textContent(), /Rice[\s\S]*200 g · 260 kcal[\s\S]*Chicken/);
+    // The weight scales every number from the answer's per-gram rates; a typed number overrides and scales from there.
+    await page.locator('#result-grams').fill('175'); assert.deepEqual((await card()).slice(1), ['175', '320', '21', '35', '9']);
+    await page.locator('#result-protein').fill('30'); await page.locator('#result-grams').fill('350'); assert.deepEqual((await card()).slice(1), ['350', '640', '60', '70', '18'], 'protein scales from the 30 g typed for 175 g');
+    await page.locator('#result-grams').fill('175'); await page.locator('#result-kcal').fill('333'); await page.locator('#result-name').fill('Half a burrito bowl');
+    assert.deepEqual(await card(), ['Half a burrito bowl', '175', '333', '30', '35', '9']);
+    for (const [id, bad, fix] of [['result-kcal', '', /Energy/], ['result-fat', '-2', /Fat/], ['result-grams', '0', /Weight/]]) {
+      const was = await page.locator('#' + id).inputValue(); await page.locator('#' + id).fill(bad); await tap(page.locator('#scan-confirm-form button[type=submit]'));
+      assert.match(await page.locator('#message').innerText(), fix); assert.equal(await page.locator('#confirm-sheet').isVisible(), true, 'nothing logged with ' + id + ' = ' + bad); await page.locator('#' + id).fill(was);
+    }
+    const before = (await saved(page)).entries.length;
     await tap(page.locator('#scan-confirm-form button[type=submit]'));
-    let entry = (await saved(page)).entries.at(-1); assert.equal(entry.source, 'photo'); assert.deepEqual([entry.kcal, entry.protein, entry.carbs, entry.fat], [640, 42, 70, 18]); assert.equal('image' in entry || 'thumbnail' in entry, false, 'no photo in the journal');
-    await tap(page.locator('#undo-toast button')); assert.equal((await saved(page)).entries.some(e => e.source === 'photo'), false, 'and Undo takes it back');
-    // Say only, and a proxy that answers with _g names and grams.
-    mode = 'aliases'; await snap(); await page.locator('#food-description').fill('half a roast chicken'); await tap(page.locator('#describe-button')); await page.locator('#confirm-sheet').waitFor({ state: 'visible' });
-    assert.equal(proxyCalls.at(-1).body.image, null); assert.match(await page.locator('#confidence').innerText(), /65% sure/);
+    let entry = (await saved(page)).entries.at(-1); assert.equal((await saved(page)).entries.length, before + 1, 'one tap, one entry');
+    assert.deepEqual([entry.name, entry.kcal, entry.protein, entry.carbs, entry.fat, entry.portion, entry.source], ['Half a burrito bowl', 333, 30, 35, 9, '175 g', 'photo']);
+    assert.equal(JSON.stringify(await saved(page)).includes('data:image'), false, 'no photo in the journal'); assert.equal(await page.locator('#result-photo').getAttribute('src'), null, 'and none left in the card');
+    assert.match(await toastText(), /Half a burrito bowl · 333 kcal/);
+    await tap(page.locator('#undo-toast button')); assert.equal((await saved(page)).entries.length, before, 'Undo takes it back');
+    await tap(page.locator('#undo-toast button')); assert.equal((await saved(page)).entries.at(-1).name, 'Half a burrito bowl', 'Redo logs it again');
+    await tap(page.locator('#undo-toast button')); assert.equal((await saved(page)).entries.length, before);
+    // Say only, and the CHAD proxy's own answer (_g names, grams); one breakdown line that repeats the meal is left out.
+    mode = 'aliases'; await snap(); assert.equal(await page.locator('#food-description').inputValue(), '', 'the words left with their estimate: a new photo is never misread with old words');
+    await page.locator('#food-description').fill('half a roast chicken'); await tap(page.locator('#describe-button')); await page.locator('#confirm-sheet').waitFor({ state: 'visible' });
+    assert.equal(proxyCalls.at(-1).body.image, null); assert.match(await page.locator('#confidence').innerText(), /65% sure/); assert.equal(await page.locator('#result-parts').isVisible(), false);
+    assert.equal(await page.locator('#result-photo').isVisible(), false, 'no photo, no thumbnail');
     await tap(page.locator('#scan-confirm-form button[type=submit]')); entry = (await saved(page)).entries.at(-1);
-    assert.equal(entry.source, 'text'); assert.deepEqual([entry.name, entry.portion, entry.kcal, entry.protein, entry.fat], ['Half a roast chicken', '1× 350 g', 760, 95, 42]);
-    // Busy once: one quiet retry after three seconds.
+    assert.deepEqual([entry.name, entry.portion, entry.kcal, entry.protein, entry.carbs, entry.fat, entry.source], ['Half a roast chicken', '350 g', 760, 95, 0, 42, 'text']);
+    // Busy once: says so, and one quiet retry after three seconds.
     mode = 'busy-once'; const callsBefore = proxyCalls.length; await snap(); await page.locator('#food-description').fill('rice'); await tap(page.locator('#describe-button'));
+    await page.waitForFunction(() => document.getElementById('analysing-title').textContent === 'The AI is busy');
     await page.clock.runFor(3100); await page.locator('#confirm-sheet').waitFor({ state: 'visible' }); assert.equal(proxyCalls.length - callsBefore, 2); await page.keyboard.press('Escape');
 
-    // 4. Every failure ends in the same friendly place: say what it is and log it from search, barcode or quick add.
-    for (const [which, pattern] of [['fail', /isn’t answering/], ['badjson', /can’t read/], ['empty', /No food spotted/], ['nocors', /Couldn’t reach/]]) {
+    // 6. Every failure ends in the same friendly place: plain words, the one fix that helps, and search / barcode / quick add.
+    for (const [which, title, again] of [['fail', /The AI couldn’t finish that one/, true], ['f502', /The AI couldn’t finish that one[\s\S]*Quick add it/, true], ['badjson', /garbled/, true], ['nocors', /AI is offline[\s\S]*Describe it or use Quick add \/ barcode/, true], ['limit', /needs a breather/, false], ['large', /too big/, false], ['empty', /No food spotted/, false]]) {
       mode = which; await snap(); await page.locator('#food-description').fill('synthetic toast'); await tap(page.locator('#describe-button'));
       await page.locator('#snap-ways').waitFor({ state: 'visible', timeout: 15000 });
-      assert.match(await gentle(), /Let’s find it another way/); assert.match(await page.locator('#snap-ways').innerText(), pattern); assert.equal(await page.locator('#confirm-sheet').isVisible(), false, which);
-      assert.equal(await page.locator('#describe-button').isEnabled(), true, 'ready to try again');
+      assert.match(await gentle(), title, which); assert.equal(await page.locator('#confirm-sheet').isVisible(), false, which);
+      assert.deepEqual(await page.locator('#snap-ways [data-snap]').evaluateAll(bs => bs.map(b => b.dataset.snap)), ['search', 'barcode', 'manual']);
+      assert.equal(await page.locator('#describe-button').innerText(), again ? 'Try again' : 'Estimate', which); assert.equal(await page.locator('#describe-button').isEnabled(), true);
+      assert.equal(await page.locator('#snap-setup').isVisible(), false);
     }
+    mode = 'ok'; await tap(page.locator('#describe-button')); await page.locator('#confirm-sheet').waitFor({ state: 'visible' }); await page.keyboard.press('Escape');   // the retry works
+    mode = 'fail'; await snap(); await page.locator('#food-description').fill('synthetic toast'); await tap(page.locator('#describe-button')); await page.locator('#snap-ways').waitFor({ state: 'visible' });
     await tap(page.locator('[data-snap=search]')); assert.equal(await page.locator('#food-search').inputValue(), 'synthetic toast', 'the words go along to search'); await page.keyboard.press('Escape');
-    // A wrong token: the same gentle way out, with a hint at what to fix.
+    // A wrong token: say so, hide Estimate, and one tap to the setup link field.
     mode = 'ok'; await page.evaluate(() => localStorage.setItem('chad.aiProxyToken', 'synthetic-wrong'));
-    await snap(); await page.locator('#food-description').fill('synthetic toast'); await tap(page.locator('#describe-button')); await page.locator('#snap-ways').waitFor({ state: 'visible' });
-    assert.match(await gentle(), /access token/); await page.evaluate(token => localStorage.setItem('chad.aiProxyToken', token), TOKEN); await page.keyboard.press('Escape');
-    // Too slow: after 100 seconds the same way out (the clock is fast-forwarded).
-    mode = 'slow'; await snap(); await page.locator('#food-description').fill('synthetic toast'); await tap(page.locator('#describe-button'));
-    await page.waitForFunction(() => document.getElementById('scan-status').textContent.includes('Decoding')); await page.clock.runFor(10000);
-    assert.match(await page.locator('#scan-status').innerText(), /Still working/); await page.clock.runFor(91000);
-    await page.locator('#snap-ways').waitFor({ state: 'visible' }); assert.match(await gentle(), /took too long/);
+    await snap(); assert.equal(await page.locator('#food-description').inputValue(), '', 'handed to search, the words do not linger'); await page.locator('#food-description').fill('synthetic toast'); await tap(page.locator('#describe-button')); await page.locator('#snap-ways').waitFor({ state: 'visible' });
+    assert.match(await gentle(), /AI needs setting up again[\s\S]*fresh setup link/); assert.equal(await page.locator('#snap-setup').isVisible(), true); assert.equal(await page.locator('#describe-button').isVisible(), false);
+    await tap(page.locator('#snap-setup'));
+    assert.equal(await page.locator('#settings').isVisible(), true); assert.equal(await page.locator('#advanced-settings').evaluate(d => d.open), true);
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'ai-link', 'ready to paste'); await page.waitForFunction(() => document.getElementById('ai-status-title').textContent === 'Set up again');
+    await page.evaluate(token => localStorage.setItem('chad.aiProxyToken', token), TOKEN);
+    // Too slow: honest words as time passes, then after 100 seconds the same way out (the clock is fast-forwarded).
+    mode = 'slow'; await tap(page.locator('[data-view=today]')); await snap(); await page.locator('#food-description').fill('synthetic toast'); await tap(page.locator('#describe-button'));
+    await page.locator('#snap-analysing').waitFor({ state: 'visible' }); assert.match(await page.locator('#analysing-text').innerText(), /“synthetic toast” · about 10 s/);
+    await page.clock.runFor(12500); assert.equal(await page.locator('#analysing-text').innerText(), 'Almost there');
+    await page.clock.runFor(13000); assert.match(await page.locator('#analysing-text').innerText(), /Bigger meals/);
+    await page.clock.runFor(76000); await page.locator('#snap-ways').waitFor({ state: 'visible' }); assert.match(await gentle(), /That took too long/); assert.equal(await page.locator('#describe-button').innerText(), 'Try again');
+    // Cancel: the request is dropped, the photo and the words stay, nothing else happens.
+    await page.locator('#food-description').fill('synthetic soup'); await photo(); await page.locator('#snap-analysing').waitFor({ state: 'visible' });
+    const abortsBefore = aborted; await tap(page.locator('#analysing-cancel'));
+    await page.locator('#snap-analysing').waitFor({ state: 'hidden' });
+    assert.equal(await page.locator('#photo-preview').isVisible(), true, 'the photo stays'); assert.equal(await page.locator('#food-description').inputValue(), 'synthetic soup', 'and the words');
+    assert.equal(await page.locator('#snap-ways').isVisible(), false); assert.equal(await page.locator('#describe-button').innerText(), 'Estimate'); assert.equal(await page.locator('#confirm-sheet').isVisible(), false);
+    for (let i = 0; i < 100 && aborted === abortsBefore; i++) await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(aborted, abortsBefore + 1, 'the proxy sees the request dropped');
     // Closed the sheet while waiting? The estimate waits in a toast instead of popping up unasked.
-    mode = 'slow'; await page.locator('#food-description').fill('synthetic toast'); await tap(page.locator('#describe-button')); await page.waitForTimeout(300);
+    await page.locator('#food-description').fill('synthetic toast'); await tap(page.locator('#describe-button')); await page.waitForTimeout(300);
     await page.keyboard.press('Escape'); await page.locator('#scan-sheet').waitFor({ state: 'hidden' });
+    await snap(); assert.equal(await page.locator('#snap-analysing').isVisible(), true, 'opening Snap + Say again shows the estimate still going'); await page.keyboard.press('Escape'); await page.locator('#scan-sheet').waitFor({ state: 'hidden' });
     stalled.at(-1).writeHead(200, { 'Access-Control-Allow-Origin': APP, 'Content-Type': 'application/json' }); stalled.at(-1).end(JSON.stringify(MEAL));
     await page.locator('#undo-toast').filter({ hasText: 'Your estimate is ready' }).waitFor(); assert.equal(await page.locator('#confirm-sheet').isVisible(), false);
     await tap(page.locator('#undo-toast button')); await page.locator('#confirm-sheet').waitFor({ state: 'visible' }); await page.keyboard.press('Escape');
     mode = 'ok';
 
-    // 5. Backups never carry AI settings: no proxy, no token, no key. The journal never holds them either.
+    // 7. Backups never carry AI settings: no proxy, no token, no key. The journal never holds them either.
     await page.evaluate(() => localStorage.setItem('rec-calories-ai-key', 'synthetic-key-qa'));
     await tap(page.locator('[data-view=settings]'));
     const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#export-backup').click()]);
     const backup = fs.readFileSync(await download.path(), 'utf8');
-    for (const secret of [TOKEN, 'synthetic-key-qa', '127.0.0.1:8095', 'aiProxy', 'ai-key']) assert.equal(backup.includes(secret), false, 'backup excludes ' + secret);
+    for (const secret of [TOKEN, 'synthetic-key-qa', '127.0.0.1:8095', 'aiProxy', 'ai-key', new URL(scan.DEFAULT_PROXY).host]) assert.equal(backup.includes(secret), false, 'backup excludes ' + secret);
     assert.ok(JSON.parse(backup).journal.entries.length >= 1);
     assert.equal(JSON.stringify(await saved(page)).match(/synthetic-token|synthetic-key|8095/), null, 'the journal holds no AI settings');
-    // The proxy wins over the own key; with the proxy gone, the own key (hidden fallback) is used.
+    // The proxy wins over the own key; Disconnect (with Undo) leaves the own key as the fallback.
     await snap(); await page.locator('#food-description').fill('rice'); await tap(page.locator('#describe-button')); await page.locator('#confirm-sheet').waitFor({ state: 'visible' }); await page.keyboard.press('Escape');
     assert.equal(openai.length, 0, 'proxy first');
-    await tap(page.locator('[data-view=settings]')); await tap(page.locator('#ai-disconnect'));
-    assert.equal(await page.evaluate(() => localStorage.getItem('chad.aiProxyUrl') || localStorage.getItem('chad.aiProxyToken')), null); assert.equal(await page.locator('#ai-mode').innerText(), 'Own key');
-    await tap(page.locator('#undo-toast button')); assert.equal(await page.evaluate(() => localStorage.getItem('chad.aiProxyToken')), TOKEN, 'Undo reconnects with the same token');
+    await advanced(); await tap(page.locator('#ai-disconnect'));
+    assert.deepEqual(await keys(), [null, null]); assert.equal(await page.locator('#ai-mode').innerText(), 'Own key'); assert.match(await toastText(), /AI disconnected/);
+    await tap(page.locator('#undo-toast button')); assert.deepEqual(await keys(), [PROXY + '/', TOKEN], 'Undo reconnects with the same token');
     await tap(page.locator('#ai-disconnect'));
-    await page.locator('#advanced-settings details.ch-sub summary').click(); assert.equal(await page.locator('#ai-key').inputValue(), 'synthetic-key-qa');
+    if (!await page.locator('#ai-more').evaluate(d => d.open)) await page.locator('#ai-more > summary').click(); assert.equal(await page.locator('#ai-key').inputValue(), 'synthetic-key-qa');
     await tap(page.locator('[data-view=today]')); await snap(); await page.locator('#food-description').fill('rice'); await tap(page.locator('#describe-button')); await page.locator('#confirm-sheet').waitFor({ state: 'visible' });
     assert.equal(openai.length, 1); assert.equal(openai[0].auth, 'Bearer synthetic-key-qa'); assert.equal(openai[0].body.store, false); await page.keyboard.press('Escape');
-    await page.evaluate(() => localStorage.removeItem('rec-calories-ai-key'));
-
-    // 6. A one-time setup link: read once, wiped from the address bar, used only after a tap on Connect.
-    const link = APP + '/#ai=' + encodeURIComponent(PROXY) + '&k=' + TOKEN;
-    await page.goto(link); await page.locator('#detail-sheet').waitFor({ state: 'visible' });
-    assert.equal(await page.evaluate(() => location.hash), '', 'the token leaves the address bar at once');
-    assert.match(await page.locator('#detail-content').innerText(), /127\.0\.0\.1:8095/); assert.equal(await page.evaluate(() => localStorage.getItem('chad.aiProxyUrl')), null, 'nothing saved before Connect');
-    await tap(page.locator('#detail-sheet').getByRole('button', { name: 'Not now' })); assert.equal(await page.evaluate(() => localStorage.getItem('chad.aiProxyUrl')), null);
-    await page.goto(link); await tap(page.locator('#detail-sheet').getByRole('button', { name: 'Connect' }));
-    assert.equal(await page.evaluate(() => localStorage.getItem('chad.aiProxyUrl')), PROXY + '/'); assert.equal(await page.evaluate(() => localStorage.getItem('chad.aiProxyToken')), TOKEN);
-    assert.match(await page.locator('#undo-toast').innerText(), /AI scans connected/);
-    // Pasting the same link into Settings works as well (for the installed app, which has its own storage).
-    await page.evaluate(() => { localStorage.removeItem('chad.aiProxyUrl'); localStorage.removeItem('chad.aiProxyToken'); }); await page.reload();
-    await tap(page.locator('[data-view=settings]')); await page.locator('#advanced-settings > summary').click();
-    await page.locator('#ai-proxy').fill(link); await page.locator('#ai-proxy').press('Tab');
-    assert.equal(await page.evaluate(() => localStorage.getItem('chad.aiProxyToken')), TOKEN); assert.equal(await page.locator('#ai-proxy').inputValue(), PROXY + '/', 'the field shows the address, never the token');
+    await advanced(); await tap(page.locator('#ai-disconnect')); assert.equal(await page.evaluate(() => localStorage.getItem('rec-calories-ai-key')), null, 'Disconnect removes an own key too');
+    assert.equal(await status(), 'Not set up');
     assert.deepEqual(errors, []);
-    console.log('PASS Snap + Say with a mock proxy on another origin: no-AI flow (photo, words, quick add / barcode / search, no request); Advanced settings (https rule, hidden token, health dot); photo and text estimates (contract, token header, no cookies or auth header, metric, review with P/C/F, parts, confidence; Undo); _g/grams answers; one busy retry; gentle fallbacks for 500, bad JSON, no food, missing CORS, wrong token, 100 s timeout; estimate kept in a toast when the sheet was closed; backups and journal free of AI settings; proxy before own key; disconnect with Undo; own-key fallback; setup link wiped from the URL and confirmed before use; paste-a-link in Settings; zero unexpected console errors.');
     await context.close();
+
+    // 8. The card on a 375 × 667 phone: no sideways scroll, every field a real target, Log it within reach.
+    const small = await browser.newContext({ viewport: { width: 375, height: 667 }, ...IPHONE, reducedMotion: 'reduce' }), little = await small.newPage(), smallErrors = watch(little, text => /40[0-9]|net::/.test(text));
+    await little.goto(APP + '/'); await little.evaluate(() => CHADUX.openFood('search'));
+    await little.route('https://*.openfoodfacts.org/**', route => route.fulfill({ json: { products: [{ code: '1', product_name: 'Synthetic yoghurt with a rather long name for a small phone', serving_size: '170 g', serving_quantity: 170, nutriments: { 'energy-kcal_100g': 70.6, proteins_100g: 5.9, carbohydrates_100g: 7.1, fat_100g: 1.8 } }] } }));
+    await little.locator('#food-search').fill('yoghurt'); await little.locator('#search-form button').click(); await little.locator('#food-results button').first().tap();
+    await little.locator('#confirm-sheet').waitFor({ state: 'visible' });
+    assert.deepEqual(await little.evaluate(() => ['grams', 'kcal'].map(k => document.getElementById('result-' + k).value)), ['170', '120']);
+    assert.equal(await little.evaluate(() => { const b = document.querySelector('#confirm-sheet .ch-sheet__body'); return b.scrollWidth <= b.clientWidth + 1 && document.documentElement.scrollWidth <= innerWidth; }), true, 'no sideways scroll');
+    for (const box of await little.locator('#confirm-sheet .ch-num, #result-name, #scan-confirm-form button[type=submit]').evaluateAll(es => es.map(e => e.getBoundingClientRect().height))) assert.ok(box >= 44, 'target ' + box);
+    await little.locator('#result-grams').fill('85'); assert.equal(await little.locator('#result-kcal').inputValue(), '60');
+    await little.locator('#scan-confirm-form button[type=submit]').scrollIntoViewIfNeeded(); await little.locator('#scan-confirm-form button[type=submit]').tap();
+    const logged = (await saved(little)).entries.at(-1); assert.deepEqual([logged.kcal, logged.portion, logged.source], [60, '85 g', 'search']);
+    assert.deepEqual(smallErrors, []);
+    await small.close();
+    console.log('PASS Snap + Say against a mock proxy on another origin and the built-in address (intercepted): nothing sent without a token; setup link for the built-in proxy (stored, wiped from the address bar, quiet "AI connected", Undo/Redo, token-only link, wrong token flagged); links to other proxies ask first; Settings status / Test (health + token check, no estimate) / paste link (masked, emptied, hash-only, junk refused) / other ways (https rule, hidden token); analysing card (photo, about 10 s, bar ~70% at 10 s, inputs aside), 1024 px JPEG upload, contract and token header, editable card (name, weight, kcal, P/C/F, confidence, folded breakdown) with weight scaling, typed overrides, validation, one-tap log, no photo kept, Undo/Redo; CHAD answer shape; busy retry with status; friendly failures for 500/502/bad JSON/offline/429/413/no food with Try again only where it helps; wrong token → set up again; 100 s timeout with progress words; Cancel keeps photo and words and drops the request; estimate kept when the sheet closes; backups and journal free of AI settings; proxy before own key; Disconnect with Undo; own-key fallback; 375 × 667 card. Zero unexpected console errors.');
   } finally { stalled.forEach(res => { try { res.destroy(); } catch { /* closed */ } }); await browser.close(); server.close(); proxy.close(); proxy.closeAllConnections?.(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

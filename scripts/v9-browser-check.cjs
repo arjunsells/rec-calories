@@ -90,7 +90,7 @@ const { serve, launch, watch, saved, IPHONE, NOON } = require('./harness.cjs');
     await tap(page.locator('[data-meal-toggle=L]')); assert.equal(await page.locator('#next-up').getAttribute('data-meal-slot'), 'L', 'folded, an unlogged meal leads again');
     await undo(); assert.equal((await day()).picks.L, 'S');
     // The details sheet: all three options to compare; looking never logs; one button logs or switches.
-    await tap(page.locator('[data-meal-row=L]')); await tap(page.locator('[data-meal-slot=L] .meal-info'));
+    await again(page.locator('[data-meal-row=L]')); await tap(page.locator('[data-meal-slot=L] .meal-info'));   // the row sits where the fold button was: a quick second tap there is a slip by design
     assert.equal(await page.locator('#detail-sheet .ch-tier[aria-pressed=true]').innerText(), 'Strict'); assert.equal(await page.locator('#detail-sheet .ch-tier.is-logged').getAttribute('data-tier'), 'S');
     await tap(page.locator('#detail-sheet .ch-tier[data-tier=F]')); assert.equal((await day()).picks.L, 'S', 'looking at another option never logs it');
     await tap(page.locator('#detail-sheet').getByRole('button', { name: 'Switch to free' })); assert.equal((await day()).picks.L, 'F');
