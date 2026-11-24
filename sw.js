@@ -1,20 +1,24 @@
 'use strict';
-const CACHE = 'rec-calories-shell-v7';
-const SHELL = ['./', './index.html', './style.css', './theme7.css', './icons7.js', './charts7.js', './ux.js', './app.js', './game.js', './plan-data.js', './quest.js', './fonts/press-start-2p.ttf', './fonts/OFL.txt', './scan.js', './food.js', './vendor/zxing-browser.min.js', './vendor/ZXING-LICENSE', './vendor/README.md', './manifest.webmanifest', './icons/icon.svg', './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png'];
+// Bump CACHE with every release: a changed worker is what tells installed copies to update.
+const CACHE = 'rec-calories-shell-v8';
+const SHELL = ['./', './index.html', './theme8.css', './icons8.js', './motion8.js', './charts8.js', './game.js', './scan.js', './food8.js', './plan-data.js', './quest8.js', './ux8.js', './app8.js', './fonts/press-start-2p.ttf', './fonts/OFL.txt', './vendor/zxing-browser.min.js', './vendor/ZXING-LICENSE', './vendor/README.md', './manifest.webmanifest', './icons/icon.svg', './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png'];
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
+  // cache: 'reload' skips the HTTP cache, so a new shell can never be assembled from stale files.
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL.map(url => new Request(url, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', event => {
   event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('rec-calories-shell-') && key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim()));
+});
+self.addEventListener('message', event => {
+  if (event.data === 'version') event.ports[0]?.postMessage(CACHE);
 });
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET' || url.origin !== self.location.origin || !url.href.startsWith(self.registration.scope)) return;
   event.respondWith(caches.open(CACHE).then(async cache => {
-    if (event.request.mode === 'navigate') {
-      try { const response = await fetch(event.request); if (response.ok) return response; } catch { /* Offline shell below. */ }
-      return cache.match('./index.html');
-    }
-    return (await cache.match(event.request)) || fetch(event.request);
+    // The page and its assets always come from the same cache generation: instant launch, works offline,
+    // and never a new page running old scripts. app8.js reloads once when a newer shell takes over.
+    if (event.request.mode === 'navigate') return (await cache.match('./index.html')) || fetch(event.request);
+    return (await cache.match(event.request, { ignoreSearch: true })) || fetch(event.request);
   }));
 });

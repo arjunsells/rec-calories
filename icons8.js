@@ -1,21 +1,12 @@
-/* CHAD v7 — icons7.js · SF-Symbol-like line icons as inline SVG. No dependencies.
-   Drop-in for icons6.js: same API, every v6 name and alias still resolves.
+/* CHAD v8 — icons8.js · SF-Symbol-like line icons as inline SVG. No dependencies.
    window.CHADIcons:
      icon(name, size = 24, opts)  -> '<svg class="ch-icon" …>' markup string ('' for unknown names)
                                      opts: {weight: stroke width (default 1.8), label: 'aria label', cls: 'extra class'}
      mount(root = document)       -> fills every <i data-icon="bottle" data-size="24" data-weight="2"></i>
-                                     (optional data-label="…" makes it role="img"; unknown names are left untouched)
      has(name)                    -> true if the name or alias exists
      names                        -> list of icon names (aliases included)
-   Icons are drawn on a 24 × 24 grid with stroke="currentColor": set `color` on the parent.
-   Small solid details (dots, figure heads, heel prints) are filled with currentColor.
-   NEW in v7: bottle electrolyte tablet run heart-pulse shoe footprints sleep undo check-circle
-              ellipsis swap lightbulb repeat list timer glove rings leaf arrow-up arrow-down arrow-up-right
-   Aliases: hydralyte→electrolyte, cardio→run, steps→shoe, summary→rings, tip→lightbulb, more→ellipsis,
-            again→repeat, rest→leaf, muay-thai→glove, done→check-circle, chevron-right/forward/next→chevron,
-            back/prev→chevron-left (plus all v6 aliases).
-   Changed from v6: `sleep` is its own glyph (was an alias of bed), `steps` points at shoe (was walk),
-            `electrolyte` is a drop with a bolt (was an alias of pill). bed, walk and pill still exist. */
+   Icons are drawn on a 24 x 24 grid with stroke="currentColor": set `color` on the parent.
+   New in v8: wifi-off, refresh, crown. */
 (function (root) {
   'use strict';
 
@@ -127,7 +118,10 @@
     timer: c(12, 13.4, 7.4) + p('M9.8 2.9h4.4M12 2.9v3.1M12 13.4V9.4'),
     share: p('M12 15V3.6M8 7.4l4-4 4 4M7 11H5.6A1.6 1.6 0 0 0 4 12.6v5.8A1.6 1.6 0 0 0 5.6 20h12.8a1.6 1.6 0 0 0 1.6-1.6v-5.8a1.6 1.6 0 0 0-1.6-1.6H17'),
     pencil: p('M4 20l1-4.2L16.2 4.6a1.8 1.8 0 0 1 2.5 0l.7.7a1.8 1.8 0 0 1 0 2.5L8.2 19z') + p('M14.4 6.4l3.2 3.2'),
-    lightbulb: p('M9 17.4v-.6c0-1.3-.6-2.2-1.5-3.2a6.1 6.1 0 1 1 9 0c-.9 1-1.5 1.9-1.5 3.2v.6z') + p('M10 20.6h4')
+    lightbulb: p('M9 17.4v-.6c0-1.3-.6-2.2-1.5-3.2a6.1 6.1 0 1 1 9 0c-.9 1-1.5 1.9-1.5 3.2v.6z') + p('M10 20.6h4'),
+    'wifi-off': p('M3.5 9.4a12.6 12.6 0 0 1 4.3-2.7M12 5.5c3.2 0 6.2 1.2 8.5 3.3M6.6 12.9a8 8 0 0 1 3.2-1.9M14.6 11.2c1 .4 2 1 2.8 1.7M9.6 16.2a3.6 3.6 0 0 1 4.8 0') + dot(12, 19.2, 1.2) + p('M4.5 3.5l15 17'),
+    refresh: p('M19.4 12a7.4 7.4 0 0 1-13.2 4.6M4.6 12a7.4 7.4 0 0 1 13.2-4.6') + p('M18.2 3.6v4h-4M5.8 20.4v-4h4'),
+    crown: p('M4.2 17.6 3 8.2l5 3.6 4-6.2 4 6.2 5-3.6-1.2 9.4z') + p('M5 20.4h14')
   };
 
   var ALIAS = {
@@ -137,7 +131,7 @@
     'chevron-right': 'chevron', forward: 'chevron', next: 'chevron', back: 'chevron-left', prev: 'chevron-left',
     streak: 'flame', weight: 'scale', meal: 'fork', ai: 'sparkles', sound: 'speaker', dark: 'moon', light: 'sun',
     export: 'share', edit: 'pencil', goal: 'target', badge: 'trophy', xp: 'star',
-    tip: 'lightbulb', more: 'ellipsis', again: 'repeat', rest: 'leaf', 'muay-thai': 'glove', done: 'check-circle'
+    offline: 'wifi-off', retry: 'refresh', level: 'crown', tip: 'lightbulb', more: 'ellipsis', again: 'repeat', rest: 'leaf', 'muay-thai': 'glove', done: 'check-circle'
   };
 
   function own(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }

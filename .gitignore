@@ -1,6 +1,10 @@
 codex-run*.log
+claude-run*.log
+*.log
 JOB*.md
+CLAUDE-JOB*.md
 .env*
+auth.json
 node_modules/
 __pycache__/
 .qa/
