@@ -1,8 +1,8 @@
 'use strict';
-// CHAD v9 · the journal: state, validation, persistence, reversible changes, food flows, Snap + Say and the offline
-// shell. Screens are drawn by quest9.js; navigation, sheets and toasts live in ux9.js.
+// CHAD v10 · the journal: state, validation, persistence, reversible changes, food flows, Snap + Say and the offline
+// shell. Screens are drawn by quest10.js, Gym mode by gym10.js; navigation, sheets and toasts live in ux10.js.
 (() => {
-  const KEY = 'rec-calories-v1', SHELL = 'rec-calories-shell-v9';
+  const KEY = 'rec-calories-v1', SHELL = 'rec-calories-shell-v10';
   const $ = id => document.getElementById(id);
   const M = () => window.CHADMotion;
   const oneDecimal = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }), integer = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
@@ -12,11 +12,10 @@
   const valid = (n, min, max) => typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max;
   const defaults = () => ({ schemaVersion: 5, journeyStartDate: '2026-10-08', target: 1900, proteinGoal: 220, carbsGoal: 150, fatGoal: 45, entries: [] });
   let state = defaults();
-  let storageReadable = true, previousGame = null, lastGame = null, xpGain = 0, celebrationTimer, messageTimer, celebratedLevel = null;
-  const celebratedBadges = new Set();                           // a level or badge is celebrated once, however often it is undone and redone
-  let currentDay = dayKey(), observedToday = dayKey(), currentMealSlot, shownDay = null, turned = false;
+  let storageReadable = true, previousGame = null, lastGame = null, xpGain = 0, celebrationTimer, messageTimer, celebratedLevel = null;   // a level is celebrated once, however often it is undone and redone
+  let currentDay = dayKey(), observedToday = dayKey(), currentMealSlot, currentBlock, shownDay = null, turned = false;
   const selectedKey = () => window.CHADUX?.dateKey() || dayKey();
-  const defaultMeal = () => { const hour = Number(new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Darwin', hour: 'numeric', hourCycle: 'h23' }).format(new Date())); return hour < 11 ? 'Breakfast' : hour < 15 ? 'Lunch' : hour < 21 ? 'Dinner' : 'Snacks'; };
+  const defaultMeal = () => { const hour = Number(new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Darwin', hour: 'numeric', hourCycle: 'h23' }).format(new Date())); return hour < 15 ? 'Lunch' : hour < 21 ? 'Dinner' : 'Snacks'; };          // no breakfast in the plan
   const glyph = (name, size, fallback) => window.CHADIcons?.icon(name, size) || fallback || '';
   const newId = (n = 0) => `${Date.now()}-${n}-${Math.random().toString(36).slice(2)}`;
   function node(tag, className, text) { const element = document.createElement(tag); if (className) element.className = className; if (text !== undefined) element.textContent = text; return element; }
@@ -44,7 +43,7 @@
       const ids = new Set();
       const entries = parsed.entries.filter(e => e && typeof e.id === 'string' && !ids.has(e.id) && ids.add(e.id) && typeof e.name === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.day) && valid(e.kcal, 1, 50000) && valid(e.protein, 0, 5000) && ['carbs', 'fat'].every(k => e[k] === undefined || valid(e[k], 0, 5000)));
       if (entries.length !== parsed.entries.length || (parsed.proteinGoal !== undefined && !valid(parsed.proteinGoal, 1, 5000))) throw new Error();
-      const prior = parsed.legacyRewards || (parsed.schemaVersion !== 5 ? (() => { const g = RECGame.derive(parsed, dayKey()); return { xp: g.xp, badges: g.badges.filter(b => b.unlocked).map(b => b.id) }; })() : null);
+      const prior = parsed.legacyRewards || (parsed.schemaVersion !== 5 ? { xp: RECGame.derive(parsed, dayKey()).xp } : null);
       state = { ...parsed, journeyStartDate: CHADUX.validDate(parsed.journeyStartDate) ? parsed.journeyStartDate : CHADUX.defaultJourneyStart, legacyRewards: prior, legacyGoals: parsed.legacyGoals || (parsed.schemaVersion !== 5 ? { target: parsed.target, proteinGoal: parsed.proteinGoal, carbsGoal: parsed.carbsGoal, fatGoal: parsed.fatGoal } : undefined), schemaVersion: 5, target: parsed.target, proteinGoal: parsed.proteinGoal ?? 220, carbsGoal: parsed.carbsGoal ?? 150, fatGoal: parsed.fatGoal ?? 45, entries };
     } catch { storageReadable = false; message('Saved data could not be read. Saving is paused to protect it. Your existing data has not been replaced.', true); }
   }
@@ -76,14 +75,15 @@
   function assign(s, fields) { const next = { ...s }; for (const [k, v] of Object.entries(fields)) if (v === undefined) delete next[k]; else next[k] = v; return next; }
   // One reversible change. forward and backward map the journal at that moment to the next one and touch only their own
   // fields, so a later unrelated edit (another tab included) survives an Undo. Undo offers Redo, Redo offers Undo.
-  // XP, levels, streaks and badges are worked out from the journal, so going back and forth never counts anything twice.
+  // XP, levels and streaks are worked out from the journal, so going back and forth never counts anything twice.
+  // c.toaster shows the Undo somewhere other than the bottom toast (the meal builder keeps it inside its sheet).
   function change(c) {
     if (!save(c.forward(state))) return false;
-    const day = c.day && c.day !== dayKey() ? ' · ' + CHADUX.dayLabel(c.day) : '', kind = c.kind || 'on';
+    const day = c.day && c.day !== dayKey() ? ' · ' + CHADUX.dayLabel(c.day) : '', kind = c.kind || 'on', toast = c.toaster || CHADUX.toast;
     if (c.haptic !== false) M()?.haptic(kind === 'off' ? 'off' : 'on');
     c.onApply?.(); c.after?.();
-    const done = () => CHADUX.toast(c.label + day, undo, { kind, xp: c.positive ? xpGain : 0 });
-    const undo = () => { if (!save(c.backward(state))) return; c.after?.(); M()?.haptic('off'); CHADUX.toast('Undone' + day, redo, { kind: 'off', action: 'Redo' }); };
+    const done = () => toast(c.label + day, undo, { kind, xp: c.positive ? xpGain : 0 });
+    const undo = () => { if (!save(c.backward(state))) return; c.after?.(); M()?.haptic('off'); toast('Undone' + day, redo, { kind: 'off', action: 'Redo' }); };
     const redo = () => { if (!save(c.forward(state))) return; c.after?.(); M()?.haptic(kind === 'off' ? 'off' : 'on'); done(); };
     done();
     return true;
@@ -125,12 +125,15 @@
     const focused = document.activeElement, view = focused?.closest?.('.view')?.id; let restore = [];
     if (focused?.dataset?.slot) restore = [`[data-slot="${focused.dataset.slot}"][data-tier="${focused.dataset.tier}"]`, `[data-meal-row="${focused.dataset.slot}"]`];
     else if (focused?.dataset?.mealRow) restore = [`[data-meal-row="${focused.dataset.mealRow}"]`, `#next-up [data-slot="${focused.dataset.mealRow}"]`];
+    else if (focused?.dataset?.row) restore = [`[data-row="${focused.dataset.row}"]`, `[data-fold="${focused.dataset.row}"]`];
+    else if (focused?.dataset?.fold) restore = [`[data-fold="${focused.dataset.fold}"]`, `[data-row="${focused.dataset.fold}"]`];
+    else if (focused?.dataset?.gymStart) restore = ['[data-gym-start]'];
     else if (focused?.classList?.contains('water-row')) restore = ['.water-row'];
     else if (focused?.classList?.contains('water-minus')) restore = ['.water-minus:not(:disabled)', '.water-row'];
     else if (focused?.dataset?.quest && view) restore = [`#${view} [data-quest="${focused.dataset.quest}"]`];
     else if (focused?.dataset?.exercise) restore = [`.training-level [data-exercise="${focused.dataset.exercise}"]`];
     else if (focused?.dataset?.addon) restore = [`.addons [data-addon="${focused.dataset.addon}"]`];
-    currentDay = selectedKey(); observedToday = dayKey(); currentMealSlot = window.CHADUX?.currentSlot();
+    currentDay = selectedKey(); observedToday = dayKey(); currentMealSlot = window.CHADUX?.currentSlot(); currentBlock = window.CHADUX?.timeBlock();
     turned = shownDay !== null && shownDay !== currentDay; shownDay = currentDay;
     const goals = CHADQuest.goals(state, currentDay), entries = state.entries.filter(e => e.day === currentDay), t = totals(entries);
     const target = goals.target ?? state.target, proteinGoal = goals.proteinGoal ?? state.proteinGoal, carbsGoal = goals.carbsGoal ?? state.carbsGoal ?? 150, fatGoal = goals.fatGoal ?? state.fatGoal ?? 45, over = t.kcal > target;
@@ -140,9 +143,10 @@
     $('target-label').textContent = whole(target); $('protein-goal-label').textContent = whole(proteinGoal); $('carbs-goal-label').textContent = whole(carbsGoal); $('fat-goal-label').textContent = whole(fatGoal);
     for (const [id, value, goal, unit] of [['calorie-ring', t.kcal, target, 'calories'], ['protein-ring', t.protein, proteinGoal, 'grams protein']]) { $(id).style.setProperty('--p', Math.min(100, value / goal * 100)); $(id).setAttribute('aria-label', `${fmt(value)} of ${fmt(goal)} ${unit}`); }
     for (const [id, value, goal, unit] of [['carbs', t.carbs, carbsGoal, 'grams carbs'], ['fat', t.fat, fatGoal, 'grams fat']]) { $(id + '-bar').style.setProperty('--p', Math.min(1, value / goal)); $(id + '-meter').setAttribute('aria-label', `${fmt(value)} of ${fmt(goal)} ${unit}`); }
-    // Plan meals live in their slots and add-ons in their pills; everything else logged today is listed here.
-    const picks = state.questsV5?.[currentDay]?.picks || {}, pills = CHADQuest.shownAddons?.(state, currentDay) || new Set();
-    const extras = entries.filter(e => !(e.planSlot && picks[e.planSlot]) && !pills.has(e.id));
+    // Plan meals live in their slots and add-ons in their pills; everything else logged today is listed here (a plan
+    // meal from a slot that no longer exists, such as a pre-v10 Dessert, included).
+    const picks = state.questsV5?.[currentDay]?.picks || {}, pills = CHADQuest.shownAddons?.(state, currentDay) || new Set(), slots = new Set((window.CHADPlan || []).map(x => x.id));
+    const extras = entries.filter(e => !(e.planSlot && picks[e.planSlot] && slots.has(e.planSlot)) && !pills.has(e.id));
     $('extras').hidden = !extras.length; $('entry-count').textContent = extras.length ? `${extras.length} ${extras.length === 1 ? 'entry' : 'entries'}` : '';
     renderEntries($('entries'), extras, '');
     renderPast(); renderRecent();
@@ -168,7 +172,7 @@
       row.append(open); container.append(row);
     });
   }
-  const SOURCES = { plan: 'Meal plan', addon: 'Add-on', repeat: 'Logged again', manual: 'Quick add', search: 'Food search', barcode: 'Barcode', photo: 'Photo estimate', text: 'Snap + Say' };
+  const SOURCES = { plan: 'Meal plan', addon: 'Add-on', repeat: 'Logged again', manual: 'Quick add', search: 'Food search', barcode: 'Barcode', photo: 'Photo estimate', text: 'Snap + Say', custom: 'Custom meal' };
   function entrySheet(e) {
     const when = new Date(e.day + 'T12:00:00+09:30').toLocaleDateString('en-AU', { timeZone: 'Australia/Darwin', weekday: 'short', day: 'numeric', month: 'short' }).replace(/,/g, '');
     const meta = node('p', 'ch-hint', [when, e.meal, SOURCES[e.source], e.portion].filter(Boolean).join(' · '));
@@ -176,7 +180,8 @@
     again.type = del.type = 'button';
     again.onclick = () => { CHADUX.closeSheets(); add(e.name, e.kcal, e.protein, { carbs: e.carbs || 0, fat: e.fat || 0, portion: e.portion || '', source: 'repeat' }); };
     del.onclick = () => { CHADUX.closeSheets(); removeEntry(e); };
-    CHADUX.detail(e.name || 'Entry', [CHADUX.macroTiles([e.kcal, e.protein, e.carbs || 0, e.fat || 0]), meta, again, del]);
+    const parts = Array.isArray(e.parts) && e.parts.length ? (() => { const list = node('ul', 'ch-bullets'); e.parts.slice(0, 20).forEach(p => list.append(node('li', '', [p.name, p.amount].filter(Boolean).join(' · ')))); return [list]; })() : [];
+    CHADUX.detail(e.name || 'Entry', [CHADUX.macroTiles([e.kcal, e.protein, e.carbs || 0, e.fat || 0]), meta, ...parts, again, del]);
   }
   // Other days, newest first. Built only while Progress is on screen, forty at a time: the list grows for months.
   let pastShown = 40;
@@ -207,7 +212,7 @@
   }
   function renderGame(g) {
     xpGain = previousGame ? Math.max(0, g.xp - previousGame.xp) : 0; lastGame = g;
-    $('level-name').textContent = g.name; $('level-number').textContent = `Level ${g.level + 1}`; $('level-badge').textContent = g.level + 1;
+    $('level-name').textContent = g.name; $('level-number').textContent = `Level ${g.level + 1}`; $('level-disc').textContent = g.level + 1;
     if (M()) M().count($('xp-total'), g.xp, { format: n => `${whole(n)} XP` }); else $('xp-total').textContent = `${fmt(g.xp)} XP`;
     $('level-progress').value = g.next ? (g.xp - g.floor) / (g.next - g.floor) * 100 : 100;
     $('xp-bar').style.setProperty('--p', $('level-progress').value / 100); $('xp-bar').setAttribute('aria-valuenow', Math.round($('level-progress').value));
@@ -215,13 +220,8 @@
     // Legacy v4 quest and week rows stay in the hidden containers that older saved layouts expect.
     $('quests').replaceChildren(); g.quests.forEach(q => { const row = node('div', 'quest'), bar = node('progress'); bar.max = q.target; bar.value = q.progress; row.append(node('span', '', `${q.complete ? '✓' : '○'} ${q.name}`), bar); $('quests').append(row); });
     $('history-bars').replaceChildren(); for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); const row = node('div', 'history-row'); row.append(node('span', '', dayKey(d)), node('strong', '', `${fmt(g.days.get(dayKey(d))?.kcal || 0)} kcal`)); $('history-bars').append(row); }
-    if (celebratedLevel === null) { celebratedLevel = g.level; g.badges.forEach(b => { if (b.unlocked) celebratedBadges.add(b.id); }); }
-    else {
-      const fresh = g.badges.filter(b => b.unlocked && !celebratedBadges.has(b.id));
-      fresh.forEach(b => celebratedBadges.add(b.id));
-      if (g.level > celebratedLevel) { celebratedLevel = g.level; $('new-level').textContent = `Level ${g.level + 1} · ${g.name}`; celebrate($('new-level').textContent); M()?.haptic('success'); M()?.confetti($('today-scan')); }
-      else if (fresh.length) { celebrate(`Badge unlocked · ${fresh.map(b => b.name).join(', ')}`); M()?.haptic('success'); }
-    }
+    if (celebratedLevel === null) celebratedLevel = g.level;
+    else if (g.level > celebratedLevel) { celebratedLevel = g.level; $('new-level').textContent = `Level ${g.level + 1} · ${g.name}`; celebrate($('new-level').textContent); M()?.haptic('success'); M()?.confetti($('today-scan')); }
     previousGame = g;
   }
   function popXP() { M()?.pulse($('today-scan'), 'bounce', 600); M()?.haptic('on'); }
@@ -279,10 +279,12 @@
   const roundNum = (k, v) => k === 'kcal' ? Math.round(v) : Math.round(v * 10) / 10;
   const numText = (k, v) => String(roundNum(k, v));
   let card = null;
+  // info.add: the builder's "Add to meal" (the card fills one item of a custom meal instead of logging it).
   function openResult(item, source, info = {}) {
     const ai = source === 'photo' || source === 'text', grams = item.grams || (item.basis === '100g' ? 100 : item.servingGrams) || null;
-    card = { item, source, ai, rate: grams ? Object.fromEntries(NUMS.map(k => [k, (item[k] || 0) / grams])) : null };
-    $('confirm-title').textContent = ai ? 'Your meal, decoded.' : 'Check and log';
+    card = { item, source, ai, add: info.add || null, rate: grams ? Object.fromEntries(NUMS.map(k => [k, (item[k] || 0) / grams])) : null };
+    $('confirm-title').textContent = card.add ? 'Add to your meal' : ai ? 'Your meal, decoded.' : 'Check and log';
+    $('confirm-log').textContent = card.add ? 'Add to meal' : 'Log it'; $('scan-meal-field').hidden = !!card.add;
     $('result-name').value = item.name || '';
     $('result-grams').value = grams ? String(Math.round(grams * 10) / 10) : '';
     NUMS.forEach(k => { numField(k).value = numText(k, item[k] || 0); });
@@ -330,7 +332,8 @@
   }
   $('cancel-scan').onclick = () => window.CHADUX.closeSheet($('confirm-sheet'));
   // The photo leaves with the sheet (the close event is queued, so a sheet opened again in the meantime keeps its own).
-  $('confirm-sheet').addEventListener('close', () => { if (!$('confirm-sheet').open) $('result-photo').removeAttribute('src'); });
+  // Closed without adding, an "Add to meal" card goes back to the builder, where the meal is waiting.
+  $('confirm-sheet').addEventListener('close', () => { if ($('confirm-sheet').open) return; $('result-photo').removeAttribute('src'); if (card?.add) { const back = card.add; card = null; back(null); } });
   $('copy-result').onclick = async () => {
     const e = card && cardEntry(); if (!e || e.fix) return message(e?.text || 'Nothing to copy.', true);
     try { await navigator.clipboard.writeText(`${e.name}${e.portion ? ' · ' + e.portion : ''} · ${fmt(e.kcal)} kcal · P ${fmt(e.protein)} g C ${fmt(e.carbs)} g F ${fmt(e.fat)} g`); message('Summary copied.'); }
@@ -340,6 +343,7 @@
     e.preventDefault(); if (!card) return;
     const values = cardEntry();
     if (values.fix) { message(values.text, true); numField(values.fix).focus(); return; }
+    if (card.add) { const back = card.add; card = null; window.CHADUX.closeSheets(); back({ ...values, source: 'ai' }); return; }
     const entry = { ...values, id: newId(), day: selectedKey(), meal: $('scan-meal').value, source: card.source };
     M()?.mark(`#entries [data-entry="${entry.id}"]`, 'just-on');
     if (!logEntries([entry], `${entry.name} · ${whole(entry.kcal)} kcal`)) return;
@@ -631,10 +635,10 @@
 
   window.addEventListener('storage', e => { if (e.key === KEY || e.key === null) { state = defaults(); previousGame = null; read(); render(); fillGoals(); } if ([RECScan.PROXY_KEY, RECScan.TOKEN_KEY, RECScan.KEY_KEY, null].includes(e.key)) aiStatus(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) stopScanner(); else render(); });
-  setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]') && (dayKey() !== observedToday || window.CHADUX?.currentSlot() !== currentMealSlot)) render(); }, 60000);
+  setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]') && (dayKey() !== observedToday || window.CHADUX?.currentSlot() !== currentMealSlot || window.CHADUX?.timeBlock() !== currentBlock)) render(); }, 60000);
   function fillGoals() { $('journey-start-date').value = CHADUX.validDate(state.journeyStartDate) ? state.journeyStartDate : CHADUX.defaultJourneyStart; $('phase').value = state.phaseMode || 'auto'; const g = { ...state, ...CHADQuest.goals(state, dayKey()) }; [g.target, g.proteinGoal, g.carbsGoal, g.fatGoal].forEach((v, i) => $(goalIds[i]).value = v); }
   if (window.CHADUX) {
-    window.CHADUX.save = save; window.CHADUX.change = change; window.CHADUX.popXP = popXP;
+    window.CHADUX.save = save; window.CHADUX.change = change; window.CHADUX.popXP = popXP; window.CHADUX.openResult = openResult; window.CHADUX.aiRoute = aiRoute; window.CHADUX.goSetup = goSetup; window.CHADUX.message = message;
     window.CHADUX.onFoodOpen = kind => {
       $('food-state').hidden = true;
       if (kind === 'search') { if ($('food-search').value.trim().length < 2) foodIdle(); } else { $('food-results').replaceChildren(); $('scan-status').textContent = ''; }
@@ -643,6 +647,7 @@
   }
   window.CHADUX?.setup({ stopScanner, render });
   read(); render(); fillGoals(); aiStatus(); if (storageReadable) save(state); $('meal').value = defaultMeal();
+  window.CHADGym?.resume();                                        // a workout left open comes straight back
   // A setup link may open the app, or arrive in a tab that is already open. It is wiped from the address bar before
   // anything else happens, then saved: a quiet "AI connected" toast, with Undo.
   const takeLink = () => { const link = RECScan.setupLink(location.hash); if (!link) return; try { history.replaceState(null, '', location.pathname + location.search); } catch { /* the hash simply stays */ } connectLink(link, 'hash'); };

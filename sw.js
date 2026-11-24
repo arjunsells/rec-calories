@@ -1,7 +1,7 @@
 'use strict';
 // Bump CACHE with every release: a changed worker is what tells installed copies to update.
-const CACHE = 'rec-calories-shell-v9';
-const SHELL = ['./', './index.html', './theme9.css', './icons8.js', './motion8.js', './charts8.js', './game.js', './scan9.js', './food9.js', './plan9.js', './quest9.js', './ux9.js', './app9.js', './fonts/press-start-2p.ttf', './fonts/OFL.txt', './vendor/zxing-browser.min.js', './vendor/ZXING-LICENSE', './vendor/README.md', './manifest.webmanifest', './icons/icon.svg', './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/mark.svg'];
+const CACHE = 'rec-calories-shell-v10';
+const SHELL = ['./', './index.html', './theme10.css', './icons8.js', './motion8.js', './charts8.js', './game10.js', './scan9.js', './food9.js', './plan10.js', './train10.js', './quest10.js', './gym10.js', './builder10.js', './ux10.js', './app10.js', './fonts/press-start-2p.ttf', './fonts/OFL.txt', './vendor/zxing-browser.min.js', './vendor/ZXING-LICENSE', './vendor/README.md', './manifest.webmanifest', './icons/icon.svg', './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/mark.svg'];
 self.addEventListener('install', event => {
   // cache: 'reload' skips the HTTP cache, so a new shell can never be assembled from stale files.
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL.map(url => new Request(url, { cache: 'reload' })))).then(() => self.skipWaiting()));
@@ -17,7 +17,7 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET' || url.origin !== self.location.origin || !url.href.startsWith(self.registration.scope)) return;
   event.respondWith(caches.open(CACHE).then(async cache => {
     // The page and its assets always come from the same cache generation: instant launch, works offline,
-    // and never a new page running old scripts. app9.js reloads once when a newer shell takes over.
+    // and never a new page running old scripts. app10.js reloads once when a newer shell takes over.
     if (event.request.mode === 'navigate') return (await cache.match('./index.html')) || fetch(event.request);
     return (await cache.match(event.request, { ignoreSearch: true })) || fetch(event.request);
   }));

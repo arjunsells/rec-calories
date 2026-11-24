@@ -1,6 +1,6 @@
 'use strict';
-// CHAD v9 · navigation (swipe, a week strip that folds away, arrow keys), sheets, toasts with Undo and Redo, and the
-// shared macro builders. The journal lives in app9.js; scoring and screens in quest9.js.
+// CHAD v10 · navigation (swipe, a week strip that folds away, arrow keys), sheets, toasts with Undo and Redo, and the
+// shared macro builders, and Darwin time of day. The journal lives in app10.js; scoring and screens in quest10.js.
 (() => {
   const $ = id => document.getElementById(id);
   const M = () => window.CHADMotion;
@@ -26,7 +26,7 @@
   function macroTiles(values) {
     const box = make('div', 'ch-macros');
     ['kcal', 'Protein', 'Carbs', 'Fat'].forEach((label, i) => {
-      const item = make('div', 'ch-macros__item' + (i ? '' : ' ch-macros__item--kcal')), value = make('b', '', tenth.format(values[i] || 0));
+      const item = make('div', 'ch-macros__item ch-macros__item--' + ['kcal', 'p', 'c', 'f'][i]), value = make('b', '', tenth.format(values[i] || 0));
       if (i) value.append(make('small', '', 'g'));
       item.append(value, make('span', '', label)); box.append(item);
     });
@@ -44,10 +44,13 @@
     if (page && M()) M().pageTurn(page, key > from ? 1 : -1, refresh, gesture); else refresh();
   }
   const navigate = (offset, gesture) => goTo(CHADQuest.shift(dateKey(), offset), gesture);
-  function currentSlot(date = new Date()) {
-    const hour = Number(new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Darwin', hour: 'numeric', hourCycle: 'h23' }).format(date));
-    return hour < 14 ? 'L' : hour < 18 ? 'P' : hour < 21 ? 'D' : 'E';
-  }
+  // Darwin time decides what Today puts first: morning (before 11), midday (11-3), the gym window (3-6, gym 4-6 pm)
+  // and the evening. The meal of the moment follows the same hours: lunch is next all morning and at midday; from the
+  // gym window on it is dinner (and the optional snack once dinner is in). There is no breakfast and no pre-gym meal.
+  const darwinHour = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Darwin', hour: 'numeric', hourCycle: 'h23' });
+  const hourNow = (date = new Date()) => Number(darwinHour.format(date)) % 24;
+  function timeBlock(date = new Date()) { const hour = hourNow(date); return hour < 11 ? 'morning' : hour < 15 ? 'midday' : hour < 18 ? 'gym' : 'evening'; }
+  function currentSlot(date = new Date()) { return { morning: 'L', midday: 'L', gym: 'D', evening: 'D' }[timeBlock(date)]; }
   // "Yesterday", "Tomorrow" or "Mon 23 Nov": names the day a change landed on when it is not today.
   function dayLabel(key) {
     const today = CHADQuest.dayKey();
@@ -65,14 +68,13 @@
       strip.append(b);
     }
     [...strip.children].forEach((b, i) => {
-      const k = CHADQuest.shift(start, i), d = CHADQuest.daily(state, k), plan = CHADQuest.training[CHADQuest.weekday(k)].ex;
-      const done = plan.filter((_, x) => d.training || d.exercises?.[x]).length;
-      const part = mode === 'training' ? done / plan.length : d.score / 17, gold = mode === 'training' ? !!d.training : d.grade === 'S';
+      const k = CHADQuest.shift(start, i), d = CHADQuest.daily(state, k), session = CHADTrain.plan(k), trained = CHADTrain.finished(d);
+      const part = mode === 'training' ? CHADQuest.sessionProgress(state, k) : d.score / 17, gold = mode === 'training' ? trained : d.grade === 'S';
       b.dataset.day = k;
       b.className = 'ch-week__day' + (k === key ? ' is-selected' : '') + (k === today ? ' is-now' : '') + (k > today ? ' is-future' : '') + (gold ? ' is-s' : '');
       b.lastChild.textContent = String(Number(k.slice(8)));
       b.lastChild.style.setProperty('--p', Math.max(0, Math.min(1, part)).toFixed(3));
-      b.setAttribute('aria-label', darwin(k, { weekday: 'long', day: 'numeric', month: 'long' }) + (mode === 'training' ? `, ${done} of ${plan.length} exercises` : `, ${d.score} of 17 points`));
+      b.setAttribute('aria-label', darwin(k, { weekday: 'long', day: 'numeric', month: 'long' }) + (mode === 'training' ? `, ${session.name}${trained ? ', done' : ''}` : `, ${d.score} of 17 points`));
       if (k === key) b.setAttribute('aria-current', 'date'); else b.removeAttribute('aria-current');
     });
     strip.style.setProperty('--i', (CHADQuest.weekday(key) + 6) % 7);
@@ -108,7 +110,9 @@
       const b = make('button', 'ch-toast__action', options.action || 'Undo'); b.type = 'button';
       // Armed after a beat, so a double tap on Undo can never land on the Redo that takes its place.
       b.disabled = true; armTimer = setTimeout(() => { b.disabled = false; }, 350);
-      b.onclick = () => { if (b.disabled) return; hideToast(true); action(); };
+      // The toast changes width once tapped ("Undone · Redo"), so the second tap of a double tap could land on the page
+      // under it: the page ignores touches for a moment, as after closing a sheet.
+      b.onclick = () => { if (b.disabled) return; shield(); hideToast(true); action(); };
       bar.append(b);
     }
     const life = options.life || 6000;
@@ -154,11 +158,12 @@
   function detail(title, nodes) { closeSheets(); $('detail-title').textContent = title; $('detail-content').replaceChildren(...nodes); show($('detail-sheet')); }
 
   const HELP = [
-    ['Logging', ['The next meal sits at the top: tap an option to log it, tap it again to remove it, or tap another option to switch. Other meals wait in rows below; tap a row, the ⓘ button or long-press a card for ingredients, macros, tips and swaps, and log from there.', 'Tap the bottles to add 500 mL of water and − to take 500 mL off. Hydralyte, training, cardio, steps and sleep switch on and off with one tap. Every change shows Undo for six seconds, and Undo offers Redo.']],
-    ['Days', ['Swipe left or right to change day, or use the arrow keys. The calendar button shows the week with each day’s ring: tap a day to jump. Today brings you back. Anything you log goes to the day on screen, and the Undo toast names that day when it is not today.']],
-    ['Scoring & rewards', ['Meals: Strict 3, Medium 2, Free 1. Protein 210 g+ earns 2; water target earns 2; 10k steps earns 1. Max 17. S 15+, A 12+, B 9+, C ≤ 8. Grade B+ saves your streak. Weekly bonus +10 after a full Mon-Sun with at most 2 Free picks. XP, levels and badges are worked out from what is logged, so undoing and redoing never adds XP twice.', 'Weekly ranks: Rookie below 60; Grinder 60-84; Beast 85-104; Champion 105-119; AJ Mode 120+.']],
-    ['Hydration', ['Hydration: 1 L by 10 am, 2 L by 1 pm, 3 L by 3:30 pm, 1 L at gym with Hydralyte, and 500 mL at dinner. Sunday target 3.5 L; Saturday 5 L; weekdays 4.5 L. Protein points start at 210 g; the ring uses your phase goal.']],
-    ['Training', ['Training: stop 2 reps before failure. Add reps, then weight. Gym around 3:30 pm; cardio follows. Easy day if sleep is under 6 hours, joints hurt, or strength drops two sessions in a row. Deload halves sets, rounded up: 28 Dec-3 Jan, 8-14 Feb, 22-28 Mar, 3-9 May. Sauna or ice bath: Sunday only. Long-press any exercise for its notes.']],
+    ['Today', ['Today puts what matters now first, on Darwin time. Before 11 am: water, with lunch next. 11 am to 3 pm: lunch. 3 to 6 pm: the gym session with one big Start, water below. After 6 pm: dinner and the wrap-up (on Wednesday, Muay Thai at 6:30 first), then the optional snack. Everything else is one quiet line: tap it to open it in place.', 'Meals: lunch, then the gym, then dinner (the biggest meal), then an optional protein snack that closes the gap. Each has three options, Strict, Medium and Free, with kcal, protein, carbs and fat and how to make or order it; lunch pins your two go-tos first (★). Remaining today shows what is left of the goals, and once something is logged the option that fits it best says Best fit. Yesterday’s pick says Same as yesterday. Tap a card to log it, tap it again to remove it, or tap another to switch. Long-press a card for what is in it.', '+ Custom builds a meal from foods when the plan doesn’t happen: tap quick picks (½, 1, 2 or grams), search the foods here and Open Food Facts, or Ask AI with words, the keyboard mic or a photo. The total runs as you go. Log fills the meal; Save as my meal keeps it as a one-tap ★ on that meal (long-press it to remove it). Water: one tap adds a 500 mL bottle. Cardio, steps, sleep, Hydralyte and Muay Thai are one-tap chips. Every change shows Undo for six seconds, and Undo offers Redo.']],
+    ['Gym mode', ['Start opens Gym mode: one exercise at a time. Tap Log set (or the next dot) to log it with the kg and reps shown; they are filled in from last time, with the next step: add reps first, then weight. The rest timer starts by itself (60 to 120 s by exercise), +15 s adds time, Skip ends it; it keeps true time when the screen locks. Tap a logged dot to remove that set. Finish shows the XP, volume, time and any records. The screen stays awake while Gym mode is open, it works offline, and a closed app comes back to the same exercise.']],
+    ['Days & streak', ['Swipe left or right to change day, or use the arrow keys. The calendar button shows the week with each day’s ring: tap a day to jump. Today brings you back. Anything you log goes to the day on screen, and the Undo toast names that day when it is not today.', 'The streak is your journey streak: every day from Day 1 (Settings) up to today counts. Only a day marked as missed (Settings › Selected day) breaks it, and it starts again the day after.']],
+    ['Scoring & XP', ['Meals: Strict 3, Medium 2, Free 1, a custom meal 1. The day’s session done earns 3 (the workout, Muay Thai on Wednesday, the walk on Sunday). Protein 210 g+ earns 2; water target earns 2; 10k steps earns 1. Max 17. S 15+, A 12+, B 9+, C ≤ 8. Days before 24 Nov 2026 had four meals and keep their scores. Weekly bonus +10 after a full Mon-Sun (every meal logged) with at most 2 Free picks. XP: 10 for each meal, habit, litre of water and session move, 5 for each set. XP and levels are worked out from what is logged, so undoing and redoing never adds XP twice.', 'Weekly ranks: Rookie below 60; Grinder 60-84; Beast 85-104; Champion 105-119; AJ Mode 120+.']],
+    ['Hydration', ['Hydration: 1 L by 10 am, 2 L by 1 pm, 3 L by 3:30 pm, 1 L at gym with Hydralyte, and 500 mL at dinner. Sunday target 3.5 L; Saturday 5 L; weekdays 4.5 L. The water streak counts days in a row on target. Protein points start at 210 g; the ring uses your phase goal.']],
+    ['Training', ['Perfect Week v1: Mon Push + 2 km Zone 2; Tue Pull + 30-40 min incline walk; Wed Muay Thai only, 6:30 pm; Thu Delts + Arms + 2 km Zone 2; Fri Upper chest + Back + 30-40 min incline walk; Sat Hill sprints + Legs; Sun rest + 45-60 min walk. Gym 4-6 pm, cardio straight after. Stop 2 reps before failure. Add reps first, then weight. Focus: side delts, upper chest, lats, traps.', 'Deload weeks halve the sets (rounded up), same weights, Muay Thai easy: 28 Dec-3 Jan, 8-14 Feb, 22-28 Mar, 3-9 May. Perfect Week v2 review on 20 Dec. Easy day if sleep is under 6 hours, joints hurt, or strength drops two sessions in a row. Sauna or ice bath: Sunday only.']],
     ['Photo estimates & food data', ['Snap + Say estimates a meal through the CHAD proxy once this device is connected with its setup link (Settings › Advanced; paste it there in the home-screen app), or, as a fallback, your own OpenAI key. The answer opens as a card you can edit: change the weight and kcal and macros follow, then one tap logs it. With no AI, or when it is offline, say what it is and log it from search, barcode or quick add. Estimates can miss portions; check before logging.', 'Food lookup uses Open Food Facts; check the package label. Recent search results are kept on this device so they still open on bad reception. Everything is metric: kg, g, L, mL. Reset and Bulk add-ons are estimates. Shake: 500 mL high-protein milk, 60 g oats and a banana.']]
   ];
 
@@ -171,7 +176,7 @@
     // Keyboards and mice: the arrow keys change the day on Today and Training.
     addEventListener('keydown', e => {
       if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
-      if (document.querySelector('dialog[open]') || e.target.closest?.('input,textarea,select,[contenteditable],.ch-seg')) return;
+      if (document.querySelector('dialog[open]') || document.documentElement.classList.contains('is-gym') || e.target.closest?.('input,textarea,select,[contenteditable],.ch-seg')) return;
       if (!['today', 'training'].includes(document.querySelector('.view:not([hidden])')?.id)) return;
       e.preventDefault(); navigate(e.key === 'ArrowLeft' ? -1 : 1);
     });
@@ -226,7 +231,6 @@
     $('journey-day').innerHTML = 'Day <b>' + journeyDay(key, state.journeyStartDate) + '</b>';
     $('day-title').textContent = relative; $('date-label').textContent = label;
     $('training-day-title').textContent = relative; $('training-date-label').textContent = label;
-    $('grade-label').textContent = relative || label;
     $('return-today').hidden = $('training-today').hidden = isToday;
     ring.style.setProperty('--p', d.score / 17 * 100); ring.setAttribute('aria-label', `${d.score} of 17 quest points, grade ${d.grade}`);
     const turned = ringKey !== null && ringKey !== key;                          // another day: show it as it is, no count, no sweep
@@ -241,5 +245,5 @@
     ringKey = key;
     weekStrip($('week-strip'), state, 'score'); weekStrip($('training-week'), state, 'training');
   }
-  window.CHADUX = { setup, render, tab, currentSlot, dateKey, navigate, goTo, dayLabel, setWeek, weekOpen: () => weekOpen, toast, hideToast, detail, closeSheets, closeSheet, showSheet: show, openAdd, openFood, journeyDay, validDate, defaultJourneyStart, foodMeal: () => foodMeal, pcf, macroTiles };
+  window.CHADUX = { setup, render, tab, currentSlot, timeBlock, dateKey, navigate, goTo, dayLabel, setWeek, weekOpen: () => weekOpen, toast, hideToast, detail, closeSheets, closeSheet, showSheet: show, openAdd, openFood, journeyDay, validDate, defaultJourneyStart, foodMeal: () => foodMeal, pcf, macroTiles };
 })();
