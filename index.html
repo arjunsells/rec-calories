@@ -19,17 +19,19 @@
       // Paint the chosen theme before the first frame (no flash). Device-local preference only.
       try{var t=localStorage.getItem('rec-calories-theme');if(t!=='dark'&&t!=='light'&&t!=='system')t=(JSON.parse(localStorage.getItem('rec-calories-v1')||'{}')||{}).arcadeTheme;if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}
     </script>
-    <link rel="stylesheet" href="./theme9.css">
+    <link rel="stylesheet" href="./theme10.css">
     <script src="./icons8.js" defer></script>
     <script src="./motion8.js" defer></script>
     <script src="./charts8.js" defer></script>
-    <script src="./game.js" defer></script>
+    <script src="./game10.js" defer></script>
     <script src="./scan9.js" defer></script>
     <script src="./food9.js" defer></script>
-    <script src="./plan9.js" defer></script>
-    <script src="./quest9.js" defer></script>
-    <script src="./ux9.js" defer></script>
-    <script src="./app9.js" defer></script>
+    <script src="./plan10.js" defer></script>
+    <script src="./train10.js" defer></script>
+    <script src="./quest10.js" defer></script>
+    <script src="./gym10.js" defer></script>
+    <script src="./ux10.js" defer></script>
+    <script src="./app10.js" defer></script>
   </head>
   <body>
     <div class="app ch-app">
@@ -126,14 +128,24 @@
                 <span class="ch-tile__v"><i data-icon="flame" data-size="20"></i><span id="streak-count">0</span></span>
                 <span class="ch-tile__s" id="streak"></span>
               </div>
-              <div class="ch-tile" id="weekly-progress"></div>
-              <div class="ch-tile daily-grade">
-                <span class="ch-tile__k" id="grade-label">Today</span>
-                <span class="ch-tile__v"><strong id="daily-grade" class="ch-grade ch-grade--sm"></strong></span>
-                <span class="ch-tile__s" id="grade-detail"></span>
+              <div class="ch-tile ch-tile--water">
+                <span class="ch-tile__k">Water</span>
+                <span class="ch-tile__v"><i data-icon="drop" data-size="20"></i><span id="water-streak">0</span></span>
+                <span class="ch-tile__s" id="water-streak-s"></span>
               </div>
+              <div class="ch-tile" id="weekly-progress"></div>
             </div>
           </section>
+          <div class="ch-section">
+            <h2 class="ch-h">Workouts</h2>
+            <span id="workout-count"></span>
+          </div>
+          <ul id="workouts" class="ch-list ch-rows workouts"></ul>
+          <div class="ch-section">
+            <h2 class="ch-h">Personal records</h2>
+            <span id="pr-count"></span>
+          </div>
+          <ul id="records" class="ch-list records"></ul>
           <div id="charts" class="ch-flow"></div>
           <div id="history-bars" hidden></div>
           <div class="ch-section">
@@ -209,7 +221,7 @@
               </div>
             </details>
           </div>
-          <p class="ch-version">CHAD v9 · One day stronger.</p>
+          <p class="ch-version">CHAD v10 · One day stronger.</p>
         </section>
       </main>
       <div class="ch-dock-scrim" aria-hidden="true"></div>

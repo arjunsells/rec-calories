@@ -1,5 +1,5 @@
 /* ==========================================================================
-   CHAD v9 — theme9.css · one stylesheet, no dependencies. v9: fewer controls, same look.
+   CHAD v10 — theme10.css · one stylesheet, no dependencies. v10: time-aware Today, Gym mode, the same look, refined.
    Classes are `ch-*`, variables `--ch-*`. Stable JS hooks (ids, data-*, .meal-pick …) carry no styling.
 
    THEME   follows prefers-color-scheme; manual override on <html data-theme="dark|light">.
@@ -11,7 +11,7 @@
            "Press Start 2P" is a tiny accent only (streak, grade, level, XP).
    SPACE   4 / 8 / 12 / 16 / 24 / 32. Every control is at least 44 x 44.
    MOTION  springs via linear(); one-shot classes are added by motion8.js after a render:
-           .just-on / .just-off (check + undo), .is-entering (tab change), .is-closing (sheet).
+           .just-on / .just-off (check + undo), .is-entering (tab change, Gym mode), .is-closing (sheet).
            prefers-reduced-motion switches all of it off.
    SAFE    --ch-sat / --ch-sab / --ch-sal / --ch-sar mirror env(safe-area-inset-*); override to fake a notch.
    ========================================================================== */
@@ -175,7 +175,7 @@ body{ margin:0; background:var(--ch-bg) }      /* the native rubber band at the 
 .ch-page{ position:relative }
 .ch-page-ghost{ position:absolute; z-index:1; margin:0; pointer-events:none }
 .ch-view.is-entering > :not(.ch-datebar){ animation:ch-rise .55s var(--ch-ease) both }
-.ch-app[data-shield] > main,.ch-app[data-shield] > .ch-tabbar,.ch-app[data-shield] > .ch-snap{ pointer-events:none }   /* 400 ms after an action closes a sheet */
+.ch-app[data-shield] > main,.ch-app[data-shield] > .ch-tabbar,.ch-app[data-shield] > .ch-snap,.ch-app[data-shield] > .ch-gym{ pointer-events:none }   /* 400 ms after an action closes a sheet, or after Undo/Redo */
 .ch-view.is-entering > :nth-child(3){ animation-delay:.04s }
 .ch-view.is-entering > :nth-child(4){ animation-delay:.08s }
 .ch-view.is-entering > :nth-child(n+5){ animation-delay:.12s }
@@ -357,20 +357,15 @@ body{ margin:0; background:var(--ch-bg) }      /* the native rubber band at the 
 .ch-chip--streak .ch-px{ font-size:9px; padding-top:1px }
 .ch-chip--streak.just-on{ animation:ch-pop .6s var(--ch-ease) }
 
-/* ---- meal slots + cards ---- */
-.ch-slot{ display:grid; gap:8px }
-.ch-slot__head{ display:flex; align-items:center; gap:8px; padding:0 0 0 4px; min-height:28px }
+/* ---- meal slots: a meal and its three options, Strict, Medium, Free, one under the other ---- */
+.ch-slot{ display:grid; gap:10px }
+.ch-slot__head{ display:flex; align-items:center; gap:8px; padding:0 4px; min-height:28px }
 .ch-slot__title{ display:flex; align-items:baseline; gap:8px; min-width:0; margin-right:auto }
-.ch-slot__name{ font:700 20px/24px var(--ch-font); letter-spacing:-.016em }
+.ch-slot__name{ font:700 22px/26px var(--ch-font); letter-spacing:-.018em }
 .ch-slot__meta{ font:500 13px/16px var(--ch-font); color:var(--ch-muted); display:inline-flex; align-items:center; gap:4px; white-space:nowrap }
 .ch-slot__meta .ch-icon{ width:14px; height:14px; stroke-width:2.8; color:var(--ch-gold-text) }
 .ch-slot.is-logged .ch-slot__meta{ color:var(--ch-gold-text); font-weight:600 }
-.ch-slot__info{
-  appearance:none; border:0; background:none; flex:none; width:44px; height:44px; margin:-8px -8px -8px -6px; padding:0; border-radius:22px;
-  display:grid; place-items:center; color:var(--ch-faint); transition:color .15s ease,transform .4s var(--ch-spring); -webkit-tap-highlight-color:transparent;
-}
-.ch-slot__info .ch-icon{ width:20px; height:20px; stroke-width:1.9 }
-/* a meal opened from its row: the head folds it back away */
+/* a block opened from its line: the head folds it back away */
 .ch-slot__fold{
   appearance:none; border:0; background:none; flex:1; min-width:0; min-height:44px; margin:-8px 0; padding:0;
   display:flex; align-items:center; gap:8px; text-align:left; color:inherit; -webkit-tap-highlight-color:transparent; transition:opacity .15s ease;
@@ -379,26 +374,31 @@ body{ margin:0; background:var(--ch-bg) }      /* the native rubber band at the 
 .ch-slot__fold .ch-slot__meta{ margin-left:auto }
 .ch-slot__fold .ch-cell__chev{ flex:none; width:14px; height:14px; color:var(--ch-faint) }
 .ch-slot.is-open{ padding:4px 0 }
-.ch-slot__info:active{ color:var(--ch-text); transform:scale(.82); transition-duration:.1s }
-.ch-meals{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px }
-.ch-meal{
+.ch-block__fold{ margin:-6px 0 -2px; width:100% }
+.ch-block__fold .ch-slot__name{ font-size:20px; line-height:24px }
+.ch-opts{ display:grid; gap:8px }
+.ch-opt{
   --c:var(--ch-strict);
-  position:relative; display:grid; border-radius:var(--ch-radius-md); min-width:0;
+  position:relative; display:grid; min-width:0; border-radius:var(--ch-radius-md); overflow:hidden;
   background:var(--ch-surface); color:var(--ch-text); box-shadow:var(--ch-shadow),var(--ch-edge);
-  transition:transform .45s var(--ch-spring),box-shadow .25s ease,background-color .25s ease,opacity .25s ease;
+  transition:transform .45s var(--ch-spring),box-shadow .25s ease,background-color .25s ease,opacity .3s ease;
 }
-.ch-meal--strict{ --c:var(--ch-strict) } .ch-meal--medium{ --c:var(--ch-medium) } .ch-meal--free{ --c:var(--ch-free) }
-.ch-meal__hit{
-  appearance:none; border:0; background:none; border-radius:inherit; text-align:left; margin:0; min-width:0; width:100%;
-  display:grid; grid-template-rows:auto 1fr auto auto; gap:4px; align-content:start; padding:12px; min-height:132px;
-  color:inherit; -webkit-tap-highlight-color:transparent; -webkit-touch-callout:none; user-select:none; -webkit-user-select:none;
+.ch-opt--strict{ --c:var(--ch-strict) } .ch-opt--medium{ --c:var(--ch-medium) } .ch-opt--free{ --c:var(--ch-free) }
+.ch-opt::before{ content:""; position:absolute; left:0; top:12px; bottom:12px; width:4px; border-radius:0 4px 4px 0; background:var(--c); transition:background-color .25s ease }   /* the tier, at a glance */
+.ch-opt__hit{
+  appearance:none; border:0; background:none; margin:0; width:100%; min-width:0; text-align:left; border-radius:inherit;
+  display:grid; gap:3px; padding:11px 14px 12px 18px; min-height:88px; color:inherit;
+  -webkit-tap-highlight-color:transparent; -webkit-touch-callout:none; user-select:none; -webkit-user-select:none;
 }
-.ch-meal:has(> .ch-meal__hit:active){ transform:scale(.955); transition-duration:.1s }
-.ch-meal__tier{ display:flex; align-items:center; gap:6px; min-height:20px; font:700 11px/12px var(--ch-font); letter-spacing:.05em; text-transform:uppercase; white-space:nowrap; color:color-mix(in srgb,var(--c) 78%,var(--ch-text)) }
-.ch-meal__tier::before{ content:""; width:8px; height:8px; border-radius:50%; background:var(--c); flex:none }
-.ch-meal__name{ font:600 15px/19px var(--ch-font); letter-spacing:-.01em; align-self:start; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; line-clamp:3; overflow:hidden }
-.ch-meal__kcal{ font:700 22px/24px var(--ch-font-num); font-variant-numeric:tabular-nums; letter-spacing:-.01em }
-.ch-meal__kcal small{ font:600 11px/1 var(--ch-font); color:var(--ch-muted); margin-left:2px; letter-spacing:0 }
+.ch-opt:has(> .ch-opt__hit:active){ transform:scale(.975); transition-duration:.1s }
+.ch-opt__top{ display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:22px }
+.ch-opt__tier{ display:inline-flex; align-items:center; gap:6px; font:700 11px/12px var(--ch-font); letter-spacing:.07em; text-transform:uppercase; white-space:nowrap; color:color-mix(in srgb,var(--c) 78%,var(--ch-text)) }
+.ch-opt__kcal{ font:700 20px/22px var(--ch-font-num); font-variant-numeric:tabular-nums; letter-spacing:-.01em; white-space:nowrap }
+.ch-opt__kcal small{ font:600 11px/1 var(--ch-font); color:var(--ch-muted); margin-left:2px; letter-spacing:0 }
+.ch-opt__mid{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; min-width:0 }
+.ch-opt__name{ min-width:0; font:600 17px/22px var(--ch-font); letter-spacing:-.012em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.ch-opt .ch-pcf{ flex:none }
+.ch-opt__how{ font:400 13px/18px var(--ch-font); color:var(--ch-muted); display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; line-clamp:3; overflow:hidden }
 /* compact macros, the same everywhere: the letter is the macro, the number its grams */
 .ch-pcf{ display:inline-flex; align-items:baseline; gap:7px; font:500 12px/16px var(--ch-font-num); font-variant-numeric:tabular-nums; color:var(--ch-muted); white-space:nowrap; letter-spacing:0 }
 .ch-pcf > span{ display:inline-flex; align-items:baseline; gap:1px }
@@ -406,39 +406,41 @@ body{ margin:0; background:var(--ch-bg) }      /* the native rubber band at the 
 .ch-pcf__p b{ color:color-mix(in srgb,var(--ch-ring-exercise) 72%,var(--ch-text)) }
 .ch-pcf__c b{ color:color-mix(in srgb,var(--ch-orange) 82%,var(--ch-text)) }
 .ch-pcf__f b{ color:color-mix(in srgb,var(--ch-indigo) 80%,var(--ch-text)) }
-.ch-meal .ch-pcf{ min-height:16px }
-/* logged = gold edge, gold fill and a gold tick where the tier dot was; the other two step back but stay one tap away */
-.ch-meal:has(> .ch-meal__hit[aria-pressed="true"]){
+/* logged = gold edge, gold fill and a gold tick before the tier; the other two step back but stay one tap away */
+.ch-opt:has(> .ch-opt__hit[aria-pressed="true"]){
   background:linear-gradient(165deg,color-mix(in srgb,var(--ch-gold) 20%,var(--ch-surface)),color-mix(in srgb,var(--ch-gold) 8%,var(--ch-surface)));
   box-shadow:inset 0 0 0 2px var(--ch-gold),0 6px 20px color-mix(in srgb,var(--ch-gold) 22%,transparent);
 }
-.ch-meal__hit[aria-pressed="true"] .ch-meal__tier{ color:var(--ch-gold-text) }
-.ch-meal__hit[aria-pressed="true"] .ch-meal__tier::before{
-  width:18px; height:18px; margin:-5px -2px -5px -5px;
+.ch-opt:has(> .ch-opt__hit[aria-pressed="true"])::before{ background:var(--ch-gold) }
+.ch-opt__hit[aria-pressed="true"] .ch-opt__tier{ color:var(--ch-gold-text) }
+.ch-opt__hit[aria-pressed="true"] .ch-opt__tier::before{
+  content:""; flex:none; width:18px; height:18px; margin:-4px 0 -4px -2px; border-radius:50%;
   background:var(--ch-tick-on-gold) center/11px no-repeat,linear-gradient(160deg,var(--ch-done-1),var(--ch-done-2));
   box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 2px 6px color-mix(in srgb,var(--ch-gold) 40%,transparent);
 }
-.ch-meals:has([aria-pressed="true"]) .ch-meal:not(:has(> .ch-meal__hit[aria-pressed="true"])){ opacity:.5 }
-.ch-meal.just-on{ animation:ch-press-pop .5s var(--ch-ease) }
-.ch-meal.just-on .ch-meal__tier::before{ animation:ch-tick-in .55s var(--ch-spring) both }
-.ch-meal.just-off{ animation:ch-settle .4s var(--ch-ease) }
-.ch-slot.is-arriving .ch-meal{ animation:ch-rise .45s var(--ch-ease) both }
-.ch-slot.is-arriving .ch-meal:nth-child(2){ animation-delay:.04s }
-.ch-slot.is-arriving .ch-meal:nth-child(3){ animation-delay:.08s }
+.ch-opts:has([aria-pressed="true"]) .ch-opt:not(:has(> .ch-opt__hit[aria-pressed="true"])){ opacity:.55 }
+.ch-opt.just-on{ animation:ch-press-pop .5s var(--ch-ease) }
+.ch-opt.just-on .ch-opt__tier::before{ animation:ch-tick-in .55s var(--ch-spring) both }
+.ch-opt.just-off{ animation:ch-settle .4s var(--ch-ease) }
+.ch-slot.is-arriving .ch-opt{ animation:ch-rise .45s var(--ch-ease) both }
+.ch-slot.is-arriving .ch-opt:nth-child(2){ animation-delay:.04s }
+.ch-slot.is-arriving .ch-opt:nth-child(3){ animation-delay:.08s }
 .ch-slot.is-arriving .ch-slot__head{ animation:ch-fade .35s ease both }
 
-/* ---- water ---- */
+/* ---- water: one button. One tap = +500 mL; Undo takes it back. The goal and the streak are on it ---- */
 .ch-water{
   appearance:none; border:0; width:100%; text-align:left; position:relative;
-  display:flex; align-items:center; gap:16px; min-height:64px; padding:10px 16px; border-radius:var(--ch-radius-md);
+  display:flex; align-items:center; gap:12px; min-height:62px; padding:10px 14px 10px 12px; border-radius:var(--ch-radius-md);
   background:var(--ch-surface); color:var(--ch-text); box-shadow:var(--ch-shadow),var(--ch-edge);
   transition:transform .45s var(--ch-spring); -webkit-tap-highlight-color:transparent; -webkit-touch-callout:none; user-select:none; -webkit-user-select:none;
 }
 .ch-water:active{ transform:scale(.975); transition-duration:.1s }
-.ch-bottles{ display:flex; align-items:flex-end; gap:6px; flex:1; min-width:0 }
+.ch-water__drop{ flex:none; width:36px; height:36px; border-radius:50%; display:grid; place-items:center; background:color-mix(in srgb,var(--ch-water) 15%,transparent); color:var(--ch-water) }
+.ch-water__drop .ch-icon{ width:18px; height:18px; fill:currentColor; fill-opacity:.25 }
+.ch-bottles{ display:flex; align-items:flex-end; gap:4px; flex:1; min-width:0 }
 .ch-bottle{
   --fill:0; --c:var(--ch-water); --c2:var(--ch-water-2);
-  position:relative; display:block; flex:0 1 22px; min-width:0; aspect-ratio:3/5; overflow:hidden;
+  position:relative; display:block; flex:0 1 17px; min-width:0; aspect-ratio:3/5; overflow:hidden;
   background:color-mix(in srgb,var(--c) 20%,var(--ch-fill));
   -webkit-mask:var(--ch-bottle-mask) center/contain no-repeat; mask:var(--ch-bottle-mask) center/contain no-repeat;
 }
@@ -447,60 +449,104 @@ body{ margin:0; background:var(--ch-bg) }      /* the native rubber band at the 
 .ch-bottle.just-on{ animation:ch-pop .5s var(--ch-ease) }
 .ch-bottle.just-on::before{ animation:ch-fill-up .7s var(--ch-spring-soft) both }
 .ch-bottle.just-off::before{ animation:ch-fill-down .45s var(--ch-ease) both }
-.ch-water__val{ flex:none; display:inline-flex; align-items:baseline; font:700 22px/28px var(--ch-font-num); font-variant-numeric:tabular-nums; letter-spacing:-.01em; white-space:nowrap }
+.ch-water__right{ flex:none; display:grid; justify-items:end; gap:1px }
+.ch-water__val{ display:inline-flex; align-items:baseline; font:700 20px/24px var(--ch-font-num); font-variant-numeric:tabular-nums; letter-spacing:-.01em; white-space:nowrap }
 .ch-water__val small{ font:600 13px/1 var(--ch-font-num); color:var(--ch-muted); margin-left:3px; letter-spacing:0 }
+.ch-water__goal{ display:inline-flex; align-items:center; gap:6px; font:500 12px/16px var(--ch-font-num); color:var(--ch-muted); white-space:nowrap }
+.ch-water.is-full .ch-water__goal{ color:var(--ch-gold-text); font-weight:600 }
+.ch-water__streak{ display:inline-flex; align-items:center; gap:2px; font:700 12px/16px var(--ch-font-num); color:var(--ch-orange); white-space:nowrap }
+.ch-water__streak:empty{ display:none }
+.ch-water__streak .ch-icon{ width:13px; height:13px; fill:currentColor; fill-opacity:.3 }
 .ch-water.is-full .ch-water__val::before{
   content:""; align-self:center; width:20px; height:20px; margin-right:8px; border-radius:50%;
   background:var(--ch-tick-on-gold) center/12px no-repeat,linear-gradient(160deg,var(--ch-done-1),var(--ch-done-2)); box-shadow:inset 0 1px 0 rgba(255,255,255,.5);
 }
 .ch-water.is-full.just-on .ch-water__val::before{ animation:ch-tick-in .55s var(--ch-spring) both }
-/* water and habits share one card: bottles on top (tap = +500 mL, the − beside them takes 500 mL off), five habits below */
-.ch-daily{ display:grid; padding:0; overflow:hidden }
-.ch-water-row{ display:flex; align-items:center; padding-right:6px }
-.ch-daily .ch-water{ flex:1; min-width:0; background:none; box-shadow:none; border-radius:0; padding:10px 6px 10px 16px; gap:12px; min-height:64px }
-.ch-daily .ch-water:active{ transform:none }
-.ch-daily .ch-water:active .ch-bottles{ transform:scale(.97); transition-duration:.1s }
-.ch-daily .ch-bottles{ gap:5px; transition:transform .45s var(--ch-spring) }
-.ch-water__minus{
-  appearance:none; border:0; background:none; flex:none; position:relative; width:44px; height:44px; padding:0; border-radius:22px;
-  display:grid; place-items:center; color:var(--ch-text); transition:transform .4s var(--ch-spring),opacity .2s ease; -webkit-tap-highlight-color:transparent;
-}
-.ch-water__minus::before{ content:""; position:absolute; inset:7px; border-radius:50%; background:var(--ch-fill) }
-.ch-water__minus .ch-icon{ position:relative; width:16px; height:16px }
-.ch-water__minus:active{ transform:scale(.84); transition-duration:.1s }
-.ch-water__minus.is-idle{ visibility:hidden }
-.ch-daily .ch-qchips{ position:relative; padding:10px 8px 8px; gap:0 }
-.ch-daily .ch-qchips::before{ content:""; position:absolute; top:0; left:16px; right:0; height:.5px; min-height:.5px; background:var(--ch-line) }
-.ch-daily .ch-qchip{ min-height:66px; gap:6px; padding:2px 0 }
-.ch-daily .ch-qchip__icon{ width:42px; height:42px; background:var(--ch-fill); box-shadow:none }
-.ch-daily .ch-qchip__icon .ch-icon{ width:22px; height:22px }
+/* morning: water front and centre */
+.ch-water--big{ display:grid; gap:10px; padding:14px 16px 14px; border-radius:var(--ch-radius) }
+.ch-water__top{ display:flex; align-items:center; justify-content:space-between; gap:8px }
+.ch-water__label{ font:700 22px/26px var(--ch-font); letter-spacing:-.018em }
+.ch-water__mid{ display:flex; align-items:flex-end; gap:16px }
+.ch-water--big .ch-bottles{ gap:6px }
+.ch-water--big .ch-bottle{ flex-basis:24px }
+.ch-water--big .ch-water__val{ font-size:26px; line-height:30px }
+.ch-water__sub{ display:flex; align-items:baseline; justify-content:space-between; gap:8px; font:500 13px/18px var(--ch-font) }
+.ch-water__sub .ch-water__goal{ font-size:13px }
+.ch-water__tap{ color:color-mix(in srgb,var(--ch-water) 85%,var(--ch-text)); font-weight:600; white-space:nowrap }
 
-/* ---- quest chips ---- */
-.ch-qchips{ display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); gap:4px }
-.ch-qchip{
-  appearance:none; border:0; background:none; padding:4px 0; min-width:44px; min-height:80px;
-  display:grid; justify-items:center; align-content:start; gap:8px; color:var(--ch-muted);
-  -webkit-tap-highlight-color:transparent; -webkit-touch-callout:none; user-select:none; -webkit-user-select:none;
+/* ---- one-tap done chips: cardio, steps, sleep, Hydralyte, Muay Thai ---- */
+.ch-done-row{ display:flex; flex-wrap:wrap; gap:8px }
+.ch-done-grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px }
+.ch-done{
+  appearance:none; border:0; position:relative; min-width:0; display:flex; align-items:center; gap:10px; min-height:56px; padding:8px 14px 8px 8px; border-radius:28px;
+  background:var(--ch-fill); color:var(--ch-text); font:600 15px/20px var(--ch-font); text-align:left;
+  transition:transform .45s var(--ch-spring),background-color .25s ease,color .25s ease; -webkit-tap-highlight-color:transparent; -webkit-touch-callout:none; user-select:none; -webkit-user-select:none;
 }
-.ch-qchip__icon{
-  position:relative; width:52px; height:52px; border-radius:50%; display:grid; place-items:center;
+.ch-done:active{ transform:scale(.96); transition-duration:.1s }
+.ch-done__icon{
+  flex:none; position:relative; width:38px; height:38px; border-radius:50%; display:grid; place-items:center;
   background:var(--ch-surface); color:var(--ch-text); box-shadow:var(--ch-shadow),var(--ch-edge);
   transition:transform .45s var(--ch-spring),background-color .25s ease,color .25s ease;
 }
-.ch-qchip__icon .ch-icon{ width:26px; height:26px; stroke-width:1.9 }
-.ch-qchip__label{ font:600 11px/12px var(--ch-font); letter-spacing:.01em; white-space:nowrap; transition:color .2s ease }
-.ch-qchip:active .ch-qchip__icon{ transform:scale(.86); transition-duration:.1s }
-.ch-qchip[aria-pressed="true"]{ color:var(--ch-text) }
-.ch-qchip[aria-pressed="true"] .ch-qchip__icon{
+.ch-done__icon .ch-icon{ width:20px; height:20px }
+.ch-done__label{ min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:14px; letter-spacing:-.005em }
+.ch-done-row .ch-done__label{ font-size:15px }
+.ch-done[aria-pressed="true"]{ background:color-mix(in srgb,var(--ch-gold) 15%,transparent); color:var(--ch-gold-text) }
+.ch-done[aria-pressed="true"] .ch-done__icon{
   background:linear-gradient(160deg,var(--ch-done-1),var(--ch-done-2)); color:var(--ch-on-done);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.55),0 4px 12px color-mix(in srgb,var(--ch-gold) 32%,transparent);
 }
-.ch-qchip.just-on .ch-qchip__icon{ animation:ch-pop .5s var(--ch-ease) }
-.ch-qchip.just-on .ch-qchip__icon::after{ content:""; position:absolute; inset:0; border-radius:50%; box-shadow:0 0 0 2px var(--ch-gold); animation:ch-burst .6s ease-out both }
-.ch-qchip.just-off .ch-qchip__icon{ animation:ch-settle .4s var(--ch-ease) }
-.ch-qchips--wrap{ display:flex; flex-wrap:wrap; gap:8px }
-.ch-qchip--pill{                                  /* text capsule: add-ons, "complete session" */
-  display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:0 16px; border-radius:22px;
+.ch-done.just-on .ch-done__icon{ animation:ch-pop .5s var(--ch-ease) }
+.ch-done.just-on .ch-done__icon::after{ content:""; position:absolute; inset:0; border-radius:50%; box-shadow:0 0 0 2px var(--ch-gold); animation:ch-burst .6s ease-out both }
+.ch-done.just-off .ch-done__icon{ animation:ch-settle .4s var(--ch-ease) }
+
+/* ---- today's session: one card, one big Start ---- */
+.ch-gymcard{ position:relative; display:grid; gap:14px; overflow:hidden }
+.ch-gymcard::before{                             /* a little light from the corner: this is the moment */
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background:radial-gradient(90% 70% at 100% 0%,color-mix(in srgb,var(--ch-ring-exercise) 13%,transparent),transparent 70%);
+}
+.ch-gymcard--class::before{ background:radial-gradient(90% 70% at 100% 0%,color-mix(in srgb,var(--ch-red) 13%,transparent),transparent 70%) }
+.ch-gymcard--rest::before{ background:radial-gradient(90% 70% at 100% 0%,color-mix(in srgb,var(--ch-teal) 13%,transparent),transparent 70%) }
+.ch-gymcard.is-done::before{ background:radial-gradient(90% 70% at 100% 0%,color-mix(in srgb,var(--ch-gold) 18%,transparent),transparent 70%) }
+.ch-gymcard > *{ position:relative }
+.ch-gymcard__head{ display:flex; align-items:center; gap:14px }
+.ch-gymcard__name{ font:800 28px/32px var(--ch-font); letter-spacing:-.024em; margin-top:2px }
+.ch-gymcard__meta{ font:400 15px/20px var(--ch-font); color:var(--ch-muted); margin-top:2px }
+.ch-gymcard.is-open .ch-gymcard__meta{ margin-top:0 }
+.ch-gymcard__ring{ --size:66px; --w:7px; --c:var(--ch-ring-exercise) }
+.ch-gymcard__ring strong{ display:block; font:700 15px/1 var(--ch-font-num) }
+.ch-gymcard__ring small{ display:block; margin-top:2px; font:600 10px/12px var(--ch-font); letter-spacing:.04em; color:var(--ch-muted) }
+.ch-gymcard.is-done .ch-gymcard__ring{ --c:var(--ch-gold) }
+.ch-gymcard__ring .ch-icon{ color:var(--ch-gold-text) }
+.ch-gymcard__done{ display:flex; align-items:center; gap:8px; min-height:44px; padding:0 14px; border-radius:22px; background:color-mix(in srgb,var(--ch-gold) 14%,transparent); font:700 15px/20px var(--ch-font-num); font-variant-numeric:tabular-nums; color:var(--ch-gold-text) }
+.ch-gymcard__done .ch-icon{ width:18px; height:18px; flex:none }
+.ch-btn.ch-btn--go{
+  min-height:72px; border-radius:36px; gap:10px; padding:0 28px; font:800 20px/24px var(--ch-font); letter-spacing:-.01em;
+  background:linear-gradient(180deg,var(--ch-tint-hi),var(--ch-tint)); color:var(--ch-on-tint);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 10px 28px color-mix(in srgb,var(--ch-tint) 30%,transparent);
+}
+.ch-btn.ch-btn--go .ch-icon{ width:22px; height:22px }
+.ch-btn.ch-btn--go small{ font:600 14px/18px var(--ch-font-num); opacity:.72 }
+.ch-gymcard.is-live .ch-btn.ch-btn--go{ animation:ch-glow 2.6s ease-in-out infinite }
+.ch-deload.ch-deload--sm{ padding:8px 12px; gap:8px; border-radius:14px; font:600 13px/18px var(--ch-font) }
+.ch-deload.ch-deload--sm .ch-icon{ width:16px; height:16px }
+
+/* ---- the evening wrap-up ---- */
+.ch-wrap{ display:grid; gap:12px }
+.ch-wrap__head{ display:flex; align-items:center; gap:12px }
+.ch-wrap__title{ font:700 22px/26px var(--ch-font); letter-spacing:-.018em }
+.ch-wrap__sum{ font:400 15px/21px var(--ch-font-num); font-variant-numeric:tabular-nums; color:var(--ch-muted) }
+.ch-wrap__sum b{ font-weight:700; color:var(--ch-text) }
+
+/* ---- pills: add-ons, "Mark done" ---- */
+.ch-qchip{
+  appearance:none; border:0; background:none; padding:4px 0; min-width:44px; min-height:44px;
+  display:grid; justify-items:center; align-content:start; gap:8px; color:var(--ch-muted);
+  -webkit-tap-highlight-color:transparent; -webkit-touch-callout:none; user-select:none; -webkit-user-select:none;
+}
+.ch-qchip--pill{                                  /* text capsule */
+  display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:48px; padding:0 18px; border-radius:24px;
   background:var(--ch-fill); color:var(--ch-text); font:600 15px/20px var(--ch-font); white-space:nowrap;
   transition:transform .45s var(--ch-spring),background-color .25s ease,color .25s ease;
 }
@@ -514,7 +560,7 @@ body{ margin:0; background:var(--ch-bg) }      /* the native rubber band at the 
 .ch-addons{ display:grid; gap:12px }
 .ch-addons > div{ display:flex; flex-wrap:wrap; gap:8px }
 
-/* ---- quiet rows: the other meals, the rest of the training week ---- */
+/* ---- quiet lines: the rest of the day (and the rest of the training week) ---- */
 .ch-rows .ch-cell{ min-height:52px; gap:10px; padding:4px 12px 4px 16px; transition:background-color .3s ease; -webkit-tap-highlight-color:transparent }
 .ch-rows .ch-cell__title{ font:600 17px/22px var(--ch-font); letter-spacing:-.01em; white-space:nowrap }
 .ch-rows .ch-cell__title small{ display:inline-block; min-width:42px; margin-right:4px; font:600 12px/22px var(--ch-font); letter-spacing:.05em; text-transform:uppercase; color:var(--ch-muted); vertical-align:top }
@@ -525,6 +571,12 @@ body{ margin:0; background:var(--ch-bg) }      /* the native rubber band at the 
 .ch-rows .ch-cell > .ch-cell__chev{ flex:none; width:14px; height:14px; margin-left:0; color:var(--ch-faint) }   /* the status takes the free space, the chevron sits right after it */
 .meal-row.just-on .ch-cell__status .ch-icon{ animation:ch-tick-in .55s var(--ch-spring) both }
 .ch-rows .ch-cell.just-on{ animation:ch-rise .4s var(--ch-ease) both }
+.ch-cell__icon{ flex:none; width:30px; height:30px; border-radius:9px; display:grid; place-items:center; background:var(--ch-fill); color:var(--ch-muted); transition:background-color .25s ease,color .25s ease }
+.ch-cell__icon .ch-icon{ width:17px; height:17px }
+.ch-rows .is-logged .ch-cell__icon,.ch-rows .is-done .ch-cell__icon{ background:linear-gradient(160deg,var(--ch-done-1),var(--ch-done-2)); color:var(--ch-on-done); box-shadow:inset 0 1px 0 rgba(255,255,255,.45) }
+.day-rows .ch-cell{ min-height:54px; padding-left:12px }
+.day-rows .ch-cell + .ch-cell::before{ left:54px }
+.meal-row.just-on .ch-cell__icon{ animation:ch-pop .5s var(--ch-ease) }
 
 /* ---- lists: journal rows, grouped settings ---- */
 .ch-list{ background:var(--ch-surface); border-radius:var(--ch-radius-md); box-shadow:var(--ch-shadow),var(--ch-edge); overflow:hidden; display:block }
@@ -763,13 +815,6 @@ input[type="range"].ch-input::-moz-range-thumb{ width:28px; height:28px; border-
 .ch-ex__name{ flex:1; min-width:0; font:400 17px/22px var(--ch-font); transition:color .2s ease }
 .ch-ex__hit[aria-pressed="true"] .ch-ex__name{ color:var(--ch-muted) }
 .ch-ex__meta{ flex:none; font:400 15px/20px var(--ch-font-num); color:var(--ch-muted); font-variant-numeric:tabular-nums; white-space:nowrap }
-.ch-ex__info{
-  appearance:none; border:0; background:none; padding:0; flex:none; min-width:44px; height:44px; padding:0 4px;
-  display:grid; place-items:center; color:var(--ch-faint); border-radius:22px;
-  transition:color .15s ease,transform .4s var(--ch-spring); -webkit-tap-highlight-color:transparent;
-}
-.ch-ex__info .ch-icon{ width:20px; height:20px; stroke-width:1.9 }
-.ch-ex__info:active{ color:var(--ch-text); transform:scale(.84); transition-duration:.1s }
 .ch-ex__set{ display:inline-flex; align-items:center; min-height:28px; padding:0 10px; border-radius:14px; background:color-mix(in srgb,var(--ch-gold) 16%,transparent); color:var(--ch-gold-text); font:700 12px/16px var(--ch-font-num); font-variant-numeric:tabular-nums; white-space:nowrap }
 .ch-ex.just-on .ch-ex__check{ animation:ch-pop .5s var(--ch-ease) }
 .ch-ex.just-on .ch-ex__check::after{ animation:ch-tick-in .5s var(--ch-spring) both }
@@ -797,10 +842,30 @@ input[type="range"].ch-input::-moz-range-thumb{ width:28px; height:28px; border-
 .ch-ring strong{ font:700 15px/1 var(--ch-font-num); font-variant-numeric:tabular-nums }
 .ch-deload{ display:flex; align-items:center; gap:12px; padding:12px 16px; border-radius:var(--ch-radius-md); background:color-mix(in srgb,var(--ch-orange) 14%,var(--ch-surface)); font:600 15px/20px var(--ch-font); color:color-mix(in srgb,var(--ch-orange) 78%,var(--ch-text)) }
 .ch-deload .ch-icon{ width:20px; height:20px }
-.top-set-form{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px }
-.top-set-form > .ch-btn,.top-set-form > .ch-best{ grid-column:1/-1 }
 .ch-best{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; border-radius:16px; background:var(--ch-fill); font:400 15px/20px var(--ch-font) }
 .ch-best b{ font:700 17px/22px var(--ch-font-num); font-variant-numeric:tabular-nums }
+.ch-ex__words{ flex:1; min-width:0; display:grid; gap:1px }
+.ch-ex__words .ch-ex__name{ font:500 17px/22px var(--ch-font) }
+.ch-ex__words .ch-ex__meta{ font:400 13px/18px var(--ch-font-num); color:var(--ch-muted); white-space:normal }
+.ch-ex__chev{ flex:none; width:14px; height:14px; color:var(--ch-faint) }
+.ch-ex__check.is-part{ box-shadow:inset 0 0 0 2.5px var(--ch-gold) }
+.ch-ex__check.is-done{ background:linear-gradient(160deg,var(--ch-done-1),var(--ch-done-2)); box-shadow:inset 0 1px 0 rgba(255,255,255,.5) }
+.ch-ex__check.is-done::after{ transform:none; opacity:1 }
+.ch-ex--item{ min-height:48px; gap:14px; padding:0 16px }
+.ch-ex__dot{ flex:none; width:8px; height:8px; margin:0 10px; border-radius:50%; background:var(--ch-gold) }
+.ch-session__all{ gap:8px }
+.ch-plan{ display:grid; gap:12px }
+.ch-plan__line{ display:grid; grid-template-columns:30px 64px minmax(0,1fr); align-items:start; gap:10px; font:400 15px/20px var(--ch-font) }
+.ch-plan__line b{ font-weight:600; padding-top:5px }
+.ch-plan__line > span:last-child{ color:var(--ch-muted); padding-top:5px }
+.ch-plan__icon{ width:30px; height:30px; border-radius:9px; display:grid; place-items:center; background:var(--ch-fill); color:var(--ch-gold-text) }
+.ch-plan__icon .ch-icon{ width:16px; height:16px }
+.ch-steps{ display:grid; gap:10px; counter-reset:step }
+.ch-steps li{ position:relative; min-height:24px; padding-left:34px; font:400 17px/22px var(--ch-font); counter-increment:step }
+.ch-steps li::before{ content:counter(step); position:absolute; left:0; top:-1px; width:24px; height:24px; border-radius:50%; display:grid; place-items:center; background:var(--ch-fill-2); font:700 12px/24px var(--ch-font-num); text-align:center; color:var(--ch-text) }
+.ch-history .ch-cell{ min-height:44px; font:400 15px/20px var(--ch-font) }
+.ch-history .ch-cell__title{ font:500 15px/20px var(--ch-font) }
+.ch-history .ch-cell__status{ font:600 13px/18px var(--ch-font-num); color:var(--ch-text); white-space:normal; text-align:right; justify-content:flex-end }
 
 /* ---- progress ---- */
 .ch-levelcard{ display:grid; gap:14px }
@@ -826,6 +891,19 @@ input[type="range"].ch-input::-moz-range-thumb{ width:28px; height:28px; border-
 .ch-tile__v--text{ font:700 17px/22px var(--ch-font); letter-spacing:-.01em }
 .ch-tile__s{ font:400 12px/16px var(--ch-font-num); color:var(--ch-muted); font-variant-numeric:tabular-nums }
 .ch-tile__s span{ display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.ch-tile--water .ch-tile__v .ch-icon{ color:var(--ch-water) }
+.workouts .ch-cell__title{ display:grid; gap:0; min-width:0; flex:1 }
+.workouts .ch-cell__title small{ display:block; min-width:0; margin:0; font:600 12px/16px var(--ch-font); letter-spacing:.04em; text-transform:none; color:var(--ch-muted) }
+.workouts .ch-cell__status{ margin-left:8px; font-family:var(--ch-font-num) }
+.workouts .ch-cell__title small{ display:flex; align-items:center; gap:6px }
+.workouts .ch-cell__name{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.ch-pr{ flex:none; display:inline-flex; align-items:center; min-height:18px; padding:0 7px; border-radius:9px; background:linear-gradient(160deg,var(--ch-done-1),var(--ch-done-2)); color:var(--ch-on-done); font:700 10px/14px var(--ch-font); letter-spacing:.04em; box-shadow:inset 0 1px 0 rgba(255,255,255,.45) }
+.records .record-row{ min-height:54px; gap:12px }
+.record-row .ch-cell__title{ flex:1; min-width:0; font:500 15px/20px var(--ch-font); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.record-row .ch-cell__status{ display:grid; justify-items:end; gap:0; margin-left:auto; color:var(--ch-text) }
+.record-row .ch-cell__status b{ font:700 15px/20px var(--ch-font-num); font-variant-numeric:tabular-nums }
+.record-row .ch-cell__status small{ font:500 12px/16px var(--ch-font-num); color:var(--ch-muted) }
+.ch-empty span{ display:block; max-width:30ch; font:400 13px/18px var(--ch-font); color:var(--ch-muted) }
 .chart-controls{ --n:2 }
 .chart-card{ display:grid; gap:12px }
 .chart-card__head{ display:flex; align-items:baseline; justify-content:space-between; gap:12px }
@@ -1125,6 +1203,159 @@ video#barcode-video{ width:100%; max-height:240px; border-radius:16px; backgroun
 .recent-food b{ flex:none; font:600 13px/16px var(--ch-font-num); color:var(--ch-muted); font-variant-numeric:tabular-nums }
 .recent-food .ch-icon{ flex:none; width:22px; height:22px; color:var(--ch-tint) }
 
+/* ---- Gym mode: the guided workout. Always dark and high contrast; every control 56 px or more, the main one 76 px,
+   all within thumb reach at the bottom. ---- */
+.ch-gym{
+  position:fixed; z-index:50; inset:0; box-sizing:border-box;
+  display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; gap:10px;
+  padding:calc(var(--ch-sat) + 6px) calc(16px + var(--ch-sar)) calc(max(14px,var(--ch-sab)) + 4px) calc(16px + var(--ch-sal));
+  background:radial-gradient(130% 60% at 50% -10%,#14213D 0,#05070D 55%,#000 100%); color:#FFFFFF;
+  font:400 17px/22px var(--ch-font); -webkit-font-smoothing:antialiased; -webkit-tap-highlight-color:transparent;
+  overflow:hidden; overscroll-behavior:contain; touch-action:manipulation; user-select:none; -webkit-user-select:none; color-scheme:dark;
+}
+.ch-gym[hidden]{ display:none }
+.ch-gym *{ box-sizing:border-box }
+.ch-gym :where(h2,p,ul){ margin:0; padding:0 }
+.ch-gym :where(ul){ list-style:none }
+.ch-gym :where(button,input){ font:inherit; color:inherit }
+.ch-gym :where(button){ cursor:pointer; touch-action:manipulation }
+.ch-gym :focus-visible{ outline:3px solid #74F4FF; outline-offset:3px }
+.ch-gym.is-entering{ animation:ch-gym-in .5s var(--ch-ease) both }
+html.is-gym,html.is-gym body{ overflow:hidden }
+html.is-gym .ch-dock-scrim{ display:none }
+/* the Undo toast comes down from the top in Gym mode, clear of the controls */
+html.is-gym .ch-toast--bottom{ top:calc(var(--ch-sat) + 70px); bottom:auto; animation-name:ch-toast-in }
+html.is-gym .ch-app:has(#celebration) #celebration{ top:calc(var(--ch-sat) + 124px); bottom:auto; animation-name:ch-toast-in }
+.ch-gym__top{ display:grid; grid-template-columns:56px minmax(0,1fr) auto; align-items:center; gap:8px; min-height:56px }
+.ch-gym__icon,.ch-gym__end,.ch-gym__adj,.ch-gym__go,.ch-gym__navbtn,.ch-gym__pill,.ch-gym__dot{
+  appearance:none; border:0; -webkit-tap-highlight-color:transparent; transition:transform .4s var(--ch-spring),background-color .2s ease,opacity .2s ease,box-shadow .25s ease;
+}
+.ch-gym__icon{ width:56px; height:56px; border-radius:28px; display:grid; place-items:center; background:rgba(255,255,255,.1); color:#FFFFFF }
+.ch-gym__icon .ch-icon{ width:26px; height:26px }
+.ch-gym__title{ min-width:0; text-align:center; display:grid; gap:0 }
+#gym-session{ font:600 14px/18px var(--ch-font); color:#A1A1AA; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.ch-gym__clock{ font:700 22px/26px var(--ch-font-num); font-variant-numeric:tabular-nums; letter-spacing:-.01em }
+.ch-gym__end{ min-width:96px; min-height:56px; padding:0 20px; border-radius:28px; background:rgba(230,205,158,.14); color:#F3E2BC; font:700 17px/20px var(--ch-font) }
+.ch-gym__bar{ display:flex; gap:4px; height:6px }
+.ch-gym__bar > i{ position:relative; flex:1; min-width:0; overflow:hidden; border-radius:3px; background:rgba(255,255,255,.14) }
+.ch-gym__bar > i::after{ content:""; position:absolute; inset:0; border-radius:inherit; background:linear-gradient(90deg,#C9A465,#F3E0B2); transform:scaleX(var(--p,0)); transform-origin:left center; transition:transform .55s var(--ch-ease) }
+.ch-gym__bar > i.is-here{ box-shadow:0 0 0 1.5px rgba(255,255,255,.7) }
+.ch-gym__stage{ position:relative; min-height:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center; padding:4px 0 }
+.ch-gym__stage.is-next > :not(.ch-gym__rest){ animation:ch-from-next .38s var(--ch-ease) both }
+.ch-gym__stage.is-prev > :not(.ch-gym__rest){ animation:ch-from-prev .38s var(--ch-ease) both }
+.ch-gym__count{ font:600 12px/16px var(--ch-font); letter-spacing:.08em; text-transform:uppercase; color:#A1A1AA; font-variant-numeric:tabular-nums }
+.ch-gym__name{ max-width:100%; font:800 clamp(26px,8.6vw,34px)/1.1 var(--ch-font); letter-spacing:-.025em; text-wrap:balance }
+.ch-gym__rx{ font:600 17px/22px var(--ch-font-num); font-variant-numeric:tabular-nums; color:#D4D4D8 }
+.ch-gym__hint{ max-width:100%; padding:8px 14px; border-radius:16px; background:rgba(230,205,158,.13); color:#F3E2BC; font:600 15px/20px var(--ch-font); text-wrap:balance }
+.ch-gym__dots{ display:grid; grid-template-columns:repeat(var(--cols,3),64px); gap:12px; justify-content:center; margin-top:10px }
+.ch-gym__dot{
+  width:64px; height:64px; border-radius:50%; padding:0; display:grid; place-items:center; align-content:center; gap:0;
+  background:rgba(255,255,255,.07); color:#FFFFFF; box-shadow:inset 0 0 0 2px rgba(255,255,255,.22); font:700 20px/1 var(--ch-font-num);
+}
+.ch-gym__dot.is-next{ box-shadow:inset 0 0 0 3px #FFFFFF; animation:ch-breathe 2.4s ease-in-out infinite }
+.ch-gym__dot.is-done{ background:linear-gradient(160deg,#F3E0B2,#C9A465); color:#14284B; box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 6px 18px rgba(201,164,101,.35) }
+.ch-gym__dot .ch-icon{ width:24px; height:24px }
+.ch-gym__dot small{ font:700 10px/12px var(--ch-font-num); font-variant-numeric:tabular-nums; margin-top:1px; letter-spacing:-.01em }
+.ch-gym__dot:active{ transform:scale(.88); transition-duration:.1s }
+.ch-gym__dot.just-on{ animation:ch-pop .5s var(--ch-ease) }
+/* rest: a ring that empties as the time runs out, +15 s and Skip; "Go" when it is over */
+.ch-gym__rest{
+  position:absolute; inset:0; z-index:2; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  border-radius:28px; background:rgba(0,0,0,.84); -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px); animation:ch-fade .25s ease;
+}
+.ch-gym__ring{ position:relative; width:min(196px,52vw,40vh); aspect-ratio:1 }
+.ch-gym__ring svg{ display:block; width:100%; height:100%; transform:rotate(-90deg); overflow:visible }
+.ch-gym__track{ fill:none; stroke:rgba(255,255,255,.12); stroke-width:12 }
+.ch-gym__arc{ fill:none; stroke:#00C2F0; stroke-width:12; stroke-linecap:round; stroke-dasharray:1000; stroke-dashoffset:0; transition:stroke-dashoffset .25s linear,stroke .3s ease; filter:drop-shadow(0 0 8px rgba(0,194,240,.45)) }
+.ch-gym__time{ position:absolute; inset:0; display:grid; place-content:center; justify-items:center; gap:2px }
+.ch-gym__time b{ font:800 46px/50px var(--ch-font-num); font-variant-numeric:tabular-nums; letter-spacing:-.02em }
+.ch-gym__time small{ font:600 12px/16px var(--ch-font); letter-spacing:.1em; text-transform:uppercase; color:#A1A1AA }
+.ch-gym__rest.is-go .ch-gym__arc{ stroke:#30D158; filter:drop-shadow(0 0 10px rgba(48,209,88,.55)) }
+.ch-gym__rest.is-go .ch-gym__time b{ color:#30D158; animation:ch-pop .5s var(--ch-ease) }
+.ch-gym__restbtns{ display:flex; gap:12px }
+.ch-gym__restnext{ max-width:100%; padding:0 12px; font:600 15px/20px var(--ch-font); color:#D4D4D8; text-align:center; text-wrap:balance }
+.ch-gym__rest.is-go .ch-gym__restnext{ color:#FFFFFF }
+.ch-gym__pill{ min-width:108px; min-height:56px; padding:0 20px; border-radius:28px; background:rgba(255,255,255,.13); color:#FFFFFF; font:700 17px/20px var(--ch-font) }
+.ch-gym__pill:active,.ch-gym__adj:active,.ch-gym__navbtn:active,.ch-gym__icon:active,.ch-gym__end:active{ transform:scale(.92); transition-duration:.1s }
+.ch-gym__rest.is-go .ch-gym__restbtns{ visibility:hidden }
+/* the controls, bottom of the screen */
+.ch-gym__controls{ display:grid; gap:10px }
+.ch-gym__step{ display:grid; grid-template-columns:76px minmax(0,1fr) 76px; gap:8px }
+.ch-gym__step[hidden]{ display:none }
+.ch-gym__step.is-wrong{ animation:ch-shake .45s ease }
+.ch-gym__adj{ min-height:60px; border-radius:20px; background:rgba(255,255,255,.11); color:#FFFFFF; font:700 19px/1 var(--ch-font-num); font-variant-numeric:tabular-nums }
+.ch-gym__val{ display:flex; align-items:center; justify-content:center; gap:6px; min-width:0; min-height:60px; padding:0 12px; border-radius:20px; background:rgba(255,255,255,.05); box-shadow:inset 0 0 0 1px rgba(255,255,255,.14); transition:box-shadow .2s ease }
+.ch-gym__val:focus-within{ box-shadow:inset 0 0 0 2px #74F4FF }
+.ch-gym__val.is-bump input{ animation:ch-bump .3s var(--ch-ease) }
+.ch-gym__val input{
+  width:100%; min-width:0; max-width:132px; height:56px; border:0; padding:0; background:none; color:#FFFFFF; text-align:right; caret-color:#74F4FF;
+  font:800 30px/56px var(--ch-font-num); font-variant-numeric:tabular-nums; letter-spacing:-.02em; -moz-appearance:textfield; appearance:textfield; user-select:text; -webkit-user-select:text;
+}
+.ch-gym__val input::-webkit-inner-spin-button,.ch-gym__val input::-webkit-outer-spin-button{ -webkit-appearance:none; margin:0 }
+.ch-gym__val input::placeholder{ color:#52525B }
+.ch-gym__val input:focus{ outline:none }
+.ch-gym__val span{ flex:none; font:600 15px/20px var(--ch-font); color:#A1A1AA }
+.ch-gym__go{
+  min-height:76px; border-radius:38px; padding:0 24px; display:flex; align-items:center; justify-content:center; gap:10px;
+  background:linear-gradient(180deg,#FFFFFF,#E4E4EA); color:#0A1326; font:800 20px/24px var(--ch-font); letter-spacing:-.01em;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 10px 28px rgba(255,255,255,.1);
+}
+.ch-gym__go span{ min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.ch-gym__go .ch-icon{ flex:none; width:24px; height:24px }
+.ch-gym__go:active{ transform:scale(.97); transition-duration:.1s }
+.ch-gym__go--gold{ background:linear-gradient(180deg,#F3E0B2,#C9A465); color:#14284B; box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 12px 32px rgba(201,164,101,.4) }
+.ch-gym__nav{ display:grid; grid-template-columns:1fr 1fr; gap:10px }
+.ch-gym__navbtn{ min-height:56px; border-radius:28px; display:flex; align-items:center; justify-content:center; gap:4px; background:rgba(255,255,255,.08); color:#FFFFFF; font:600 17px/20px var(--ch-font) }
+.ch-gym__navbtn .ch-icon{ width:18px; height:18px }
+.ch-gym__navbtn:disabled{ opacity:.32; cursor:default }
+/* finish: trophy, XP, volume, time, sets, records */
+.ch-gym.is-finished > :not(.ch-gym__done){ display:none }
+.ch-gym__done{ grid-row:1 / -1; min-height:0; overflow-y:auto; overscroll-behavior:contain; display:flex; flex-direction:column; align-items:center; gap:14px; text-align:center; padding:8px 0 0 }
+.ch-gym__done > :first-child{ margin-top:auto }                     /* centred when it fits, never clipped when it does not */
+.ch-gym__done > :last-child{ margin-bottom:auto }
+.ch-gym__trophy{
+  width:108px; height:108px; flex:none; border-radius:50%; display:grid; place-items:center;
+  background:linear-gradient(160deg,#F3E0B2,#C9A465); color:#14284B;
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.55),0 0 0 12px rgba(230,205,158,.1),0 18px 50px rgba(201,164,101,.45);
+  animation:ch-trophy .9s var(--ch-spring) both;
+}
+.ch-gym__trophy .ch-icon{ width:48px; height:48px; fill:currentColor; fill-opacity:.2 }
+#gym-done-title{ font:800 32px/36px var(--ch-font); letter-spacing:-.025em; animation:ch-rise .5s var(--ch-ease) .08s both }
+.ch-gym__xp{ font:400 15px/1.4 var(--ch-font-px); color:#EBD5A8; animation:ch-rise .5s var(--ch-ease) .14s both }
+.ch-gym__xp b{ font-weight:400 }
+.ch-gym__stats{ width:100%; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; animation:ch-rise .5s var(--ch-ease) .2s both }
+.ch-gym__stats > div{ display:grid; gap:2px; padding:14px 6px; border-radius:20px; background:rgba(255,255,255,.08) }
+.ch-gym__stats b{ font:800 26px/30px var(--ch-font-num); font-variant-numeric:tabular-nums; letter-spacing:-.02em; white-space:nowrap }
+.ch-gym__stats span{ font:500 12px/16px var(--ch-font); color:#A1A1AA }
+.ch-gym__prs{ width:100%; display:grid; gap:8px; animation:ch-rise .5s var(--ch-ease) .26s both }
+.ch-gym__prs li{ display:flex; align-items:center; gap:10px; min-height:48px; padding:10px 14px; border-radius:16px; background:rgba(230,205,158,.13); color:#F3E2BC; text-align:left; font:600 15px/20px var(--ch-font) }
+.ch-gym__prs li .ch-icon{ flex:none; width:18px; height:18px }
+.ch-gym__prs li span{ flex:1; min-width:0 }
+.ch-gym__prs li b{ font:700 15px/20px var(--ch-font-num); white-space:nowrap }
+.ch-gym__prs li.is-none{ justify-content:center; background:rgba(255,255,255,.06); color:#A1A1AA; font-weight:500 }
+.ch-gym__next{ font:600 15px/20px var(--ch-font); color:#A1A1AA }
+.ch-gym__done .ch-gym__go{ position:sticky; bottom:0; width:100%; margin-top:6px; flex:none }
+.ch-gym__prs li.is-more{ justify-content:center; background:none; padding:0 14px; min-height:24px; font:600 13px/18px var(--ch-font); color:#C9A465 }
+/* short screens: everything a little tighter, still 56 px and up */
+@media (max-height:700px){
+  .ch-gym{ gap:8px }
+  .ch-gym__dots{ grid-template-columns:repeat(var(--cols,3),56px); gap:10px; margin-top:6px }
+  .ch-gym__dot{ width:56px; height:56px }
+  .ch-gym__name{ font-size:clamp(24px,7.4vw,28px) }
+  .ch-gym__hint{ padding:6px 12px; font-size:14px; line-height:18px }
+  .ch-gym__controls{ gap:8px }
+  .ch-gym__adj,.ch-gym__val{ min-height:56px }
+  .ch-gym__go{ min-height:72px }
+  /* the rest ring and its two buttons side by side, the next set underneath */
+  .ch-gym__rest{ display:grid; grid-template-columns:auto auto; grid-template-areas:"ring btns" "next next"; align-content:center; justify-content:center; align-items:center; gap:10px 18px }
+  .ch-gym__ring{ grid-area:ring; width:min(140px,38vw,30vh) }
+  .ch-gym__restbtns{ grid-area:btns; flex-direction:column; gap:10px }
+  .ch-gym__restnext{ grid-area:next; font-size:14px; line-height:18px }
+  .ch-gym__pill{ min-width:100px }
+  .ch-gym__time b{ font-size:34px; line-height:38px }
+  .ch-gym__trophy{ width:88px; height:88px }
+}
+
 /* ---- motion ---- */
 @keyframes ch-pop{ 0%{ transform:scale(1) } 35%{ transform:scale(1.22) } 100%{ transform:scale(1) } }
 @keyframes ch-pop-in{ from{ transform:scale(.6); opacity:0 } }
@@ -1151,17 +1382,23 @@ video#barcode-video{ width:100%; max-height:240px; border-radius:16px; backgroun
 @keyframes ch-toast-down{ to{ opacity:0; transform:translateY(16px) scale(.96) } }
 @keyframes ch-float-up{ 0%{ opacity:0; transform:translateY(6px) scale(.8) } 25%{ opacity:1; transform:translateY(-6px) scale(1) } 100%{ opacity:0; transform:translateY(-34px) scale(1) } }
 @keyframes ch-shimmer{ from{ opacity:.45 } to{ opacity:1 } }
+@keyframes ch-gym-in{ from{ opacity:0; transform:translateY(28px) scale(.985) } }
+@keyframes ch-breathe{ 0%,100%{ box-shadow:inset 0 0 0 3px #FFFFFF,0 0 0 0 rgba(255,255,255,.28) } 50%{ box-shadow:inset 0 0 0 3px #FFFFFF,0 0 0 8px rgba(255,255,255,0) } }
+@keyframes ch-glow{ 0%,100%{ box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 10px 28px color-mix(in srgb,var(--ch-tint) 30%,transparent) } 50%{ box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 10px 36px color-mix(in srgb,var(--ch-tint) 52%,transparent) } }
+@keyframes ch-shake{ 0%,100%{ transform:translateX(0) } 20%{ transform:translateX(-8px) } 40%{ transform:translateX(7px) } 60%{ transform:translateX(-4px) } 80%{ transform:translateX(3px) } }
+@keyframes ch-bump{ 0%{ transform:scale(1) } 40%{ transform:scale(1.08) } 100%{ transform:scale(1) } }
+@keyframes ch-trophy{ 0%{ opacity:0; transform:scale(.4) rotate(-14deg) } 60%{ opacity:1 } 100%{ opacity:1; transform:none } }
 
 /* ---- small screens ---- */
 @media (max-width:359px){
   .ch-rings{ --size:112px }
   .ch-hero{ gap:12px 14px; padding:14px }
   .ch-datebar__day{ font-size:28px; line-height:34px }
-  .ch-meal__name{ font-size:14px; line-height:18px }
-  .ch-meal__hit{ padding:12px 8px }
-  .ch-meal__kcal{ font-size:20px }
-  .ch-bottles,.ch-daily .ch-bottles{ gap:4px }
-  .ch-daily .ch-qchip__icon{ width:38px; height:38px }
+  .ch-opt__name{ font-size:15px; line-height:20px }
+  .ch-opt__kcal{ font-size:18px }
+  .ch-bottles{ gap:3px }
+  .ch-done-grid{ grid-template-columns:minmax(0,1fr) }
+  .ch-gymcard__name{ font-size:24px; line-height:28px }
   .ch-pcf{ gap:5px; font-size:11px }
   .ch-tiles{ grid-template-columns:repeat(2,minmax(0,1fr)) }
 }

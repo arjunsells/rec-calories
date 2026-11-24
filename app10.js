@@ -1,8 +1,8 @@
 'use strict';
-// CHAD v9 · the journal: state, validation, persistence, reversible changes, food flows, Snap + Say and the offline
-// shell. Screens are drawn by quest9.js; navigation, sheets and toasts live in ux9.js.
+// CHAD v10 · the journal: state, validation, persistence, reversible changes, food flows, Snap + Say and the offline
+// shell. Screens are drawn by quest10.js, Gym mode by gym10.js; navigation, sheets and toasts live in ux10.js.
 (() => {
-  const KEY = 'rec-calories-v1', SHELL = 'rec-calories-shell-v9';
+  const KEY = 'rec-calories-v1', SHELL = 'rec-calories-shell-v10';
   const $ = id => document.getElementById(id);
   const M = () => window.CHADMotion;
   const oneDecimal = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }), integer = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
@@ -125,6 +125,9 @@
     const focused = document.activeElement, view = focused?.closest?.('.view')?.id; let restore = [];
     if (focused?.dataset?.slot) restore = [`[data-slot="${focused.dataset.slot}"][data-tier="${focused.dataset.tier}"]`, `[data-meal-row="${focused.dataset.slot}"]`];
     else if (focused?.dataset?.mealRow) restore = [`[data-meal-row="${focused.dataset.mealRow}"]`, `#next-up [data-slot="${focused.dataset.mealRow}"]`];
+    else if (focused?.dataset?.row) restore = [`[data-row="${focused.dataset.row}"]`, `[data-fold="${focused.dataset.row}"]`];
+    else if (focused?.dataset?.fold) restore = [`[data-fold="${focused.dataset.fold}"]`, `[data-row="${focused.dataset.fold}"]`];
+    else if (focused?.dataset?.gymStart) restore = ['[data-gym-start]'];
     else if (focused?.classList?.contains('water-row')) restore = ['.water-row'];
     else if (focused?.classList?.contains('water-minus')) restore = ['.water-minus:not(:disabled)', '.water-row'];
     else if (focused?.dataset?.quest && view) restore = [`#${view} [data-quest="${focused.dataset.quest}"]`];
@@ -140,9 +143,10 @@
     $('target-label').textContent = whole(target); $('protein-goal-label').textContent = whole(proteinGoal); $('carbs-goal-label').textContent = whole(carbsGoal); $('fat-goal-label').textContent = whole(fatGoal);
     for (const [id, value, goal, unit] of [['calorie-ring', t.kcal, target, 'calories'], ['protein-ring', t.protein, proteinGoal, 'grams protein']]) { $(id).style.setProperty('--p', Math.min(100, value / goal * 100)); $(id).setAttribute('aria-label', `${fmt(value)} of ${fmt(goal)} ${unit}`); }
     for (const [id, value, goal, unit] of [['carbs', t.carbs, carbsGoal, 'grams carbs'], ['fat', t.fat, fatGoal, 'grams fat']]) { $(id + '-bar').style.setProperty('--p', Math.min(1, value / goal)); $(id + '-meter').setAttribute('aria-label', `${fmt(value)} of ${fmt(goal)} ${unit}`); }
-    // Plan meals live in their slots and add-ons in their pills; everything else logged today is listed here.
-    const picks = state.questsV5?.[currentDay]?.picks || {}, pills = CHADQuest.shownAddons?.(state, currentDay) || new Set();
-    const extras = entries.filter(e => !(e.planSlot && picks[e.planSlot]) && !pills.has(e.id));
+    // Plan meals live in their slots and add-ons in their pills; everything else logged today is listed here (a plan
+    // meal from a slot that no longer exists, such as a pre-v10 Dessert, included).
+    const picks = state.questsV5?.[currentDay]?.picks || {}, pills = CHADQuest.shownAddons?.(state, currentDay) || new Set(), slots = new Set((window.CHADPlan || []).map(x => x.id));
+    const extras = entries.filter(e => !(e.planSlot && picks[e.planSlot] && slots.has(e.planSlot)) && !pills.has(e.id));
     $('extras').hidden = !extras.length; $('entry-count').textContent = extras.length ? `${extras.length} ${extras.length === 1 ? 'entry' : 'entries'}` : '';
     renderEntries($('entries'), extras, '');
     renderPast(); renderRecent();
@@ -643,6 +647,7 @@
   }
   window.CHADUX?.setup({ stopScanner, render });
   read(); render(); fillGoals(); aiStatus(); if (storageReadable) save(state); $('meal').value = defaultMeal();
+  window.CHADGym?.resume();                                        // a workout left open comes straight back
   // A setup link may open the app, or arrive in a tab that is already open. It is wiped from the address bar before
   // anything else happens, then saved: a quiet "AI connected" toast, with Undo.
   const takeLink = () => { const link = RECScan.setupLink(location.hash); if (!link) return; try { history.replaceState(null, '', location.pathname + location.search); } catch { /* the hash simply stays */ } connectLink(link, 'hash'); };

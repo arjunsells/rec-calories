@@ -1,22 +1,35 @@
 'use strict';
 // Pure, derived rewards: deleting a log or editing goals recalculates progress.
+// v10: the streak is the journey streak. Every day from Day 1 (journeyStartDate, editable in Settings; 8 Oct 2026 by
+// default) up to today counts, today included, logged or not. Only a day marked as missed breaks it (the streak starts
+// again the day after), and a Day 1 still in the future means no streak yet. 24 Nov 2026 is Day 48: a 48-day streak.
 ((root) => {
   const LEVELS = ['Fresh Start', 'Building Momentum', 'Daily Contender', 'Goal Crusher', 'Elite Form', 'CHAD Legend'];
   const THRESHOLDS = [0, 100, 300, 700, 1400, 2500];
+  const START = '2026-10-08';
   const BADGES = [
     { id: 'first', name: 'First Rep', icon: '⚡', hint: 'Log your first entry.' },
     { id: 'logs25', name: 'Built Different', icon: '🎯', hint: 'Log 25 entries.' },
-    { id: 'streak3', name: 'On Fire', icon: '🔥', hint: 'Log on 3 consecutive days.' },
-    { id: 'streak7', name: 'Seven Strong', icon: '🏆', hint: 'Log on 7 consecutive days.' },
-    { id: 'streak30', name: 'Unstoppable', icon: '💎', hint: 'Log on 30 consecutive days.' },
+    { id: 'streak3', name: 'On Fire', icon: '🔥', hint: '3-day journey streak.' },
+    { id: 'streak7', name: 'Seven Strong', icon: '🏆', hint: '7-day journey streak.' },
+    { id: 'streak30', name: 'Unstoppable', icon: '💎', hint: '30-day journey streak.' },
     { id: 'protein', name: 'Protein Power', icon: '💪', hint: 'Reach your protein goal in a day.' },
     { id: 'balanced', name: 'S Class', icon: '⭐', hint: 'Finish a day with an S grade.' }
   ];
-  function previousDay(key) {
-    const [year, month, day] = key.split('-').map(Number);
-    const date = new Date(year, month - 1, day, 12);
-    date.setDate(date.getDate() - 1);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const validDate = key => typeof key === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(key) && Number.isFinite(Date.parse(key + 'T00:00:00Z')) && new Date(key + 'T00:00:00Z').toISOString().slice(0, 10) === key;
+  // Calendar dates only (Darwin has no daylight saving, and these never touch the device clock).
+  const addDays = (key, n) => new Date(Date.parse(key + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+  const span = (from, to) => Math.round((Date.parse(to + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z')) / 864e5) + 1;   // inclusive
+  function previousDay(key) { return addDays(key, -1); }
+  // The journey streak on `today`: { streak, longest, start, since, missed }.
+  function journey(state, today) {
+    const start = validDate(state?.journeyStartDate) ? state.journeyStartDate : START;
+    if (!validDate(today) || today < start) return { streak: 0, longest: 0, start, since: null, missed: [] };
+    const q = state?.questsV5 || {}, missed = Object.keys(q).filter(k => k >= start && k <= today && q[k]?.missed === true).sort();
+    let longest = 0, since = start;
+    for (const m of missed) { longest = Math.max(longest, span(since, m) - 1); since = addDays(m, 1); }
+    const streak = since > today ? 0 : span(since, today);
+    return { streak, longest: Math.max(longest, streak), start, since: streak ? since : null, missed };
   }
   function grade(kcal, protein, target, proteinGoal) {
     if (!kcal) return '—';
@@ -38,10 +51,8 @@
       { id: 'meals', name: 'Log 3 meals', progress: Math.min(day.meals.size, 3), target: 3, xp: 30 },
       { id: 'scan', name: 'Scan a photo or barcode', progress: Math.min(day.scans, 1), target: 1, xp: 20 }
     ].map(quest => ({ ...quest, complete: quest.progress >= quest.target }));
-    let xp = logs * 10, questXP = 0, run = 0, longest = 0, last = null, proteinHit = false, balanced = false;
+    let xp = logs * 10, questXP = 0, proteinHit = false, balanced = false;
     [...days.keys()].sort().forEach(key => {
-      run = last === previousDay(key) ? run + 1 : 1;
-      longest = Math.max(longest, run); last = key;
       const day = days.get(key);
       day.grade = grade(day.kcal, day.protein, state.target, state.proteinGoal);
       day.xp = key < today && ['S', 'A'].includes(day.grade) ? 50 + (day.grade === 'S' ? 25 : 0) : 0;
@@ -52,14 +63,13 @@
       proteinHit ||= day.protein >= state.proteinGoal;
       balanced ||= key < today && day.grade === 'S';
     });
-    let streak = 0, cursor = days.has(today) ? today : previousDay(today);
-    while (days.has(cursor)) { streak++; cursor = previousDay(cursor); }
+    const { streak, longest } = journey(state, today);
     const level = THRESHOLDS.findLastIndex(threshold => xp >= threshold);
     const unlocked = { first: logs > 0, logs25: logs >= 25, streak3: longest >= 3, streak7: longest >= 7, streak30: longest >= 30, protein: proteinHit, balanced };
     const quests = days.get(today)?.quests || questsFor({ protein: 0, meals: new Set(), scans: 0 });
     return { xp, questXP, quests, level, name: LEVELS[level], floor: THRESHOLDS[level], next: THRESHOLDS[level + 1] ?? null, streak, longest, days, badges: BADGES.map(badge => ({ ...badge, unlocked: unlocked[badge.id] })) };
   }
-  const api = { derive, grade, previousDay };
+  const api = { derive, grade, previousDay, journey, addDays, START };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.RECGame = api;
 })(globalThis);

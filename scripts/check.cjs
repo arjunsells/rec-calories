@@ -1,10 +1,10 @@
 ﻿// Synthetic data only. Run with node scripts/check.cjs from the repository root.
 // Journal storage and migration, reversible changes, legacy reward maths, Open Food Facts normalisation, metric-only
-// text, no secrets anywhere, and the v9 shell manifest.
+// text, no secrets anywhere, the journey streak, and the v10 shell manifest.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const game = require('../game.js');
+const game = require('../game10.js');
 const food = require('../food9.js');
 const scan = require('../scan9.js');
 
@@ -24,7 +24,7 @@ function boot(saved = null, quota = false) {
   const document = { getElementById: get, createElement: () => new Element(), querySelectorAll: () => [], querySelector: () => null, addEventListener() {} };
   const localStorage = { getItem: key => storage.get(key) || null, removeItem: key => storage.delete(key), setItem: (key, value) => { if (quota) throw Error('quota'); storage.set(key, value); } };
   const uxContext = { window: {}, document, Intl, Date, Math, setTimeout() {}, clearTimeout() {}, CHADIcons: { icon: () => '', mount() {} } };
-  vm.runInNewContext(fs.readFileSync('ux9.js', 'utf8'), uxContext);
+  vm.runInNewContext(fs.readFileSync('ux10.js', 'utf8'), uxContext);
   const CHADUX = { ...uxContext.window.CHADUX, detail: (title, nodes) => sheets.push({ title, nodes }), closeSheets() {} };
   const context = {
     document, window: { addEventListener() {}, scrollTo() {} }, addEventListener() {}, navigator: {}, location: { hash: '', pathname: '/', search: '' }, history: { replaceState() {} },
@@ -32,7 +32,7 @@ function boot(saved = null, quota = false) {
     RECGame: game, RECScan: scan, CHADFood: food, CHADUX, localStorage,
     CHADQuest: { dayKey: () => '2026-11-24', goals: () => ({}), render() {}, rewards: (_, __, g) => g, shownAddons: () => new Set() }
   };
-  vm.runInNewContext(fs.readFileSync('app9.js', 'utf8'), context);
+  vm.runInNewContext(fs.readFileSync('app10.js', 'utf8'), context);
   return { get, storage, sheets, submit: id => get(id).onsubmit({ preventDefault() {} }), data: () => JSON.parse(storage.get('rec-calories-v1')), undo: () => get('undo-toast').children.at(-1) };
 }
 const row = (app, i = 0) => app.get('entries').children[i].children[0];                  // li > button.entry-open
@@ -112,7 +112,7 @@ const meal = (day, kcal = 1900, protein = 220, extra = {}) => ({ day, kcal, prot
 const derive = (entries, today = '2026-11-24', overrides = {}) => game.derive({ target: 1900, proteinGoal: 220, entries, ...overrides }, today);
 for (const [kcal, protein, expected] of [[1710, 220, 'S'], [2090, 219, 'A'], [2280, 220, 'B'], [2281, 220, 'C'], [100, 220, 'C'], [0, 0, '—']]) assert.equal(game.grade(kcal, protein, 1900, 220), expected);
 let g = derive([meal('2026-11-24')]);
-assert.equal(g.xp, 40); assert.equal(g.questXP, 30); assert.equal(g.streak, 1); assert.equal(g.badges.find(b => b.id === 'balanced').unlocked, false);
+assert.equal(g.xp, 40); assert.equal(g.questXP, 30); assert.equal(g.streak, 48, 'the journey streak: Day 48'); assert.equal(g.badges.find(b => b.id === 'balanced').unlocked, false);
 assert.equal(derive([meal('2026-11-23')]).xp, 115); assert.equal(derive([meal('2026-11-23', 1900, 0)]).xp, 60); assert.equal(derive([meal('2026-11-23', 200, 220)]).xp, 40); assert.equal(derive([meal('2026-11-25')]).xp, 0);
 const questMeals = ['Breakfast', 'Lunch', 'Dinner'].map((m, i) => meal('2026-11-24', 600, i === 0 ? 220 : 0, { meal: m, source: i === 0 ? 'barcode' : 'manual' }));
 g = derive(questMeals);
@@ -121,17 +121,26 @@ assert.equal(derive(questMeals.slice(1)).questXP, 0);
 assert.equal(derive([meal('2026-11-24', 100, 0, { meal: 'Lunch', source: 'search' })]).quests.find(q => q.id === 'scan').complete, false);
 assert.equal(derive([meal('2026-11-24', 100, 0, { source: 'photo' })]).questXP, 20);
 assert.equal(derive(Array.from({ length: 3 }, () => meal('2026-11-24', 1, 0, { meal: 'Lunch' }))).quests.find(q => q.id === 'meals').progress, 1);
+// v10: the journey streak. Every day from Day 1 (8 Oct 2026 unless edited) up to today counts, logged or not, so
+// 24 Nov 2026 reads 48; only a day marked as missed breaks it, and a Day 1 in the future means no streak yet.
+assert.equal(derive([]).streak, 48, 'nothing logged at all: still a 48-day streak on 24 Nov');
+assert.equal(derive([meal('2026-11-22')]).streak, 48, 'gaps in logging do not break it');
+assert.equal(derive([], '2026-11-25').streak, 49); assert.equal(derive([], '2026-10-08').streak, 1); assert.equal(derive([], '2026-10-07').streak, 0);
 for (const count of [3, 7, 30]) {
-  let cursor = '2026-11-24'; const entries = [];
-  for (let i = 0; i < count; i++) { entries.push(meal(cursor)); cursor = game.previousDay(cursor); }
-  g = derive(entries);
+  g = derive([meal('2026-11-24')], '2026-11-24', { journeyStartDate: game.addDays('2026-11-24', 1 - count) });
   assert.equal(g.streak, count); assert.equal(g.longest, count); assert.equal(g.badges.find(b => b.id === `streak${count}`).unlocked, true);
+  assert.equal(derive([], '2026-11-24', { journeyStartDate: game.addDays('2026-11-24', 2 - count) }).badges.find(b => b.id === `streak${count}`).unlocked, false, 'one day short of ' + count);
 }
-assert.equal(derive([meal('2026-11-22')]).streak, 0);
-assert.equal(derive([meal('2026-11-21'), meal('2026-11-23'), meal('2026-11-24')]).longest, 2);
+const missedDay = { questsV5: { '2026-11-20': { missed: true } } };
+assert.equal(derive([], '2026-11-24', missedDay).streak, 4, 'a missed day restarts the streak the day after');
+assert.equal(derive([], '2026-11-24', missedDay).longest, 43, 'and the run before it is the longest');
+assert.equal(derive([], '2026-11-24', { questsV5: { '2026-11-24': { missed: true } } }).streak, 0);
+assert.equal(derive([], '2026-11-24', { questsV5: { '2026-11-20': { missed: false } } }).streak, 48, 'only an explicit missed mark counts');
+assert.equal(derive([], '2026-11-24', { journeyStartDate: '2026-12-01' }).streak, 0, 'Day 1 in the future');
+assert.equal(derive([], '2026-11-24', { journeyStartDate: 'not a date' }).streak, 48, 'an invalid Day 1 falls back to 8 Oct');
 assert.equal(game.previousDay('2024-03-01'), '2024-02-29'); assert.equal(game.previousDay('2026-01-01'), '2025-12-31');
 assert.equal(derive(Array.from({ length: 250 }, () => meal('2026-11-24', 1, 0))).name, 'CHAD Legend');
-console.log('PASS: XP and daily quest rewards, deduplication, deletion recalculation, grade boundaries, badges, streaks 3/7/30, gaps, leap days, levels.');
+console.log('PASS: XP and daily quest rewards, deduplication, deletion recalculation, grade boundaries, badges, journey streak 48 on 24 Nov 2026 (gaps, missed days, future Day 1), streak badges 3/7/30, leap days, levels.');
 
 const product = { code: '12345678', product_name: 'Synthetic cereal', brands: 'Synthetic Co, Other', serving_size: '40 g', nutriments: { 'energy-kcal_100g': 400, proteins_100g: 10, carbohydrates_100g: 50, fat_100g: 8 } };
 const normalized = food.normalize(product);
@@ -150,17 +159,18 @@ for (const [text, grams, expected] of [['1 cup (240 ml)', 240, '240 mL'], ['2 oz
 assert.equal(food.normalize({ ...product, serving_size: '1 cup (30 g)', serving_quantity: 30 }).portion, '30 g');
 console.log('PASS: OFF serving/100g normalization, metric portions, brand, kJ conversion, scaling.');
 
-const html = fs.readFileSync('index.html', 'utf8'), sw = fs.readFileSync('sw.js', 'utf8'), css = fs.readFileSync('theme9.css', 'utf8');
-assert.match(html, /<title>\s*CHAD/); assert.match(html, /apple-mobile-web-app-title[^>]+CHAD/); assert.match(sw, /const CACHE = 'rec-calories-shell-v9';/);
+const html = fs.readFileSync('index.html', 'utf8'), sw = fs.readFileSync('sw.js', 'utf8'), css = fs.readFileSync('theme10.css', 'utf8');
+assert.match(html, /<title>\s*CHAD/); assert.match(html, /apple-mobile-web-app-title[^>]+CHAD/); assert.match(sw, /const CACHE = 'rec-calories-shell-v10';/);
 const shell = [...sw.match(/^const SHELL = (.+);$/m)[1].matchAll(/'([^']+)'/g)].map(m => m[1]);
-const runtime = ['index.html', 'theme9.css', 'icons8.js', 'motion8.js', 'charts8.js', 'game.js', 'scan9.js', 'food9.js', 'plan9.js', 'quest9.js', 'ux9.js', 'app9.js', 'fonts/press-start-2p.ttf', 'fonts/OFL.txt', 'vendor/zxing-browser.min.js', 'vendor/ZXING-LICENSE', 'vendor/README.md', 'manifest.webmanifest', 'icons/icon.svg', 'icons/apple-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/mark.svg'];
+const runtime = ['index.html', 'theme10.css', 'icons8.js', 'motion8.js', 'charts8.js', 'game10.js', 'scan9.js', 'food9.js', 'plan10.js', 'train10.js', 'quest10.js', 'gym10.js', 'ux10.js', 'app10.js', 'fonts/press-start-2p.ttf', 'fonts/OFL.txt', 'vendor/zxing-browser.min.js', 'vendor/ZXING-LICENSE', 'vendor/README.md', 'manifest.webmanifest', 'icons/icon.svg', 'icons/apple-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/mark.svg'];
 for (const file of runtime) { assert.ok(fs.existsSync(file), `${file} exists`); assert.ok(shell.includes(`./${file}`), `${file} cached`); }
 assert.deepEqual(shell.filter(f => f !== './').sort(), runtime.map(f => './' + f).sort(), 'the shell lists exactly the runtime files');
 // Every local script and stylesheet the page loads is in the offline shell, and nothing loads from another origin.
 const assets = [...html.matchAll(/<(?:script|link)[^>]+(?:src|href)="([^"]+)"/g)].map(m => m[1]);
 for (const url of assets) { assert.ok(url.startsWith('./'), `${url} is local`); assert.ok(shell.includes(url), `${url} is in the offline shell`); }
-for (const gone of ['theme8.css', 'app8.js', 'ux8.js', 'quest8.js', 'food8.js', 'scan.js', 'plan-data.js', 'theme7.css', 'icons7.js', 'charts7.js', 'style.css', 'app.js', 'ux.js', 'quest.js', 'food.js']) { assert.equal(fs.existsSync(gone), false, `${gone} removed`); assert.equal(shell.includes(`./${gone}`), false); assert.equal(html.includes(`./${gone}"`), false); }
-assert.ok(html.indexOf('./game.js') < html.indexOf('./app9.js')); assert.ok(html.indexOf('./food9.js') < html.indexOf('./app9.js')); assert.ok(html.indexOf('./motion8.js') < html.indexOf('./ux9.js')); assert.ok(html.indexOf('./scan9.js') < html.indexOf('./app9.js'));
+for (const gone of ['theme9.css', 'app9.js', 'ux9.js', 'quest9.js', 'plan9.js', 'game.js', 'theme8.css', 'app8.js', 'ux8.js', 'quest8.js', 'food8.js', 'scan.js', 'plan-data.js', 'theme7.css', 'icons7.js', 'charts7.js', 'style.css', 'app.js', 'ux.js', 'quest.js', 'food.js']) { assert.equal(fs.existsSync(gone), false, `${gone} removed`); assert.equal(shell.includes(`./${gone}`), false); assert.equal(html.includes(`./${gone}"`), false); }
+assert.ok(html.indexOf('./game10.js') < html.indexOf('./quest10.js')); assert.ok(html.indexOf('./food9.js') < html.indexOf('./app10.js')); assert.ok(html.indexOf('./motion8.js') < html.indexOf('./ux10.js')); assert.ok(html.indexOf('./scan9.js') < html.indexOf('./app10.js'));
+assert.ok(html.indexOf('./plan10.js') < html.indexOf('./quest10.js') && html.indexOf('./train10.js') < html.indexOf('./quest10.js') && html.indexOf('./quest10.js') < html.indexOf('./gym10.js') && html.indexOf('./gym10.js') < html.indexOf('./app10.js'), 'the program and Gym mode load in order');
 assert.match(css, /prefers-reduced-motion/); assert.match(css, /prefers-color-scheme:\s*dark/); assert.match(css, /\.ch-dock-scrim/);
 assert.match(sw, /cache: 'reload'/); assert.match(sw, /cache\.match\('\.\/index\.html'\)/);
 const manifest = JSON.parse(fs.readFileSync('manifest.webmanifest', 'utf8'));
@@ -181,7 +191,7 @@ for (const [file, size] of [['apple-touch-icon.png', 180], ['icon-192.png', 192]
 }
 // Metric only, in everything a person reads: no pounds, ounces, cups, feet, inches, spoons or Fahrenheit.
 const visible = file => fs.readFileSync(file, 'utf8').replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
-for (const file of ['index.html', 'plan9.js', 'quest9.js', 'ux9.js', 'app9.js', 'scan9.js', 'game.js']) {
+for (const file of ['index.html', 'plan10.js', 'train10.js', 'quest10.js', 'gym10.js', 'ux10.js', 'app10.js', 'scan9.js', 'game10.js']) {
   const found = visible(file).match(/\b(?:lbs?|pounds?|oz|ounces?|cups?|ft|feet|inch(?:es)?|tsp|tbsp|teaspoons?|tablespoons?|fahrenheit|°F|miles?)\b/i);
   assert.equal(found, null, `${file} is metric only (found "${found?.[0]}")`);
 }
@@ -206,4 +216,4 @@ assert.equal(/OPENAI_API_KEY\s*=\s*['"]/.test(worker), false, 'the worker reads 
 const mark = fs.readFileSync('icons/mark.svg', 'utf8');
 assert.match(html, /<img class="ch-mark" src="\.\/icons\/mark\.svg"/); assert.equal(/<script|\son[a-z]+=|<image|foreignObject|(?:href|src)="(?!#)/i.test(mark), false, 'mark.svg is plain vector art'); assert.ok(mark.length < 40000);
 assert.equal(fs.existsSync('scripts/make-icons.cjs'), false, 'the old flame-icon generator is gone, so it cannot overwrite the mascot icons');
-console.log('PASS: CHAD manifest identity, opaque PNG icons, complete local shell-v9 (exact list), removed v8 files, motion/dark/dock CSS guards, metric-only text, no keys/tokens/setup links, one built-in proxy address (scan9.js only), plain-vector header mark, one prompt for app and proxy example.');
+console.log('PASS: CHAD manifest identity, opaque PNG icons, complete local shell-v10 (exact list), removed v8 and v9 files, motion/dark/dock CSS guards, metric-only text, no keys/tokens/setup links, one built-in proxy address (scan9.js only), plain-vector header mark, one prompt for app and proxy example.');
