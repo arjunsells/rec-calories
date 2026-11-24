@@ -29,7 +29,7 @@ const { serve, launch, watch, saved, IPHONE, NOON } = require('./harness.cjs');
     const snapshot = () => page.evaluate(() => {
       const s = JSON.parse(localStorage.getItem('rec-calories-v1')), today = CHADQuest.dayKey(), d = CHADQuest.daily(s, today);
       const g = CHADQuest.rewards(s, today, RECGame.derive(s, today)), st = CHADQuest.stats(s, today);
-      return { journal: s, xp: g.xp, level: g.level, badges: g.badges.filter(b => b.unlocked).map(b => b.id), score: d.score, grade: d.grade, streak: st.streak, week: st.week.total, water: CHADQuest.waterStreak(s, today), shownXP: document.getElementById('xp-total').textContent, shownStreak: document.getElementById('home-streak').getAttribute('aria-label') };
+      return { journal: s, xp: g.xp, level: g.level, score: d.score, grade: d.grade, streak: st.streak, week: st.week.total, water: CHADQuest.waterStreak(s, today), shownXP: document.getElementById('xp-total').textContent, shownStreak: document.getElementById('home-streak').getAttribute('aria-label') };
     });
     const paths = [];
     async function reversible(name, act, check) {
@@ -59,8 +59,8 @@ const { serve, launch, watch, saved, IPHONE, NOON } = require('./harness.cjs');
       await page.evaluate(() => scrollTo(0, 0)); await page.waitForTimeout(450);
       const card = page.locator('#next-up [data-tier=M]'), box = await card.boundingBox();
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down(); await page.clock.runFor(600); await page.mouse.up();
-      await tap(page.locator('#detail-sheet').getByRole('button', { name: 'Log medium snack' }));
-    }, j => assert.equal(j.questsV5[key].picks.P, 'M'));
+      await tap(page.locator('#detail-sheet').getByRole('button', { name: 'Log medium dinner' }));
+    }, j => assert.equal(j.questsV5[key].picks.D, 'M'));
     // Water: from nothing (the day fields did not exist before), and again.
     await reversible('water add', () => tap(page.locator('.water-row')), j => assert.equal(j.questsV5[key].water, .5));
     await tap(page.locator('.water-row')); await tap(page.locator('.water-row'));
@@ -121,7 +121,7 @@ const { serve, launch, watch, saved, IPHONE, NOON } = require('./harness.cjs');
     await page.evaluate(() => scrollTo(0, 0)); const lb = await lunch.boundingBox();
     await page.touchscreen.tap(lb.x + 40, lb.y + 30); await page.touchscreen.tap(lb.x + 40, lb.y + 30);
     assert.equal((await saved(page)).questsV5[key].picks.L, 'S', 'a double tap on a meal still logs it once');
-    assert.equal((await saved(page)).questsV5[key].picks.P, undefined, 'and never logs the meal that slid into its place');
+    assert.equal((await saved(page)).questsV5[key].picks.D, undefined, 'and never logs the meal that slid into its place (dinner)');
     // 2. A double tap on Undo undoes once and never lands on the Redo that takes its place.
     const button = await toast().boundingBox(); await page.waitForTimeout(400);
     await page.mouse.click(button.x + button.width / 2, button.y + button.height / 2); await page.mouse.click(button.x + button.width / 2, button.y + button.height / 2);
@@ -151,7 +151,11 @@ const { serve, launch, watch, saved, IPHONE, NOON } = require('./harness.cjs');
       await again(page.locator('#today [data-quest=steps]'));
     }
     await hideBanner(); if (await page.locator('[data-fold=wrap]').count()) await again(page.locator('[data-fold=wrap]'));
-    for (const id of ['B', 'P', 'D']) { await page.waitForTimeout(460); const option = page.locator(`[data-slot=${id}][data-tier=S]`); if (!await option.count()) await tap(page.locator(`[data-meal-row=${id}]`)); await tap(option); }
+    // The session is the fourth part of a perfect day: finish today's Pull (left open above), then the last two meals.
+    await view('training'); await tap(page.locator('.is-today [data-gym-start]')); await tap(page.locator('[data-gym=finish]'));
+    await tap(page.locator('[data-gym=done]')); assert.equal(await page.locator('#gym').isVisible(), false);
+    await view('today'); await hideBanner(); assert.equal((await snapshot()).score, 9, 'lunch, the session, water and steps (protein comes with dinner)');
+    for (const id of ['D', 'P']) { await page.waitForTimeout(460); const option = page.locator(`[data-slot=${id}][data-tier=S]`); if (!await option.count()) await tap(page.locator(`[data-meal-row=${id}]`)); await tap(option); }
     let now = await snapshot(); assert.equal(now.score, 17); assert.equal(now.grade, 'S'); assert.match(await page.locator('#celebration').innerText(), /S rank · 17\/17/);
     await hideBanner();
     await tap(toast()); assert.equal((await snapshot()).grade, 'A'); await tap(toast()); assert.equal((await snapshot()).grade, 'S');

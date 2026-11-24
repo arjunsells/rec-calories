@@ -60,20 +60,21 @@ const { serve, launch, watch, saved, IPHONE, NOON } = require('./harness.cjs');
 
     // Time-aware Today (Darwin). Tuesday: Pull. Only the block that matters now is big; the rest are quiet lines.
     await at('2026-11-24T08:00:00+09:30');
-    assert.deepEqual(await blocks(), ['WATER', 'meal:B', 'rows:L,P,session,D,wrap'], 'morning: water and breakfast');
+    assert.deepEqual(await blocks(), ['WATER', 'meal:L', 'rows:session,D,P,wrap'], 'morning: water, and lunch next (no breakfast)');
+    assert.equal(await page.locator('[data-slot=B],[data-meal-row=B],[data-meal-slot=B]').count(), 0, 'no breakfast anywhere'); assert.doesNotMatch(await page.locator('#today').innerText(), /breakfast|pre-gym/i);
     await at(NOON);
-    assert.deepEqual(await blocks(), ['meal:L', 'water', 'rows:B,P,session,D,wrap'], 'midday: lunch');
+    assert.deepEqual(await blocks(), ['meal:L', 'water', 'rows:session,D,P,wrap'], 'midday: lunch');
     await at('2026-11-24T16:30:00+09:30');
-    assert.deepEqual(await blocks(), ['SESSION', 'water', 'rows:B,L,P,D,wrap'], '4-6 pm: the session, water below');
+    assert.deepEqual(await blocks(), ['SESSION', 'water', 'rows:L,D,P,wrap'], '4-6 pm: the session, water below (no pre-gym meal)');
     assert.match(await page.locator('#session-hero').innerText(), /Pull[\s\S]*7 exercises · 60 min[\s\S]*Start/); assert.ok((await page.locator('#session-hero [data-gym-start]').boundingBox()).height >= 72, 'a BIG Start');
     await at('2026-11-24T19:00:00+09:30');
-    assert.deepEqual(await blocks(), ['meal:D', 'WRAP', 'water', 'rows:B,L,P,session'], 'evening: dinner and the wrap-up');
+    assert.deepEqual(await blocks(), ['meal:D', 'WRAP', 'water', 'rows:L,session,P'], 'evening: dinner and the wrap-up');
     assert.equal(await page.locator('#wrap-up [data-quest]').count(), 4, 'cardio, steps, sleep, Hydralyte');
     await at('2026-11-25T19:00:00+09:30');
-    assert.deepEqual(await blocks(), ['SESSION', 'WRAP', 'water', 'rows:B,L,P,D'], 'Wednesday evening: Muay Thai first');
+    assert.deepEqual(await blocks(), ['SESSION', 'WRAP', 'water', 'rows:L,D,P'], 'Wednesday evening: Muay Thai first');
     assert.match(await page.locator('#session-hero').innerText(), /Muay Thai · 6:30 pm/);
     await tap(page.locator('#session-hero [data-quest=training]')); assert.equal((await day('2026-11-25')).training, true);
-    assert.deepEqual(await blocks(), ['meal:D', 'WRAP', 'water', 'rows:B,L,P,session'], 'Muay Thai done: dinner is next');
+    assert.deepEqual(await blocks(), ['meal:D', 'WRAP', 'water', 'rows:L,session,P'], 'Muay Thai done: dinner is next');
     await undo(); assert.equal((await day('2026-11-25')).training, undefined);
     await at('2026-11-29T16:30:00+09:30');
     assert.match(await page.locator('#session-hero').innerText(), /Rest \+ walk/); await tap(page.locator('#session-hero [data-quest=cardio]')); assert.equal((await day('2026-11-29')).cardio, true, 'Sunday: the walk is one tap');
@@ -83,14 +84,17 @@ const { serve, launch, watch, saved, IPHONE, NOON } = require('./harness.cjs');
     await at(NOON);
     await tap(page.locator('[data-row=session]')); assert.equal(await page.locator('.ch-gymcard.is-open [data-gym-start]').count(), 1, 'the session opens in place, Start inside');
     await again(page.locator('[data-fold=session]')); assert.equal(await page.locator('.ch-gymcard.is-open').count(), 0);
-    await page.evaluate(() => CHADUX.navigate(1)); assert.deepEqual(await blocks(), ['meal:B', 'water', 'rows:L,P,session,D,wrap'], 'tomorrow: its first meal, nothing on the clock'); await tap(page.locator('#return-today'));
+    await page.evaluate(() => CHADUX.navigate(1)); assert.deepEqual(await blocks(), ['meal:L', 'water', 'rows:session,D,P,wrap'], 'tomorrow: its first meal, nothing on the clock'); await tap(page.locator('#return-today'));
 
     // Meals: exactly three options, Strict, Medium, Free, each with kcal, P/C/F and how to make or order it.
     assert.equal(await page.locator('#today details,#today summary,#training details,#training summary').count(), 0);
     assert.equal(await page.locator('#today .meal-pick:visible').count(), 3); assert.deepEqual(await page.locator('#next-up .meal-pick').evaluateAll(n => n.map(b => b.dataset.tier)), ['S', 'M', 'F']);
     assert.deepEqual(await page.locator('#next-up .ch-opt__tier').allTextContents(), ['Strict', 'Medium', 'Free']);
-    assert.match(await page.locator('#next-up [data-tier=S]').innerText(), /584[\s\S]*kcal[\s\S]*PERi steak & spuds[\s\S]*P\s*60[\s\S]*C\s*58[\s\S]*F\s*14[\s\S]*Sear the beef strips 3–4 min\. Microwave the spuds 8 min\. Toss with PERi sauce; batch 3 lunches\./);
-    assert.match(await page.locator('#next-up [data-tier=F]').innerText(), /Uber Eats: Nando's[\s\S]*Order ¼ chicken leg \+ pita\. Ask for no chips, garlic bread or mayo\./);
+    assert.match(await page.locator('#next-up [data-tier=S]').innerText(), /715[\s\S]*kcal[\s\S]*Nando's ½ PERi chicken[\s\S]*P\s*108[\s\S]*C\s*1[\s\S]*F\s*31[\s\S]*Grab a ½ PERi-PERi chicken at Nando's\. No sides, bread or mayo\./);
+    assert.match(await page.locator('#next-up [data-tier=M]').innerText(), /445[\s\S]*Gochi \+ 4 Nando's tenders[\s\S]*P\s*71[\s\S]*C\s*26[\s\S]*F\s*9/);
+    assert.match(await page.locator('#next-up [data-tier=F]').innerText(), /Uber Eats: GYG brisket bowl[\s\S]*Order a Brisket Burrito Bowl\. Ask to skip the grain base, add brisket\. No corn chips or drink\./);
+    assert.deepEqual(await page.locator('#next-up .ch-opt').evaluateAll(n => n.map(e => e.classList.contains('is-pinned'))), [true, true, false], 'the two go-tos are pinned first');
+    assert.match(await page.locator('#next-up .ch-remaining').innerText(), /Remaining today[\s\S]*1,900 kcal[\s\S]*P\s*220[\s\S]*C\s*150[\s\S]*F\s*45/); assert.equal(await page.locator('#next-up [data-best]').count(), 0, 'nothing logged yet: no best fit');
     assert.equal(await page.locator('#next-up .meal-how').evaluateAll(n => n.every(e => e.scrollHeight <= e.clientHeight + 1)), true, 'the how-to is shown in full');
     assert.equal(await page.locator('#today .meal-info, .water-minus').count(), 0, 'no details buttons, no minus: less is more');
     // Counts every click; installed again after a reload.
@@ -99,22 +103,24 @@ const { serve, launch, watch, saved, IPHONE, NOON } = require('./harness.cjs');
       await tap(locator); assert.equal(await page.evaluate(() => window.qaTaps), 1); await check();
     };
     await oneTap(page.locator('[data-slot=L][data-tier=S]'), async () => assert.equal((await day()).picks.L, 'S'));
-    assert.equal(await page.locator('#next-up').getAttribute('data-meal-slot'), 'P', 'the snack takes the top');
-    assert.match(await page.locator('[data-meal-row=L]').innerText(), /Strict · 584 kcal/); assert.equal(await page.locator('[data-meal-row=L]').evaluate(e => e.classList.contains('is-logged')), true);
-    await tap(page.locator('[data-meal-row=L]')); assert.equal(await page.locator('[data-meal-slot=L].is-open').count(), 1); assert.equal(await page.locator('#next-up').getAttribute('data-meal-slot'), 'P', 'opening a line moves nothing else');
+    assert.equal(await page.locator('#next-up').getAttribute('data-meal-slot'), 'D', 'dinner takes the top (no pre-gym meal)');
+    assert.equal(await page.locator('#next-up [data-best]').getAttribute('data-tier'), 'S', 'after the go-to lunch the Strict dinner fits best'); assert.match(await page.locator('#next-up [data-best]').innerText(), /Best fit[\s\S]*Roast chook & spuds/i);
+    assert.match(await page.locator('#next-up .ch-remaining').innerText(), /1,185 kcal[\s\S]*P\s*112[\s\S]*C\s*149[\s\S]*F\s*14/);
+    assert.match(await page.locator('[data-meal-row=L]').innerText(), /Strict · 715 kcal/); assert.equal(await page.locator('[data-meal-row=L]').evaluate(e => e.classList.contains('is-logged')), true);
+    await tap(page.locator('[data-meal-row=L]')); assert.equal(await page.locator('[data-meal-slot=L].is-open').count(), 1); assert.equal(await page.locator('#next-up').getAttribute('data-meal-slot'), 'D', 'opening a line moves nothing else');
     await tap(page.locator('[data-slot=L][data-tier=M]')); assert.equal((await day()).picks.L, 'M'); assert.equal((await saved(page)).entries.filter(e => e.day === key && e.planSlot === 'L').length, 1, 'switching never duplicates');
-    assert.equal(await page.locator('[data-meal-slot=L].is-open').count(), 0, 'a choice folds the meal back'); assert.match(await page.locator('[data-meal-row=L]').innerText(), /Medium · 595 kcal/);
+    assert.equal(await page.locator('[data-meal-slot=L].is-open').count(), 0, 'a choice folds the meal back'); assert.match(await page.locator('[data-meal-row=L]').innerText(), /Medium · 445 kcal/);
     await undo(); assert.equal((await day()).picks.L, 'S'); await tap(page.locator('#undo-toast button')); assert.equal((await day()).picks.L, 'M', 'Undo offers Redo'); await undo();
     await tap(page.locator('[data-meal-row=L]')); await tap(page.locator('[data-slot=L][data-tier=S]')); assert.equal((await day()).picks.L, undefined, 'tapping the logged option removes it');
     await tap(page.locator('[data-meal-toggle=L]')); assert.equal(await page.locator('#next-up').getAttribute('data-meal-slot'), 'L', 'folded, an unlogged lunch leads again at noon'); await undo(); assert.equal((await day()).picks.L, 'S');
     // Long press: the meal sheet compares the three without logging; one button logs.
     await page.evaluate(() => scrollTo(0, 0)); await page.waitForTimeout(450);          // clear of the sticky header and any shield
-    const card = page.locator('[data-slot=P][data-tier=S]'); await card.scrollIntoViewIfNeeded(); const box = await card.boundingBox();
+    const card = page.locator('[data-slot=D][data-tier=S]'); await card.scrollIntoViewIfNeeded(); const box = await card.boundingBox();
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down(); await page.clock.runFor(600); await page.mouse.up();
-    assert.equal(await page.locator('#detail-sheet').isVisible(), true); assert.equal((await day()).picks.P, undefined);
+    assert.equal(await page.locator('#detail-sheet').isVisible(), true); assert.equal((await day()).picks.D, undefined);
     assert.equal(await page.locator('#detail-sheet .ch-steps li').count(), 3); assert.match(await page.locator('#detail-content .ch-macros').innerText(), /kcal[\s\S]*Protein[\s\S]*Carbs[\s\S]*Fat/);
-    await tap(page.locator('#detail-sheet .ch-tier[data-tier=M]')); assert.match(await page.locator('#detail-sheet').innerText(), /Gochi \+ 4 Nando's tenders[\s\S]*445/);
-    await tap(page.locator('#detail-sheet').getByRole('button', { name: 'Log medium snack' })); assert.equal((await day()).picks.P, 'M'); await undo(); assert.equal((await day()).picks.P, undefined);
+    await tap(page.locator('#detail-sheet .ch-tier[data-tier=M]')); assert.match(await page.locator('#detail-sheet').innerText(), /Steak & mash \+ spuds[\s\S]*820/);
+    await tap(page.locator('#detail-sheet').getByRole('button', { name: 'Log medium dinner' })); assert.equal((await day()).picks.D, 'M'); await undo(); assert.equal((await day()).picks.D, undefined);
     await tap(page.locator('#today-scan')); await page.mouse.click(196, 40); assert.equal(await page.locator('#add-sheet').isVisible(), false, 'tapping outside closes a sheet');
 
     // Water: one tap per 500 mL, the goal in words, the streak; no minus (Undo takes it back); past the goal is fine.
@@ -196,9 +202,9 @@ const { serve, launch, watch, saved, IPHONE, NOON } = require('./harness.cjs');
     await undo(); assert.equal((await day()).water, beforeWater); assert.equal((await saved(page)).customExtension.newer, true); assert.ok((await saved(page)).entries.some(e => e.id === 'other-tab'));
     // Failed storage leaves journal and pressed state unchanged, with an honest error.
     const beforeFailure = await saved(page); await page.evaluate(() => { window.qaSetItem = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (k === 'rec-calories-v1') throw new DOMException('Synthetic quota', 'QuotaExceededError'); return window.qaSetItem.call(this, k, v); }; });
-    await tap(page.locator('[data-meal-row=D]')); await tap(page.locator('[data-slot=D][data-tier=S]')); assert.deepEqual(await saved(page), beforeFailure); assert.match(await page.locator('#message').innerText(), /Could not save/);
-    assert.equal(await page.locator('[data-slot=D][data-tier=S]').getAttribute('aria-pressed'), 'false'); await page.evaluate(() => Storage.prototype.setItem = window.qaSetItem);
-    await again(page.locator('[data-meal-toggle=D]'));
+    await tap(page.locator('[data-meal-row=P]')); await tap(page.locator('[data-slot=P][data-tier=S]')); assert.deepEqual(await saved(page), beforeFailure); assert.match(await page.locator('#message').innerText(), /Could not save/);
+    assert.equal(await page.locator('[data-slot=P][data-tier=S]').getAttribute('aria-pressed'), 'false'); await page.evaluate(() => Storage.prototype.setItem = window.qaSetItem);
+    await again(page.locator('[data-meal-toggle=P]'));
     // Keyboard: Space logs the focused card, and focus lands on that meal's row.
     const first = page.locator('#next-up .meal-pick').first(), slot = await first.getAttribute('data-slot');
     await first.focus(); await page.keyboard.press('Space'); assert.equal((await day()).picks[slot], 'S'); assert.equal(await page.evaluate(() => document.activeElement.dataset.mealRow), slot);
@@ -216,6 +222,6 @@ const { serve, launch, watch, saved, IPHONE, NOON } = require('./harness.cjs');
     await live.clock.runFor(4 * 3600000); assert.equal(await hero(), 'session-hero', '3 pm: the session');
     await live.clock.runFor(3 * 3600000); assert.equal(await hero(), 'meal:D', '6 pm: dinner'); assert.equal(await live.locator('#wrap-up').count(), 1);
     assert.deepEqual(liveErrors, []); await open.close();
-    console.log('PASS v10 UX: Day 48 and a 48-day journey streak (Day 1 edits, Darwin midnight), a missed day restarts it with Undo; Today on Darwin time: morning water + breakfast, midday lunch, 4-6 pm the session with a 72 px Start and water below, evening dinner + wrap-up, Wednesday Muay Thai first, Sunday rest + walk, deload weeks, quiet lines that open in place, and the switch at 11, 3 and 6 with the app left open; meals Strict/Medium/Free in order with kcal, P/C/F and the how-to in full, 1 tap to log, switch, remove, Undo/Redo, long press compares; water 1 tap with goal words and streak, no minus; done chips 1 tap with XP; Training session + week rows, Mark done with the day in the toast; old Dessert under Other food; past editing; swipes, arrow keys, week strip; Snap + Say hand-off; cross-tab Undo; failed storage; keyboard; offline; zero console errors.');
+    console.log('PASS v10 UX: Day 48 and a 48-day journey streak (Day 1 edits, Darwin midnight), a missed day restarts it with Undo; Today on Darwin time: morning water + lunch next (no breakfast), midday lunch, 4-6 pm the session with a 72 px Start and water below, evening dinner + wrap-up, Wednesday Muay Thai first, Sunday rest + walk, deload weeks, quiet lines that open in place, and the switch at 11, 3 and 6 with the app left open; meals Strict/Medium/Free in order with kcal, P/C/F and the how-to in full, lunch go-tos pinned, Remaining today, best fit after lunch, 1 tap to log, switch, remove, Undo/Redo, long press compares; water 1 tap with goal words and streak, no minus; done chips 1 tap with XP; Training session + week rows, Mark done with the day in the toast; old Dessert under Other food; past editing; swipes, arrow keys, week strip; Snap + Say hand-off; cross-tab Undo; failed storage; keyboard; offline; zero console errors.');
   } finally { await browser.close(); server.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

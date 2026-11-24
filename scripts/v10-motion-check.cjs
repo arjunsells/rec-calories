@@ -90,7 +90,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     await touch('touchEnd'); await sleep(700); assert.equal(await sheet.isVisible(), true);
     await touch('touchStart', 196, box.y + 10); await touch('touchMove', 196, box.y + 30); await touch('touchMove', 196, box.y + 70); await touch('touchEnd');
     await sheet.waitFor({ state: 'hidden', timeout: 2000 });
-    await page.setViewportSize({ width: 393, height: 470 }); box = await open();
+    await page.setViewportSize({ width: 393, height: 400 }); box = await open();                    // short enough that even the shortest meal sheet scrolls
     const body = sheet.locator('.ch-sheet__body'), scrollable = await body.evaluate(b => b.scrollHeight > b.clientHeight + 70);
     assert.equal(scrollable, true, 'the short screen makes the sheet content scroll');
     await body.evaluate(b => { b.scrollTop = 60; });
@@ -147,7 +147,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     await page.locator('[data-view=today]').tap(); await settle();
 
     // 8. A perfect day closes the rings: confetti, a success buzz, the S rank, and it cleans up.
-    for (const id of ['B', 'L', 'P', 'D']) { const option = page.locator(`[data-slot=${id}][data-tier=S]`); if (!await option.count()) { await page.locator(`[data-meal-row=${id}]`).tap(); await sleep(450); } await option.tap(); await sleep(760); }
+    for (const id of ['L', 'D', 'P']) { const option = page.locator(`[data-slot=${id}][data-tier=S]`); if (!await option.count()) { await page.locator(`[data-meal-row=${id}]`).tap(); await sleep(450); } await option.tap(); await sleep(760); }
     while (!(await page.locator('.water-row.is-full').count())) await page.locator('.water-row').tap();
     await sleep(450); await wrap(); await page.evaluate(() => { window.qaBuzz.length = 0; });
     await page.locator('#today [data-quest=steps]').tap();

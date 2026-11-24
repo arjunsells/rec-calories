@@ -1,5 +1,6 @@
 'use strict';
-// Pure, derived rewards: deleting a log or editing goals recalculates progress.
+// Pure, derived rewards: deleting a log or editing goals recalculates progress. v10: no badges, just XP, levels and
+// the streak.
 // v10: the streak is the journey streak. Every day from Day 1 (journeyStartDate, editable in Settings; 8 Oct 2026 by
 // default) up to today counts, today included, logged or not. Only a day marked as missed breaks it (the streak starts
 // again the day after), and a Day 1 still in the future means no streak yet. 24 Nov 2026 is Day 48: a 48-day streak.
@@ -7,15 +8,6 @@
   const LEVELS = ['Fresh Start', 'Building Momentum', 'Daily Contender', 'Goal Crusher', 'Elite Form', 'CHAD Legend'];
   const THRESHOLDS = [0, 100, 300, 700, 1400, 2500];
   const START = '2026-10-08';
-  const BADGES = [
-    { id: 'first', name: 'First Rep', icon: '⚡', hint: 'Log your first entry.' },
-    { id: 'logs25', name: 'Built Different', icon: '🎯', hint: 'Log 25 entries.' },
-    { id: 'streak3', name: 'On Fire', icon: '🔥', hint: '3-day journey streak.' },
-    { id: 'streak7', name: 'Seven Strong', icon: '🏆', hint: '7-day journey streak.' },
-    { id: 'streak30', name: 'Unstoppable', icon: '💎', hint: '30-day journey streak.' },
-    { id: 'protein', name: 'Protein Power', icon: '💪', hint: 'Reach your protein goal in a day.' },
-    { id: 'balanced', name: 'S Class', icon: '⭐', hint: 'Finish a day with an S grade.' }
-  ];
   const validDate = key => typeof key === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(key) && Number.isFinite(Date.parse(key + 'T00:00:00Z')) && new Date(key + 'T00:00:00Z').toISOString().slice(0, 10) === key;
   // Calendar dates only (Darwin has no daylight saving, and these never touch the device clock).
   const addDays = (key, n) => new Date(Date.parse(key + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
@@ -42,6 +34,7 @@
     state.entries.filter(e => e.day <= today).forEach(e => {
       const day = days.get(e.day) || { kcal: 0, protein: 0, meals: new Set(), scans: 0 };
       day.kcal += e.kcal; day.protein += e.protein;
+      // The v4 "Log 3 meals" quest reads the meal names of old entries (a v4 Breakfast included); the plan has none now.
       if (['Breakfast', 'Lunch', 'Dinner', 'Snacks'].includes(e.meal)) day.meals.add(e.meal);
       if (['photo', 'barcode'].includes(e.source)) day.scans++;
       days.set(e.day, day); logs++;
@@ -51,7 +44,7 @@
       { id: 'meals', name: 'Log 3 meals', progress: Math.min(day.meals.size, 3), target: 3, xp: 30 },
       { id: 'scan', name: 'Scan a photo or barcode', progress: Math.min(day.scans, 1), target: 1, xp: 20 }
     ].map(quest => ({ ...quest, complete: quest.progress >= quest.target }));
-    let xp = logs * 10, questXP = 0, proteinHit = false, balanced = false;
+    let xp = logs * 10, questXP = 0;
     [...days.keys()].sort().forEach(key => {
       const day = days.get(key);
       day.grade = grade(day.kcal, day.protein, state.target, state.proteinGoal);
@@ -60,14 +53,11 @@
       day.questXP = day.quests.reduce((sum, quest) => sum + (quest.complete ? quest.xp : 0), 0);
       questXP += day.questXP;
       xp += day.xp + day.questXP;
-      proteinHit ||= day.protein >= state.proteinGoal;
-      balanced ||= key < today && day.grade === 'S';
     });
     const { streak, longest } = journey(state, today);
     const level = THRESHOLDS.findLastIndex(threshold => xp >= threshold);
-    const unlocked = { first: logs > 0, logs25: logs >= 25, streak3: longest >= 3, streak7: longest >= 7, streak30: longest >= 30, protein: proteinHit, balanced };
     const quests = days.get(today)?.quests || questsFor({ protein: 0, meals: new Set(), scans: 0 });
-    return { xp, questXP, quests, level, name: LEVELS[level], floor: THRESHOLDS[level], next: THRESHOLDS[level + 1] ?? null, streak, longest, days, badges: BADGES.map(badge => ({ ...badge, unlocked: unlocked[badge.id] })) };
+    return { xp, questXP, quests, level, name: LEVELS[level], floor: THRESHOLDS[level], next: THRESHOLDS[level + 1] ?? null, streak, longest, days };
   }
   const api = { derive, grade, previousDay, journey, addDays, START };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

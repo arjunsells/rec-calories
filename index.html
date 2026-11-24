@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
-    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#EEF1F7" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#060A14" media="(prefers-color-scheme: dark)">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="CHAD">
@@ -30,6 +30,7 @@
     <script src="./train10.js" defer></script>
     <script src="./quest10.js" defer></script>
     <script src="./gym10.js" defer></script>
+    <script src="./builder10.js" defer></script>
     <script src="./ux10.js" defer></script>
     <script src="./app10.js" defer></script>
   </head>
@@ -112,7 +113,7 @@
           </header>
           <section class="ch-card ch-levelcard" aria-label="Level">
             <div class="ch-levelcard__top">
-              <div class="ch-level" aria-hidden="true"><small>LV</small><b id="level-badge">1</b></div>
+              <div class="ch-level" aria-hidden="true"><small>LV</small><b id="level-disc">1</b></div>
               <div class="ch-grow">
                 <h2 id="level-name"></h2>
                 <p class="ch-levelcard__sub"><span id="level-number"></span> · <strong id="xp-total"></strong></p>
@@ -148,11 +149,6 @@
           <ul id="records" class="ch-list records"></ul>
           <div id="charts" class="ch-flow"></div>
           <div id="history-bars" hidden></div>
-          <div class="ch-section">
-            <h2 class="ch-h">Badges</h2>
-            <span id="badge-count"></span>
-          </div>
-          <ul id="badges" class="badges"></ul>
           <div class="ch-section">
             <h2 class="ch-h">Past entries</h2>
           </div>
@@ -399,7 +395,6 @@
             <div class="ch-field">
               <label class="ch-label" for="meal">Meal</label>
               <select class="ch-input" id="meal">
-                <option>Breakfast</option>
                 <option>Lunch</option>
                 <option>Dinner</option>
                 <option>Snacks</option>
@@ -449,19 +444,27 @@
               <summary id="result-parts-title">What’s in it</summary>
               <ul id="result-parts-list"></ul>
             </details>
-            <div class="ch-field">
+            <div class="ch-field" id="scan-meal-field">
               <label class="ch-label" for="scan-meal">Meal</label>
               <select class="ch-input" id="scan-meal">
-                <option>Breakfast</option>
                 <option>Lunch</option>
                 <option>Dinner</option>
                 <option>Snacks</option>
               </select>
             </div>
-            <button class="primary ch-btn ch-btn--primary ch-btn--block" type="submit">Log it</button>
+            <button id="confirm-log" class="primary ch-btn ch-btn--primary ch-btn--block" type="submit">Log it</button>
             <button id="copy-result" type="button" class="ch-link ch-link--center">Copy summary</button>
           </div>
         </form>
+      </dialog>
+
+      <dialog class="ch-sheet ch-builder" id="builder-sheet" aria-labelledby="builder-title">
+        <div class="ch-sheet__grip" aria-hidden="true"></div>
+        <div class="sheet-heading ch-sheet__head">
+          <h2 id="builder-title" class="ch-sheet__title">Custom meal</h2>
+          <button type="button" class="ch-sheet__close" data-close="builder-sheet" aria-label="Close"><i data-icon="xmark" data-size="22"></i></button>
+        </div>
+        <div class="ch-sheet__body" id="builder-body"></div>
       </dialog>
 
       <dialog id="level-up" class="level-up ch-alert" aria-labelledby="new-level">

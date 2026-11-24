@@ -1,58 +1,57 @@
 'use strict';
 // Meal-plan inputs only. No personal measurements or source documents. Metric throughout.
-// v10: four slots (Breakfast, Lunch, Snack, Dinner), each with exactly three options in a fixed order:
-//   Strict  plain whole foods bought or cooked at home: max 5 ingredients, minimal steps, microwave or batch prep
+// v10 (pass 2): Arjun's real day. No breakfast, no pre-gym meal: Lunch -> gym 4-6 pm -> Dinner (after the gym, the
+// biggest meal) -> an optional high-protein snack that closes the gap to the goals (1,900 kcal / 220 P / 150 C / 45 F).
+// Every slot has exactly three options in a fixed order:
+//   Strict  plain whole food bought or cooked at home: max 5 ingredients, minimal steps, microwave or batch prep
 //   Medium  an easy takeaway or a very easy home cook (supermarket premade, grab-and-go)
 //   Free    Uber Eats
+// Lunch pins the two one-tap go-tos first, and they keep that order: the Nando's 1/2 PERi-PERi chicken (a plain half
+// chicken, no sides: the takeaway twin of "half roast chicken") as Strict, and Gochi + 4 Nando's tenders as Medium.
 // Every option: a name, kcal + protein/carbs/fat in grams, and a "how" of at most three steps (takeaway: what to order,
-// what to ask for). The Strict day adds up to about 1,900 kcal / 220 P / 150 C / 45 F (the default Cut goals).
-// Kept from v9 (same macros): the steak, chook, yoghurt and Nando's/GYG/nata options. The snack keeps the old pre-gym
-// id "P" so earlier days still show their snack. "Gochi + 4 Nando's tenders": kcal and protein as given; carbs and fat
-// estimated so the energy adds up. New estimates (from product labels and menus, check the pack): the egg scramble and
-// the McMuffin.
+// what to ask for). A typical day (the 1/2 chicken, the Strict dinner, the Strict snack) is 1,908 kcal / 225 P / 140 C /
+// 49 F.
+// Sources: the 1/2 chicken is nandos.com.au (715 / 108 / 1.1 / 30.8; macromenu lists 690 / 104 / 1.1 / 29.8); Gochi +
+// 4 tenders is Arjun's own sum (Gochi chicken cup 225 / 31.8 / 25.2 / 2.6 + 4 PERi tenders 220 / 39.6 / 0.7 / 6.5).
+// Kept from v9 (same macros): the GYG bowl, steak & mash + pot, tenders + YoPRO. The 1/2 chicken + pita adds a pita
+// (230 / 7.5 / 44 / 2.8, the v9 1/4-chicken-and-pita less an estimated 1/4 chicken) to the official 1/2 chicken.
+// Estimates (typical label values, check the pack): roast chicken meat, skin off, 165 kcal / 28 P / 0.5 C / 5.5 F per
+// 100 g; microwave baby potatoes 75 / 2 / 15.8 / 0.1 per 100 g; a corn cob 96 / 3.4 / 21 / 1.5; 20 g PERi-PERi sauce
+// 15 / 0.2 / 1.2 / 1; YoPRO Vanilla 160 g 91.1 / 15.2 / 6.1 / 0.5; 30 g whey 117 / 24 / 2.4 / 1.5; skim milk per 100 mL
+// 35 / 3.4 / 5 / 0.1.
+// The snack keeps the old pre-gym id "P", so earlier days still show their afternoon pick as that day's snack.
 window.CHADPlan = [
-  {
-    id: 'B', name: 'Breakfast', time: '7–9 am',
-    choices: [
-      { tier: 'S', title: 'Egg & ham scramble', items: ['2 eggs', '200 g liquid egg whites', '50 g shaved leg ham', '1 slice wholemeal toast'],
-        how: ['Whisk eggs, whites and ham', 'Microwave 2 min, stir, 1 min more', 'Toast on the side'], macros: [387, 47.2, 18.5, 12.7] },
-      { tier: 'M', title: 'Protein drink + pot', items: ['Chobani 30 g Protein Drink 400 mL', 'Chobani 20 g Protein Pot'],
-        how: ['Straight from the fridge', 'No prep'], macros: [340.6, 50.9, 23.5, 4.4] },
-      { tier: 'F', title: 'Uber Eats: Maccas brekkie', items: ["McDonald's Bacon & Egg McMuffin", '+ YoPRO Vanilla 160 g from your fridge'],
-        how: ['Order a Bacon & Egg McMuffin, no hash brown', 'Add a YoPRO from the fridge'], macros: [391, 32.6, 32.9, 13.2] }
-    ]
-  },
   {
     id: 'L', name: 'Lunch', time: '12–1 pm',
     choices: [
-      { tier: 'S', title: 'PERi steak & spuds', items: ['250 g Woolworths Lean Beef Strips', '275 g microwave baby potatoes', "20 g Nando's Medium PERi-PERi sauce"],
-        how: ['Sear the beef strips 3–4 min', 'Microwave the spuds 8 min', 'Toss with PERi sauce; batch 3 lunches'], macros: [583.5, 60.3, 58.1, 13.7] },
-      { tier: 'M', title: 'Steak & mash + pot', items: ['Woolworths Pepper Rump Steak With Mash 400 g', 'Chobani 20 g Protein Pot', '1 small banana'],
-        how: ['Heat the steak & mash 4 min', 'Pot and banana on the side'], macros: [595, 62, 49.3, 16.7] },
-      { tier: 'F', title: "Uber Eats: Nando's", items: ['¼ PERi chicken (leg)', '1 pita'],
-        how: ['Order ¼ chicken leg + pita', 'Ask for no chips, garlic bread or mayo'], macros: [604, 61.3, 50.8, 15.9] }
-    ]
-  },
-  {
-    id: 'P', name: 'Snack', time: '3 pm · pre-gym',
-    choices: [
-      { tier: 'S', title: 'Cinnamon yoghurt bowl', items: ['550 g Woolworths High Protein Plain Yoghurt', '2 g ground cinnamon'],
-        how: ['Spoon the yoghurt into a bowl', 'Dust with cinnamon', 'Half at 2:30, half at 3'], macros: [334.8, 51.8, 28.6, 4.1] },
-      { tier: 'M', title: "Gochi + 4 Nando's tenders", items: ['1 Gochi', "4 Nando's PERi chicken tenders"],
-        how: ['Grab a Gochi', "Order 4 PERi tenders from Nando's, no chips or dips"], macros: [445, 71.4, 14, 11.5] },
-      { tier: 'F', title: 'Uber Eats: Naughty Nata', items: ["1 Nando's Naughty Nata", '+ 2 Chobani 20 g Protein Pots from your fridge'],
-        how: ['Order 1 Naughty Nata, not the 2-pack', 'Add 2 Chobani pots from the fridge'], macros: [397, 42.8, 39.2, 7.2] }
+      { tier: 'S', pinned: true, title: "Nando's ½ PERi chicken", items: ["Nando's ½ PERi-PERi chicken, no sides"],
+        how: ["Grab a ½ PERi-PERi chicken at Nando's", 'No sides, bread or mayo'], macros: [715, 108, 1.1, 30.8] },
+      { tier: 'M', pinned: true, title: "Gochi + 4 Nando's tenders", items: ['Gochi chicken cup', "4 Nando's PERi-PERi tenders"],
+        how: ['Grab a Gochi chicken cup', "Add 4 PERi tenders from Nando's", 'No chips or dips'], macros: [445, 71.4, 25.9, 9.1] },
+      { tier: 'F', title: 'Uber Eats: GYG brisket bowl', items: ['Guzman y Gomez Brisket Burrito Bowl, no grain base', 'Extra brisket'],
+        how: ['Order a Brisket Burrito Bowl', 'Ask to skip the grain base, add brisket', 'No corn chips or drink'], macros: [630, 66.1, 26.1, 28.9] }
     ]
   },
   {
     id: 'D', name: 'Dinner', time: 'After gym',
     choices: [
-      { tier: 'S', title: 'Roast chook & spuds', items: ['200 g Woolworths hot roast chicken, skin off', '250 g microwave baby potatoes', "20 g Nando's Medium PERi-PERi sauce"],
-        how: ['Strip 200 g from a hot roast chook, skin off', 'Microwave the spuds 8 min', 'PERi sauce on top'], macros: [607.8, 62.6, 50.5, 16] },
-      { tier: 'M', title: "Nando's pick-up", items: ['¼ PERi chicken (leg)', 'Corn on the cob'],
-        how: ['Order ¼ chicken leg + corn for pick-up', 'Ask for no chips, no mayo'], macros: [585, 59.8, 26.6, 24.6] },
-      { tier: 'F', title: 'Uber Eats: GYG brisket bowl', items: ['Guzman y Gomez Brisket Burrito Bowl, no grain base', 'Extra brisket'],
-        how: ['Order a Brisket Burrito Bowl', 'Ask to skip the grain base and add extra brisket', 'No corn chips or drink'], macros: [630, 66.1, 26.1, 28.9] }
+      { tier: 'S', title: 'Roast chook & spuds', items: ['250 g hot roast chicken, skin off', '650 g microwave baby potatoes', '1 corn cob', "20 g Nando's PERi-PERi sauce"],
+        how: ['Pull 250 g off a hot roast chook, skin off', 'Microwave the spuds 10 min, the corn 4', 'PERi sauce on top'], macros: [1011, 86.6, 126.2, 16.9] },
+      { tier: 'M', title: 'Steak & mash + spuds', items: ['Woolworths Pepper Rump Steak With Mash 400 g', '300 g microwave baby potatoes', 'Chobani 20 g Protein Pot', '1 small banana'],
+        how: ['Heat the steak & mash 4 min', 'Microwave the spuds 6 min', 'Pot and banana after'], macros: [820, 68, 96.7, 17] },
+      { tier: 'F', title: 'Uber Eats: ½ chicken & pita', items: ["Nando's ½ PERi-PERi chicken", '1 pita'],
+        how: ["Order a Nando's ½ chicken + a pita", 'Ask for no chips, garlic bread or mayo'], macros: [945, 115.5, 45.1, 33.6] }
+    ]
+  },
+  {
+    id: 'P', name: 'Snack', time: 'After dinner · optional',
+    choices: [
+      { tier: 'S', title: 'YoPRO × 2', items: ['2 YoPRO Vanilla 160 g'],
+        how: ['Two YoPRO pots from the fridge', 'Only when protein is still short'], macros: [182.2, 30.4, 12.2, 1] },
+      { tier: 'M', title: 'Protein shake', items: ['30 g whey protein', '300 mL skim milk'],
+        how: ['Whey into 300 mL skim milk', 'Shake and drink'], macros: [222, 34.2, 17.4, 1.8] },
+      { tier: 'F', title: "Uber Eats: Nando's tenders", items: ["4 Nando's PERi-PERi tenders", '+ YoPRO Vanilla 160 g from your fridge'],
+        how: ['Order 4 PERi chicken tenders', 'No chips or dips', 'Add a YoPRO from the fridge'], macros: [311.1, 54.8, 6.8, 7] }
     ]
   }
 ];

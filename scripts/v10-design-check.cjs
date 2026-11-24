@@ -2,7 +2,9 @@
 // Every screen and sheet (week strip open, a meal opened from its line, Advanced settings open) and Gym mode (exercise,
 // rest, finish): 44 px targets everywhere and 56 px in Gym mode (72 px for its main buttons), no horizontal scroll,
 // nothing spills out of its card, one tap per action, Gym mode clear of the notch and the home indicator, and a pixel
-// check that nothing ever shows through or collides with the floating tab bar and the + button.
+// check that nothing ever shows through or collides with the floating tab bar and the + button. Pass 2: every visible
+// text meets WCAG AA contrast (4.5:1, 3:1 for large text) against what is really behind it, gradients and opacity
+// included, in light and dark; and the custom meal builder sheet passes the same checks.
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os'), assert = require('node:assert/strict');
 const { serve, launch, watch, saved, decodePNG, IPHONE, NOON } = require('./harness.cjs');
 const shots = path.join(os.tmpdir(), 'chad-v10-qa');
@@ -26,6 +28,44 @@ const shots = path.join(os.tmpdir(), 'chad-v10-qa');
         const clipped = await page.evaluate(() => [...document.querySelectorAll('.ch-opt__how')].filter(e => e.getClientRects().length && e.scrollHeight > e.clientHeight + 1).map(e => e.textContent.slice(0, 40)));
         assert.deepEqual(clipped, [], name + ' ' + label + ' every how-to is shown in full');
       };
+      // WCAG AA: each element with its own text, against every colour that can be behind it (gradient stops composited
+      // from the page down, opacity groups blended with what is under them). Disabled controls are exempt.
+      const aa = async label => {
+        const low = await page.evaluate(() => {
+          const parse = c => { const m = /rgba?\(([^)]+)\)/.exec(c || ''); if (!m) return null; const p = m[1].split(/[\s,\/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
+          const over = (t, u) => ({ r: t.r * t.a + u.r * (1 - t.a), g: t.g * t.a + u.g * (1 - t.a), b: t.b * t.a + u.b * (1 - t.a), a: 1 });
+          const mix = (t, u, o) => ({ r: t.r * o + u.r * (1 - o), g: t.g * o + u.g * (1 - o), b: t.b * o + u.b * (1 - o), a: 1 });
+          const lum = c => { const f = v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }; return .2126 * f(c.r) + .7152 * f(c.g) + .0722 * f(c.b); };
+          const ratio = (x, y) => { const [a, b] = [lum(x), lum(y)].sort((p, q) => q - p); return (a + .05) / (b + .05); };
+          const out = [];
+          for (const el of document.querySelectorAll('body *')) {
+            if (![...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) continue;
+            if (el.closest('svg, script, style, [hidden], dialog:not([open]), .ch-toast, #quests, #history-bars, .chart-values, .ch-sr') || el.closest(':disabled') || el.matches('option, input, textarea, select')) continue;
+            if (!el.getClientRects().length) continue;
+            const cs = getComputedStyle(el); if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+            const r = el.getBoundingClientRect(); if (r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) continue;
+            if (document.querySelector('dialog[open]') && !el.closest('dialog[open]')) continue;          // under an open sheet, only the sheet is read
+            const chain = []; for (let n = el; n; n = n.parentElement) chain.unshift(n);
+            let backs = [{ r: 255, g: 255, b: 255, a: 1 }], under = null, opacity = 1;
+            for (const n of chain) {
+              const st = getComputedStyle(n), o = Number(st.opacity);
+              if (o < 1 && !under) under = backs;
+              opacity *= o;
+              const bg = parse(st.backgroundColor); if (bg && bg.a > 0) backs = backs.map(c => over(bg, c));
+              const img = st.backgroundImage;
+              if (img && img !== 'none' && !/url\(/.test(img)) { const stops = [...img.matchAll(/rgba?\([^)]+\)/g)].map(m => parse(m[0])); if (stops.length) backs = stops.flatMap(t => backs.map(c => over(t, c))).slice(0, 96); }
+            }
+            if (opacity <= .05) continue;
+            const ink = parse(cs.color); if (!ink || ink.a === 0) continue;
+            const size = parseFloat(cs.fontSize), large = size >= 24 || (size >= 18.66 && Number(cs.fontWeight) >= 700), need = large ? 3 : 4.5;
+            let worst = 99;
+            for (const b of backs) { const text = over(ink, b), seen = under ? under.map(u => [mix(text, u, opacity), mix(b, u, opacity)]) : [[text, b]]; for (const [t, g] of seen) worst = Math.min(worst, ratio(t, g)); }
+            if (worst < need - 0.005) out.push((el.id ? '#' + el.id : String(el.className) || el.tagName) + ' "' + el.textContent.trim().slice(0, 24) + '" ' + worst.toFixed(2) + ' < ' + need);
+          }
+          return out;
+        });
+        assert.deepEqual(low, [], name + ' ' + label + ': WCAG AA text contrast');
+      };
       // Gym mode: 56 px and up, 72 px for the main buttons, on screen and clear of the notch and the home indicator.
       const gymCheck = async label => {
         const out = await page.evaluate(({ sat, sab }) => {
@@ -44,7 +84,7 @@ const shots = path.join(os.tmpdir(), 'chad-v10-qa');
       assert.equal(await page.evaluate(() => devicePixelRatio), 3);
       assert.equal(await page.evaluate(() => matchMedia('(pointer:coarse)').matches), true);
       for (const view of ['today', 'training', 'history', 'settings']) {
-        await tab(view); await check(view);
+        await tab(view); await check(view); await aa(view);
         if (view === 'settings') { await page.evaluate(() => document.querySelectorAll('#settings details').forEach(d => d.open = true)); await check('settings open'); }
         await page.evaluate(() => scrollTo(0, document.body.scrollHeight));
         assert.equal(await page.evaluate(() => document.querySelector('.view:not([hidden])').getBoundingClientRect().bottom <= document.querySelector('.ch-dock-scrim').getBoundingClientRect().top), true, name + ' ' + view + ' last row clears the dock fade');
@@ -96,6 +136,17 @@ const shots = path.join(os.tmpdir(), 'chad-v10-qa');
       // The Undo toast floats above the bar, inside the screen.
       const toast = await page.locator('#undo-toast').boundingBox(); assert.ok(toast && toast.y + toast.height <= dock.top - 4 && toast.x >= 8 && toast.x + toast.width <= width - 8, name + ' toast sits above the dock');
       await page.waitForTimeout(420); await page.locator('[data-fold=wrap]').tap();
+      // After lunch: dinner leads with Remaining today, the best fit and the buttons under it; + Custom opens the builder.
+      await page.evaluate(() => CHADUX.hideToast(true)); await page.waitForTimeout(420); await check('today after lunch'); await aa('today after lunch (dinner, best fit)');
+      await page.locator('#next-up [data-custom]').tap(); await page.locator('#builder-sheet').waitFor({ state: 'visible' });
+      for (const food of ['chook', 'yopro', 'steak-mash']) { await page.locator(`#builder-chips [data-food=${food}]`).tap(); await page.waitForTimeout(60); }
+      await page.evaluate(() => { document.getElementById('builder-undo').hidden = true; });
+      await check('custom builder'); await aa('custom builder');
+      const bld = await page.locator('#builder-sheet').boundingBox(); assert.ok(bld.y >= (safe ? 47 : 0) - 1 && bld.y + bld.height <= height + 1, name + ' the builder fits the screen');
+      const bspill = await page.evaluate(() => [...document.querySelectorAll('.ch-bld__item > *, .ch-bld__ctl > *, .ch-bld__chip > *, .ch-bld__total > *, .ch-bld__actions > *')].filter(e => { const p = e.parentElement.getBoundingClientRect(), r = e.getBoundingClientRect(); return r.width && (r.left < p.left - 1 || r.right > p.right + 1); }).map(e => e.className + ' ' + e.textContent.slice(0, 20)));
+      assert.deepEqual(bspill, [], name + ' nothing spills out of the builder');
+      const foot = await page.locator('.ch-bld__foot').boundingBox(); assert.ok(foot.y + foot.height <= height + 1, name + ' Log and Save stay on screen');
+      await page.keyboard.press('Escape'); await page.locator('#builder-sheet').waitFor({ state: 'hidden' });
       await tab('training'); await page.locator('#training-week-toggle').tap(); await check('training week open'); await page.locator('#training-week-toggle').tap();
       await page.locator('.is-today .exercise-row').first().tap(); await check('exercise sheet'); await page.keyboard.press('Escape');
       await page.waitForTimeout(420);
@@ -119,10 +170,10 @@ const shots = path.join(os.tmpdir(), 'chad-v10-qa');
       await page.keyboard.press('Escape');
       await tab('today'); await page.evaluate(() => scrollTo(0, 0)); await page.waitForTimeout(420);
       const card = await page.locator('#next-up .meal-pick').first().boundingBox(); await page.mouse.move(card.x + card.width / 2, card.y + card.height / 2); await page.mouse.down(); await page.clock.runFor(600); await page.mouse.up();
-      assert.equal(await page.locator('#detail-sheet').isVisible(), true); await check('meal detail'); await page.keyboard.press('Escape');
+      assert.equal(await page.locator('#detail-sheet').isVisible(), true); await check('meal detail'); await aa('meal detail'); await page.keyboard.press('Escape');
       await tab('history'); await page.locator('#open-level').tap(); await check('level details'); await page.locator('#close-level').tap();
       assert.deepEqual(errors, [], name + ' errors'); await context.close();
-      console.log('PASS ' + name + ': all screens and sheets incl. week strip, opened meal/session/wrap-up and Advanced, >=44px targets, nothing spills, how-to in full, no overflow, four macros and the next meal on the first screen, dock pixels clean behind bar and +, last row clears the fade, toast above dock, meal/water/chip/Start/set = 1 tap each; Gym mode exercise, rest and finish: 56 px targets, 72 px main buttons in the bottom of the screen, clear of notch and home indicator, finish fits; no JS/console errors');
+      console.log('PASS ' + name + ': all screens and sheets incl. week strip, opened meal/session/wrap-up, Advanced and the custom meal builder, WCAG AA text contrast (gradients and opacity composited), >=44px targets, nothing spills, how-to in full, no overflow, four macros and the next meal on the first screen, dock pixels clean behind bar and +, last row clears the fade, toast above dock, meal/water/chip/Start/set = 1 tap each; Gym mode exercise, rest and finish: 56 px targets, 72 px main buttons in the bottom of the screen, clear of notch and home indicator, finish fits; no JS/console errors');
     }
     console.log('Screenshots outside repo: ' + shots);
   } finally { await browser.close(); server.close(); }

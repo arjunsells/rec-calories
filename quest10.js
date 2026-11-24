@@ -24,23 +24,32 @@
     if(!index||index.size!==state.entries.length){index={size:state.entries.length,days:new Map()};for(const e of state.entries){const list=index.days.get(e.day);if(list)list.push(e);else index.days.set(e.day,[e]);}byDay.set(state.entries,index);}
     return index.days.get(key)||[];
   }
-  // Meal points come from at most four picks (a day from before v10 can hold an old Dessert pick as well as a new one).
+  // The plan has three meals from 24 Nov 2026 (no breakfast), so from that day the day's session counts like a fourth
+  // Strict pick: 3 points when done (the workout finished or marked done; Wednesday: Muay Thai; Sunday: the walk).
+  // Three Strict meals + the session + protein + water + steps is still 17. Earlier days score exactly as before.
+  const THREE_MEALS = '2026-11-24';
+  const sessionDone = (q,key) => { const s=CHADTrain.WEEK[weekday(key)]; return !!s && (s.kind==='rest' ? !!q.cardio : CHADTrain.finished(q)); };
+  // Meal points: Strict 3, Medium 2, Free 1, a custom meal (off the plan) 1; at most four count (a day from before v10
+  // can hold an old Dessert pick as well as a new one).
+  const POINTS = {S:3,M:2,F:1,C:1};
   function daily(state,key) {
     const q=state.questsV5?.[key]||{}, entries=entriesOn(state,key);
     const totals=entries.reduce((t,e)=>t.map((v,i)=>v+(e[['kcal','protein','carbs','fat'][i]]||0)),[0,0,0,0]);
     const picks=q.picks||{}; const protein=totals[1]>=210; const water=(q.water||0)>=waterGoal(key);
-    const meals=Object.values(picks).map(p=>({S:3,M:2,F:1}[p]||0)).sort((a,b)=>b-a).slice(0,4).reduce((s,v)=>s+v,0);
+    const session=key>=THREE_MEALS&&sessionDone(q,key);
+    const meals=[...Object.values(picks).map(p=>POINTS[p]||0),...(session?[3]:[])].sort((a,b)=>b-a).slice(0,4).reduce((s,v)=>s+v,0);
     const score=meals+(protein?2:0)+(water?2:0)+(q.steps?1:0);
-    return {...q,picks,totals,score,protein,waterHit:water,grade:score>=15?'S':score>=12?'A':score>=9?'B':'C'};
+    return {...q,picks,totals,score,protein,waterHit:water,sessionHit:session,grade:score>=15?'S':score>=12?'A':score>=9?'B':'C'};
   }
-  function week(state,start,today) {let total=0,free=0,complete=true;for(let i=0;i<7;i++){const key=shift(start,i),d=daily(state,key);total+=d.score;free+=Object.values(d.picks).filter(p=>p==='F').length;complete&&=key<=today&&Object.keys(d.picks).length>=4;} const bonus=complete&&free<=2?10:0;return {total:total+bonus,free,bonus,complete};}
+  // A week is complete when every day has all its meals logged: four picks before the three-meal plan, three after.
+  function week(state,start,today) {let total=0,free=0,complete=true;for(let i=0;i<7;i++){const key=shift(start,i),d=daily(state,key);total+=d.score;free+=Object.values(d.picks).filter(p=>p==='F').length;complete&&=key<=today&&Object.keys(d.picks).length>=(key>=THREE_MEALS?3:4);} const bonus=complete&&free<=2?10:0;return {total:total+bonus,free,bonus,complete};}
   function stats(state,today) {
     const keys=[...new Set([...state.entries.map(e=>e.day),...Object.keys(state.questsV5||{})])].filter(k=>k<=today).sort();
     const {streak,longest,since}=RECGame.journey(state,today);
-    let last='',pRun=0,wRun=0,maxP=0,maxW=0,perfect=false,fight=false,zero=false;
-    for(const key of keys){const d=daily(state,key),adj=last===shift(key,-1);pRun=d.protein?(adj?pRun+1:1):0;wRun=d.waterHit?(adj?wRun+1:1):0;maxP=Math.max(maxP,pRun);maxW=Math.max(maxW,wRun);perfect||=d.score===17;fight||=weekday(key)===3&&d.waterHit&&d.electrolyte&&d.picks.D==='S';const w=week(state,monday(key),today);zero||=w.complete&&w.free===0;last=key;}
+    let last='',pRun=0,wRun=0,maxP=0,maxW=0;
+    for(const key of keys){const d=daily(state,key),adj=last===shift(key,-1);pRun=d.protein?(adj?pRun+1:1):0;wRun=d.waterHit?(adj?wRun+1:1):0;maxP=Math.max(maxP,pRun);maxW=Math.max(maxW,wRun);last=key;}
     const w=week(state,monday(today),today),level=w.total>=120?'AJ Mode':w.total>=105?'Champion':w.total>=85?'Beast':w.total>=60?'Grinder':'Rookie';
-    return {streak,longest,since,week:w,level,maxP,maxW,perfect,fight,zero};
+    return {streak,longest,since,week:w,level,maxP,maxW};
   }
   // Days in a row on the water goal, up to today (or yesterday while today is still filling).
   function waterStreak(state,today) {let n=0,k=daily(state,today).waterHit?today:shift(today,-1);while(n<3660&&daily(state,k).waterHit){n++;k=shift(k,-1);}return n;}
@@ -50,7 +59,6 @@
     g.xp=Math.max(g.xp,legacy.xp||0)+questXP;
     const floors=[0,100,300,700,1400,2500],names=['Fresh Start','Building Momentum','Daily Contender','Goal Crusher','Elite Form','CHAD Legend'];
     g.level=floors.findLastIndex(n=>g.xp>=n);g.floor=floors[g.level];g.next=floors[g.level+1]??null;g.name=names[g.level];
-    g.badges.forEach(b=>b.unlocked||=!!legacy.badges?.includes(b.id));
     return g;
   }
   // 0..1: how much of a day's session is done (the week strip on Training).
@@ -59,10 +67,9 @@
   /* ---- screens. Every change goes through api.change() (app10.js): the journal is written first, then the toast
      offers Undo, and Undo offers Redo. Each direction touches only its own fields, so newer unrelated edits survive. ---- */
   const LEVELS = [['Fresh Start', 0], ['Building Momentum', 100], ['Daily Contender', 300], ['Goal Crusher', 700], ['Elite Form', 1400], ['CHAD Legend', 2500]];
-  const TIER = { S: 'Strict', M: 'Medium', F: 'Free' }, TIER_CLASS = { S: 'strict', M: 'medium', F: 'free' };
-  const SLOT_ICON = { B: 'sun', L: 'fork', P: 'bolt', D: 'moon' };
-  const DAY_ORDER = ['B', 'L', 'P', 'session', 'D', 'wrap'];
-  const BADGE_ICON = { first: 'bolt', logs25: 'target', streak3: 'flame', streak7: 'trophy', streak30: 'sparkles', protein: 'dumbbell', balanced: 'star', protein7: 'fork', water7: 'drop', zero: 'leaf', fight: 'glove', perfect: 'crown' };
+  const TIER = { S: 'Strict', M: 'Medium', F: 'Free', C: 'Custom' }, TIER_CLASS = { S: 'strict', M: 'medium', F: 'free' };
+  const SLOT_ICON = { L: 'fork', D: 'moon', P: 'bolt' };
+  const DAY_ORDER = ['L', 'session', 'D', 'P', 'wrap'];
   const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const ADDONS = { reset: [['shake', 'Daily shake', [610, 38, 83, 13]], ['banana', 'Extra banana', [89, 1.1, 23, .3]]], bulk: [['bagel', 'Plain bagel', [313, 10, 60, 2]], ['wrap', 'Protein wrap', [175, 10, 24, 4]], ['shake', 'Daily shake', [610, 38, 83, 13]]] };
   const STREAK_MARKS = new Set([3, 30, 50, 100, 150, 200, 250, 300, 365]);
@@ -101,23 +108,79 @@
     return api.change({ label: o.label, kind: o.kind || (o.positive ? 'on' : 'off'), positive: !!o.positive, day: key, onApply: o.positive ? () => chime() : null,
       forward: s => api.patchDay(s, key, patch), backward: s => api.patchDay(s, key, before, was) });
   }
-  // A meal slot: tap a card to log it, tap it again to remove it, tap another card to switch (never a duplicate).
-  function pick(slot, tier, e) {
-    const key = activeKey(), day = current.questsV5?.[key] || {}, picked = day.picks?.[slot.id], removing = picked === tier, was = api.shape(current, key), hadPicks = day.picks !== undefined;
+  /* ---- meals: what is left today, the option that fits it best, and yesterday's meal ---- */
+  // Goals minus what is logged on the day: [kcal, protein, carbs, fat] (negative = over).
+  function remaining(state, key) { const g = goals(state, key), t = daily(state, key).totals; return [g.target - t[0], g.proteinGoal - t[1], g.carbsGoal - t[2], g.fatGoal - t[3]]; }
+  // Which option fits what is left best. Each option is followed by the slots still to come that day (`later`: a main
+  // meal is always eaten, an optional one may be skipped), and the day is scored where it would end: kcal off the goal
+  // (over counts double) plus protein still missing, both as a share of the goal. Ties go to the stricter option.
+  function bestFit(left, choices, later = [], goal = [1900, 220]) {
+    const cost = r => (r[0] < 0 ? -2 * r[0] : r[0]) / goal[0] + Math.max(0, r[1]) / goal[1];
+    const finish = (r, rest) => {
+      if (!rest.length) return cost(r);
+      const [next, ...tail] = rest, eat = next.choices.map(c => finish([r[0] - c.macros[0], r[1] - c.macros[1]], tail));
+      return Math.min(...eat, ...(next.optional ? [finish(r, tail)] : []));
+    };
+    let best = -1, low = Infinity;
+    choices.forEach((c, i) => { const v = finish([left[0] - c.macros[0], left[1] - c.macros[1]], later); if (v < low - 1e-9) { low = v; best = i; } });
+    return best;
+  }
+  // Slots still to come after this one, in the order of the day (the snack is optional).
+  const laterSlots = (d, slot) => CHADPlan.slice(CHADPlan.indexOf(slot) + 1).filter(x => !d.picks[x.id]).map(x => ({ choices: x.choices, optional: x.id === 'P' }));
+  // Yesterday's meal in this slot: one of today's cards (the card says so, one tap logs it), or anything else that was
+  // logged there (a custom meal, an earlier plan's card), which "Same as yesterday" logs again as it was.
+  function yesterdayMeal(state, key, slot) {
+    const y = shift(key, -1), tier = state.questsV5?.[y]?.picks?.[slot.id];
+    if (!tier) return null;
+    const entry = state.entries.find(e => e.day === y && e.planSlot === slot.id);
+    const card = slot.choices.find(c => c.tier === tier && (!entry || entry.name === c.title));
+    if (card) return { tier, card };
+    return entry ? { tier, entry } : null;
+  }
+  const meal = (slot, c) => ({ tier: c.tier, title: c.title, macros: c.macros, source: 'plan' });
+  const fromEntry = (tier, e, source) => ({ tier, title: e.name, macros: [e.kcal, e.protein, e.carbs || 0, e.fat || 0], source, parts: e.parts });
+  const myMeals = (state, slotId) => (Array.isArray(state.myMeals) ? state.myMeals : []).filter(m => m && m.slot === slotId && typeof m.name === 'string' && Array.isArray(m.macros));
+  // A meal slot: tap a card to log it, tap it again to remove it, tap another to switch (never a duplicate). The same
+  // goes for a custom meal from the builder or a saved one: it fills the slot (tier C). `again` logs without ever
+  // removing (Same as yesterday).
+  function choose(slot, sel, e, again) {
+    const key = activeKey(), day = current.questsV5?.[key] || {}, picked = day.picks?.[slot.id], was = api.shape(current, key), hadPicks = day.picks !== undefined;
     const prior = current.entries.map((e, i) => ({ e, i })).filter(({ e }) => e.day === key && e.planSlot === slot.id);
-    const c = slot.choices.find(x => x.tier === tier);
-    const entry = { id: 'plan-' + key + '-' + slot.id, day: key, name: c.title, kcal: c.macros[0], protein: c.macros[1], carbs: c.macros[2], fat: c.macros[3], meal: slot.name, source: 'plan', planSlot: slot.id };
+    const same = picked === sel.tier && (sel.tier !== 'C' || prior.some(({ e }) => e.name === sel.title && e.kcal === sel.macros[0]));
+    const removing = same && !again;
+    if (same && again) { api.message(slot.name + ' is already logged.'); return false; }
+    const entry = { id: 'plan-' + key + '-' + slot.id, day: key, name: sel.title, kcal: sel.macros[0], protein: sel.macros[1], carbs: sel.macros[2], fat: sel.macros[3], meal: slot.name, source: sel.source || 'plan', planSlot: slot.id, ...(Array.isArray(sel.parts) && sel.parts.length ? { parts: sel.parts } : {}) };
     const others = s => s.entries.filter(e => !(e.day === key && e.planSlot === slot.id));
     const picksWith = (s, t) => { const p = { ...s.questsV5?.[key]?.picks }; if (t) p[slot.id] = t; else delete p[slot.id]; return p; };
-    M()?.mark(`#today [data-slot="${slot.id}"][data-tier="${tier}"]`, null, node => { if (!node) return; M().pulse(node.parentElement, removing ? 'just-off' : 'just-on'); if (!removing) floatXP(node.parentElement); });
+    const where = sel.mark === 'again' ? `#today [data-slot-meal="${slot.id}"][data-again]` : sel.mark ? `#today [data-my-meal="${sel.mark}"]` : sel.tier === 'C' ? `#today [data-custom="${slot.id}"]` : `#today [data-slot="${slot.id}"][data-tier="${sel.tier}"]`;
+    M()?.mark(where, null, node => { if (!node) return; const card = node.closest('.ch-opt') || node; M().pulse(card, removing ? 'just-off' : 'just-on'); if (!removing) floatXP(card); });
     const opened = open && open.key === key && open.id === slot.id;
     if (!removing && (opened || !picked)) { const still = hold(slot.id, key, opened); if (e && e.timeStamp) settleUntil = e.timeStamp + Math.max(300, still); }
+    const name = sel.tier === 'C' ? sel.title : TIER[sel.tier];
     const ok = api.change({
-      label: removing ? slot.name + ' removed' : picked ? slot.name + ' · ' + TIER[tier] : slot.name + ' logged', kind: removing ? 'off' : 'on', positive: !removing, day: key, onApply: removing ? null : () => chime(),
-      forward: s => ({ ...api.patchDay(s, key, { picks: picksWith(s, removing ? null : tier) }), entries: removing ? others(s) : [...others(s), entry] }),
+      label: removing ? slot.name + ' removed' : picked ? slot.name + ' · ' + name : slot.name + ' logged', kind: removing ? 'off' : 'on', positive: !removing, day: key, onApply: removing ? null : () => chime(),
+      forward: s => ({ ...api.patchDay(s, key, { picks: picksWith(s, removing ? null : sel.tier) }), entries: removing ? others(s) : [...others(s), entry] }),
       backward: s => { const p = picksWith(s, picked); return { ...api.patchDay(s, key, { picks: Object.keys(p).length || hadPicks ? p : undefined }, was), entries: api.restoreAt(others(s), prior) }; }
     });
     if (!ok) { clearTimeout(pinTimer); pinned = null; }
+    return ok;
+  }
+  const pick = (slot, tier, e) => choose(slot, meal(slot, slot.choices.find(x => x.tier === tier)), e);
+  // Saved meals ("Save as my meal" in the builder) live in the journal, so they are backed up and every change undoes.
+  function saveMyMeal(item, toaster) {
+    const id = 'my-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), m = { id, slot: item.slot, name: item.name, macros: item.macros, parts: item.parts || [] };
+    const had = Array.isArray(current.myMeals);                       // Undo puts back exactly the journal it found
+    const ok = api.change({ label: 'Saved as my meal', kind: 'save', toaster,
+      forward: s => ({ ...s, myMeals: [...(Array.isArray(s.myMeals) ? s.myMeals : []).filter(x => x.id !== id), m] }),
+      backward: s => { const list = (Array.isArray(s.myMeals) ? s.myMeals : []).filter(x => x.id !== id); return list.length || had ? { ...s, myMeals: list } : api.assign(s, { myMeals: undefined }); } });
+    return ok ? id : null;
+  }
+  function forgetMyMeal(m) {
+    const list = Array.isArray(current.myMeals) ? current.myMeals : [], at = list.findIndex(x => x.id === m.id);
+    if (at < 0) return false;
+    return api.change({ label: m.name + ' removed from my meals', kind: 'off',
+      forward: s => ({ ...s, myMeals: (s.myMeals || []).filter(x => x.id !== m.id) }),
+      backward: s => { const out = (s.myMeals || []).filter(x => x.id !== m.id); out.splice(Math.min(at, out.length), 0, m); return { ...s, myMeals: out }; } });
   }
   // A meal just logged stays where it is for a beat so its tick is seen; then the next meal takes the top, and a meal
   // that was opened from its row folds back into it. Without motion both happen at once.
@@ -164,7 +227,7 @@
       const label = selected ? 'Remove from ' + slot.name.toLowerCase() : picked ? 'Switch to ' + TIER[shown].toLowerCase() : 'Log ' + TIER[shown].toLowerCase() + ' ' + slot.name.toLowerCase();
       body.replaceChildren(el('h3', 'ch-mealsheet__title', c.title), window.CHADUX.macroTiles(c.macros), list, steps,
         button('ch-btn ch-btn--block' + (selected ? '' : ' ch-btn--gold'), () => { window.CHADUX.closeSheets(); pick(slot, shown); }, label),
-        button('ch-link ch-link--center', () => window.CHADUX.openFood('camera', slot.id === 'P' ? 'Snacks' : slot.name), 'Log something else'));
+        button('ch-link ch-link--center', () => window.CHADBuilder?.open(slot.id), 'Build a custom meal'));
     };
     for (const t of ['S', 'M', 'F']) {
       const b = button('ch-tier ch-tier--' + TIER_CLASS[t], () => { if (shown === t) return; shown = t; M()?.haptic('tap'); paint(); });
@@ -209,14 +272,14 @@
     tile.replaceChildren(el('span', 'ch-tile__k', 'This week'), el('span', 'ch-tile__v ch-tile__v--text', s.level), caption);
     // Only the tab on screen is rebuilt; app10.js renders again when the tab changes.
     if (!$('training').hidden) renderTraining(state, key);
-    if (!$('history').hidden) { renderWorkouts(state); renderRecords(state); renderCharts(state, key); renderBadges(s); }
+    if (!$('history').hidden) { renderWorkouts(state); renderRecords(state); renderCharts(state, key); }
     renderSettings(state, key, d);
     window.CHADGym?.render(state, { ...api, chime, update });
   }
 
   /* ---- Today: the rings, then what matters now (Darwin time), big. Everything else is one quiet line that opens in
-     place. Morning: water and breakfast. Midday: lunch. 3-6 pm: the gym session, water below. Evening: dinner (Muay
-     Thai first on Wednesday) and the wrap-up. Another day: its next meal. ---- */
+     place. Morning: water, and lunch next. Midday: lunch. 3-6 pm: the gym session, water below. Evening: dinner (Muay
+     Thai first on Wednesday), the snack once dinner is in, and the wrap-up. Another day: its next meal. ---- */
   const isOpen = (id, key) => !!open && open.key === key && open.id === id;
   const done = d => CHADTrain.finished(d);
   function leadSlot(d, key) {
@@ -245,18 +308,31 @@
     lastLead = lead ? { id: lead.id, key } : null; lastOpen = open && open.key === key ? { ...open } : null;
   }
   const logged = (state, slot, d, key) => {
-    const picked = d.picks[slot.id], c = picked && slot.choices.find(x => x.tier === picked), eaten = state.entries.find(e => e.day === key && e.planSlot === slot.id);
-    return { picked, c, kcal: eaten ? eaten.kcal : c ? c.macros[0] : null };
+    const picked = d.picks[slot.id], eaten = state.entries.find(e => e.day === key && e.planSlot === slot.id);
+    const c = picked && picked !== 'C' ? slot.choices.find(x => x.tier === picked && (!eaten || eaten.name === x.title)) || slot.choices.find(x => x.tier === picked) : null;
+    // A custom meal (or an earlier plan's card) is named by what was logged.
+    const label = picked === 'C' ? (eaten?.name || 'Custom') : TIER[picked] || picked;
+    return { picked, c, eaten, label, kcal: eaten ? eaten.kcal : c ? c.macros[0] : null };
   };
-  // A meal with its three options, Strict, Medium, Free: what it is, kcal and P/C/F, and how to make or order it.
+  // "Remaining today": what is left of the day's goals, in kcal and P/C/F.
+  function remainingLine(state, key) {
+    const r = remaining(state, key), line = el('p', 'ch-remaining'), part = (cls, label, v, unit) => { const s = el('span', 'ch-remaining__' + cls); s.append(el('b', '', label), whole(Math.abs(v)) + unit + (v < 0 ? ' over' : '')); return s; };
+    line.append(el('span', 'ch-remaining__k', 'Remaining today'), part('kcal', '', r[0], ' kcal'), part('p', 'P', r[1], ''), part('c', 'C', r[2], ''), part('f', 'F', r[3], ''));
+    line.setAttribute('aria-label', 'Remaining today: ' + [[r[0], 'kcal'], [r[1], 'g protein'], [r[2], 'g carbs'], [r[3], 'g fat']].map(([v, u]) => whole(Math.abs(v)) + ' ' + u + (v < 0 ? ' over' : '')).join(', '));
+    return line;
+  }
+  // A meal with its three options, Strict, Medium, Free: what it is, kcal and P/C/F, and how to make or order it. Lunch
+  // pins its two go-tos first. Once anything is logged that day, the option that best fits what is left says so.
+  // Yesterday's card says "Same as yesterday" (one tap logs it again); a meal that was not a card gets its own button.
+  // Saved meals sit under the cards, one tap each, then "+ Custom" opens the builder.
   function slotBlock(state, slot, d, key, mode) {
-    const { picked, kcal } = logged(state, slot, d, key), lead = mode === 'lead', block = el('section', 'meal-slot ch-slot' + (picked ? ' is-logged' : '') + (lead ? '' : ' is-open'));
+    const { picked, kcal, label: pickedLabel, eaten } = logged(state, slot, d, key), lead = mode === 'lead', block = el('section', 'meal-slot ch-slot' + (picked ? ' is-logged' : '') + (lead ? '' : ' is-open'));
     block.dataset.mealSlot = slot.id; block.dataset.flip = lead ? 'lead' : 'open-' + slot.id;
     if (lead) { block.id = 'next-up'; if (lastLead && lastLead.key === key && lastLead.id !== slot.id) block.classList.add('is-arriving'); }
     else if (!lastOpen || lastOpen.id !== slot.id || lastOpen.key !== key) block.classList.add('is-arriving');
     const head = el('div', 'ch-slot__head'), name = el('h2', 'ch-slot__name', slot.name), meta = el('span', 'ch-slot__meta');
     name.id = 'slot-heading-' + slot.id; block.setAttribute('aria-labelledby', name.id);
-    if (picked) meta.innerHTML = icon('check', 14, { weight: 2.8 }) + TIER[picked] + (kcal == null ? '' : ' · ' + whole(kcal) + ' kcal'); else meta.textContent = slot.time;
+    if (picked) { meta.innerHTML = icon('check', 14, { weight: 2.8 }); meta.append(pickedLabel + (kcal == null ? '' : ' · ' + whole(kcal) + ' kcal')); } else meta.textContent = slot.time;
     if (lead) {
       const title = el('div', 'ch-slot__title');
       if (!picked) title.append(el('span', 'ch-chip ch-chip--next', 'Next'));
@@ -267,23 +343,61 @@
       fold.append(name, meta); fold.insertAdjacentHTML('beforeend', icon('chevron-up', 15, { weight: 2.4, cls: 'ch-cell__chev' }));
       head.append(fold);
     }
-    block.append(head);
+    block.append(head, remainingLine(state, key));
+    const g = goals(state, key), y = picked ? null : yesterdayMeal(state, key, slot);
+    const fit = !picked && d.totals[0] > 0 ? bestFit(remaining(state, key), slot.choices, laterSlots(d, slot), [g.target, g.proteinGoal]) : -1;
     const grid = el('div', 'meal-options ch-opts');
-    for (const c of slot.choices) {
-      const selected = picked === c.tier, card = el('div', 'meal-choice ch-opt ch-opt--' + TIER_CLASS[c.tier]);
+    slot.choices.forEach((c, i) => {
+      const selected = picked === c.tier, best = i === fit, again = !!y?.card && y.card === c;
+      const card = el('div', 'meal-choice ch-opt ch-opt--' + TIER_CLASS[c.tier] + (best ? ' is-best' : '') + (c.pinned ? ' is-pinned' : ''));
       const b = button('meal-pick ch-opt__hit', e => { if (!slip('meal-' + key + slot.id + c.tier, e) && !settling(e)) pick(slot, c.tier, e); });
       b.dataset.slot = slot.id; b.dataset.tier = c.tier; b.setAttribute('aria-pressed', String(selected));
-      b.setAttribute('aria-label', (selected ? 'Remove ' : picked ? 'Switch to ' : 'Log ') + TIER[c.tier] + ' ' + slot.name + ': ' + c.title + ', ' + macroWords(c.macros) + '. ' + howText(c));
+      if (best) b.dataset.best = ''; if (again) b.dataset.yesterday = '';
+      b.setAttribute('aria-label', (selected ? 'Remove ' : picked ? 'Switch to ' : 'Log ') + TIER[c.tier] + ' ' + slot.name + ': ' + c.title + (c.pinned ? ' (go-to)' : '') + ', ' + macroWords(c.macros) + '. ' + howText(c) + (again ? ' Same as yesterday.' : '') + (best ? ' Best fit for what is left today.' : ''));
       const kcalText = el('span', 'ch-opt__kcal'); kcalText.innerHTML = whole(c.macros[0]) + '<small>kcal</small>';
-      const top = el('span', 'ch-opt__top'), mid = el('span', 'ch-opt__mid'), macros = window.CHADUX.pcf(c.macros[1], c.macros[2], c.macros[3]);
+      const top = el('span', 'ch-opt__top'), mid = el('span', 'ch-opt__mid'), macros = window.CHADUX.pcf(c.macros[1], c.macros[2], c.macros[3]), title = el('span', 'meal-title ch-opt__name');
       macros.classList.add('meal-macros');
-      top.append(el('span', 'tier-label ch-opt__tier', TIER[c.tier]), kcalText); mid.append(el('span', 'meal-title ch-opt__name', c.title), macros);
+      if (c.pinned) { const pin = el('span', 'ch-opt__pin'); pin.innerHTML = icon('star', 13, { weight: 2.2 }); title.append(pin); }
+      title.append(c.title);
+      top.append(el('span', 'tier-label ch-opt__tier', TIER[c.tier]));
+      if (again) top.append(el('span', 'ch-opt__tag ch-opt__tag--again', 'Same as yesterday'));
+      else if (best) top.append(el('span', 'ch-opt__tag ch-opt__tag--fit', 'Best fit'));
+      top.append(kcalText); mid.append(title, macros);
       b.append(top, mid, el('span', 'meal-how ch-opt__how', howText(c)));
       longPress(b, () => mealSheet(slot, c.tier));
       card.append(b); grid.append(card);
-    }
+    });
     block.append(grid);
+    // Under the cards: yesterday's off-card meal, the saved meals for this slot, then "+ Custom".
+    const more = el('div', 'ch-slot__more'), mine = myMeals(state, slot.id).slice(-4).reverse();
+    if (y?.entry) {
+      const b = button('ch-pill ch-pill--again', e => { if (!slip('again-' + key + slot.id, e) && !settling(e)) choose(slot, { ...fromEntry(y.tier, y.entry, y.entry.source || 'plan'), mark: 'again' }, e, true); });
+      b.innerHTML = icon('repeat', 15, { weight: 2.4 }); b.append(el('span', '', 'Same as yesterday'), el('small', '', whole(y.entry.kcal) + ' kcal'));
+      b.dataset.slotMeal = slot.id; b.dataset.again = ''; b.setAttribute('aria-label', 'Same as yesterday: ' + y.entry.name + ', ' + whole(y.entry.kcal) + ' kcal. Log it again');
+      more.append(b);
+    }
+    for (const m of mine) {
+      const on = picked === 'C' && eaten?.name === m.name && eaten?.kcal === m.macros[0];
+      const b = button('ch-pill ch-pill--mine', e => { if (!slip('mine-' + key + m.id, e) && !settling(e)) choose(slot, { tier: 'C', title: m.name, macros: m.macros, source: 'custom', parts: m.parts, mark: m.id }, e); });
+      b.innerHTML = icon('star', 14, { weight: 2.2 }); b.append(el('span', '', m.name), el('small', '', whole(m.macros[0]) + ' kcal'));
+      b.dataset.slotMeal = slot.id; b.dataset.myMeal = m.id; b.setAttribute('aria-pressed', String(on));
+      b.setAttribute('aria-label', (on ? 'Remove ' : 'Log ') + 'my meal ' + m.name + ', ' + macroWords(m.macros));
+      longPress(b, () => myMealSheet(slot, m));
+      more.append(b);
+    }
+    const custom = button('ch-pill ch-pill--custom', () => window.CHADBuilder?.open(slot.id));
+    custom.innerHTML = icon('plus', 15, { weight: 2.6 }); custom.append('Custom'); custom.dataset.custom = slot.id; custom.setAttribute('aria-label', 'Custom ' + slot.name.toLowerCase() + ': build it from foods');
+    more.append(custom);
+    block.append(more);
     return block;
+  }
+  // A saved meal, long-pressed: what is in it, Log, and Remove from my meals (Undo in the toast).
+  function myMealSheet(slot, m) {
+    const nodes = [window.CHADUX.macroTiles(m.macros)];
+    if (m.parts?.length) { const list = el('ul', 'ch-bullets'); m.parts.forEach(p => list.append(el('li', '', [p.name, p.amount].filter(Boolean).join(' · ')))); nodes.push(list); }
+    nodes.push(button('ch-btn ch-btn--block ch-btn--gold', () => { window.CHADUX.closeSheets(); choose(slot, { tier: 'C', title: m.name, macros: m.macros, source: 'custom', parts: m.parts, mark: m.id }); }, 'Log to ' + slot.name.toLowerCase()),
+      button('ch-btn ch-btn--block ch-btn--danger', () => { window.CHADUX.closeSheets(); forgetMyMeal(m); }, 'Remove from my meals'));
+    window.CHADUX.detail(m.name, nodes);
   }
   // The quiet lines, in the order of the day. Rows next to each other share one card; a tap opens one in place.
   function quietLines(state, d, key, s, ids) {
@@ -304,9 +418,9 @@
   }
   const statusOf = (doneNow, text) => { const st = el('span', 'ch-cell__status'); if (doneNow) st.innerHTML = icon('check', 15, { weight: 2.8 }); st.append(el('span', '', text)); return st; };
   function mealRow(state, slot, d, key) {
-    const { picked, c, kcal } = logged(state, slot, d, key), text = picked ? (TIER[picked] || picked) + (kcal != null ? ' · ' + whole(kcal) + ' kcal' : '') : slot.time;
+    const { picked, c, kcal, label } = logged(state, slot, d, key), text = picked ? label + (kcal != null ? ' · ' + whole(kcal) + ' kcal' : '') : slot.time;
     const r = row(slot.id, key, 'meal-row' + (picked ? ' is-logged' : ''), SLOT_ICON[slot.id] || 'fork', slot.name, statusOf(!!picked, text),
-      slot.name + (picked ? ', logged ' + (TIER[picked] || picked) + (c ? ', ' + c.title : '') + (kcal != null ? ', ' + whole(kcal) + ' kcal' : '') : ', ' + slot.time + ', not logged yet'));
+      slot.name + (picked ? ', logged ' + label + (c ? ', ' + c.title : '') + (kcal != null ? ', ' + whole(kcal) + ' kcal' : '') : ', ' + slot.time + ', not logged yet'));
     r.dataset.mealRow = slot.id;
     return r;
   }
@@ -586,7 +700,7 @@
     const box = $('charts'); box.replaceChildren();
     const d = daily(state, key), g = goals(state, key), rings = el('section', 'ch-card chart-card'), row = el('div', 'progress-rings'), head = el('div', 'chart-card__head');
     head.append(el('h2', '', key === dayKey() ? 'Today' : shortDate(key)), el('span', '', phaseHint(state, key))); rings.append(head, row);
-    for (const [label, value, goal, color] of [['kcal', d.totals[0], g.target, '--ch-ring-move'], ['protein', d.totals[1], g.proteinGoal, '--ch-ring-exercise'], ['score', d.score, 17, '--ch-ring-stand']]) {
+    for (const [label, value, goal, color] of [['kcal', d.totals[0], g.target, '--ch-kcal'], ['protein', d.totals[1], g.proteinGoal, '--ch-protein'], ['score', d.score, 17, '--ch-score']]) {
       const ring = el('div', 'progress-ring'); ring.setAttribute('role', 'img'); ring.setAttribute('aria-label', label + ': ' + fmt(value) + ' / ' + goal); row.append(ring);
       ring.paint = animate => CHADCharts.ring(ring, Math.min(100, value / goal * 100), { color, sub: label, animate: !!animate });
     }
@@ -598,11 +712,11 @@
     const kcal = mean(data.map(x => x.d.totals[0])), protein = mean(data.map(x => x.d.totals[1])), litres = mean(data.map(x => x.d.water), 1), score = mean(data.map(x => x.d.score), 1);
     const weight = data.map(({ key: k }) => { const values = Array.from({ length: 7 }, (_, i) => daily(state, shift(k, -i)).weight).filter(v => typeof v === 'number' && v > 0); return { key: k, value: values.length ? values.reduce((s, v) => s + v, 0) / values.length : null }; });
     box.append(
-      chartCard('Calories', kcal && 'avg ' + kcal + ' kcal', data.map(({ key: k, d }) => ({ key: k, value: d.totals[0], goal: goals(state, k).target })), '--ch-ring-move', 'bar'),
-      chartCard('Protein', protein && 'avg ' + protein + ' g', data.map(({ key: k, d }) => ({ key: k, value: d.totals[1] })), '--ch-ring-exercise', 'line'),
-      chartCard('Weight', '7-day average, kg', weight, '--ch-indigo', 'weight'),
+      chartCard('Calories', kcal && 'avg ' + kcal + ' kcal', data.map(({ key: k, d }) => ({ key: k, value: d.totals[0], goal: goals(state, k).target })), '--ch-kcal', 'bar'),
+      chartCard('Protein', protein && 'avg ' + protein + ' g', data.map(({ key: k, d }) => ({ key: k, value: d.totals[1] })), '--ch-protein', 'line'),
+      chartCard('Weight', '7-day average, kg', weight, '--ch-weight', 'weight'),
       chartCard('Water', litres && 'avg ' + litres + ' L', data.map(({ key: k, d }) => ({ key: k, value: d.water || 0, goal: waterGoal(k) })), '--ch-water', 'bar'),
-      chartCard('Daily score', score && 'avg ' + score + ' / 17', data.map(({ key: k, d }) => ({ key: k, value: d.score, goal: 17 })), '--ch-ring-stand', 'bar'));
+      chartCard('Daily score', score && 'avg ' + score + ' / 17', data.map(({ key: k, d }) => ({ key: k, value: d.score, goal: 17 })), '--ch-score', 'bar'));
     const heat = el('section', 'ch-card chart-card'), heatHead = el('div', 'chart-card__head'), pixels = Array.from({ length: 91 }, (_, i) => { const k = shift(key, i - 90); return { key: k, value: daily(state, k).score / 17 }; });
     heatHead.append(el('h2', '', '13 weeks'), el('span', '', pixels.filter(p => p.value >= 9 / 17).length + ' days at B or better'));
     const squares = el('div', 'ch-chart streak-chart'); squares.setAttribute('role', 'img'); squares.setAttribute('aria-label', '91 days of daily quest scores'); heat.append(heatHead, squares);
@@ -611,22 +725,12 @@
     paintCharts();
   }
   function paintCharts(animate) { if ($('history').hidden) return; document.querySelectorAll('#charts .chart-card, #charts .progress-ring').forEach(c => c.paint?.(animate)); CHADCharts.redraw(); }
-  function renderBadges(s) {
-    const shelf = $('badges'); shelf.replaceChildren();
-    const quest = [['protein7', 'Protein Streak', '7 days at 210 g+', s.maxP >= 7], ['water7', 'Hydration Hero', '7 days on water target', s.maxW >= 7], ['zero', 'Zero-Free Week', 'Complete Mon–Sun, no Free picks', s.zero], ['fight', 'Fight Night Fuel', 'Wednesday: water, electrolyte, Strict dinner', s.fight], ['perfect', 'Perfect Day', '17 / 17 daily points', s.perfect]];
-    const all = [...(api.game?.badges || []).map(b => [b.id, b.name, b.hint, b.unlocked]), ...quest];
-    for (const [id, name, hint, unlocked] of all) {
-      const li = el('li', 'badge ' + (unlocked ? 'unlocked' : 'locked')), disc = el('span', 'badge-icon'); li.dataset.badge = id;
-      disc.innerHTML = icon(unlocked ? BADGE_ICON[id] || 'star' : 'lock', 22); li.append(disc, el('strong', '', name), el('small', '', hint)); shelf.append(li);
-    }
-    $('badge-count').textContent = all.filter(b => b[3]).length + '/' + all.length;
-  }
 
   /* ---- Settings ---- */
   function applyTheme(value) {
     if (value === 'system') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = value;
     const dark = value === 'dark' || value === 'system' && matchMedia('(prefers-color-scheme:dark)').matches;
-    document.querySelectorAll('meta[name="theme-color"]').forEach(m => m.content = dark ? '#000000' : '#F2F2F7');
+    document.querySelectorAll('meta[name="theme-color"]').forEach(m => m.content = dark ? '#060A14' : '#EEF1F7');
     if (themeShown !== value) { themeShown = value; try { localStorage.setItem('rec-calories-theme', value); } catch { /* only a hint for a flash-free launch */ } }
   }
   function switchRow(id, title, checked, onchange) {
@@ -672,7 +776,7 @@
       water.onchange = () => { const value = Number(water.value); if (water.value !== '' && Number.isFinite(value) && value >= 0 && value <= 30 && value !== (daily(current, activeKey()).water || 0)) update({ water: value }, { kind: 'save', label: 'Water saved' }); };
       weigh.onchange = () => { const v = weigh.value === '' ? null : Number(weigh.value); if ((v === null || Number.isFinite(v) && v >= 20 && v <= 500) && v !== (daily(current, activeKey()).weight ?? null)) update({ weight: v }, { kind: 'save', label: v === null ? 'Weigh-in cleared' : 'Weigh-in saved' }); };
 
-      const exportButton = button('ch-cell', () => { const blob = new Blob([JSON.stringify({ journal: current, legacyGame: RECGame.derive(current, dayKey()).badges }, null, 2)], { type: 'application/json' }), a = el('a'); a.href = URL.createObjectURL(blob); a.download = 'chad-local-backup.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); });
+      const exportButton = button('ch-cell', () => { const blob = new Blob([JSON.stringify({ journal: current }, null, 2)], { type: 'application/json' }), a = el('a'); a.href = URL.createObjectURL(blob); a.download = 'chad-local-backup.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); });
       exportButton.id = 'export-backup'; exportButton.append(el('span', 'ch-cell__title ch-grow', 'Export local backup')); exportButton.insertAdjacentHTML('beforeend', icon('share', 20));
       $('data-settings').append(exportButton);
     }
@@ -683,5 +787,7 @@
     $('missed-day').disabled = key > dayKey();
   }
   matchMedia('(prefers-color-scheme:dark)').addEventListener('change', () => applyTheme(current?.arcadeTheme || 'system'));
-  window.CHADQuest = { dayKey, shift, weekday, monday, waterGoal, phase, goals, deload, daily, week, stats, waterStreak, training, sessionLength, sessionProgress, rewards, render, paintCharts, shownAddons, LEVELS };
+  // The builder logs into a slot through the same reversible path as a card (tier C), and saves meals to the journal.
+  const logCustom = (slotId, item) => { const slot = slotById(slotId); return !!slot && choose(slot, { tier: 'C', title: item.name, macros: item.macros, source: 'custom', parts: item.parts }, null, true); };   // Log never removes
+  window.CHADQuest = { dayKey, shift, weekday, monday, waterGoal, phase, goals, deload, daily, week, stats, waterStreak, training, sessionLength, sessionProgress, rewards, render, paintCharts, shownAddons, LEVELS, THREE_MEALS, remaining, bestFit, yesterdayMeal, myMeals, logCustom, saveMyMeal, forgetMyMeal };
 })();

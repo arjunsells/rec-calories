@@ -6,12 +6,16 @@ const q = ctx.window.CHADQuest, plan = ctx.window.CHADPlan, T = ctx.CHADTrain, G
 const plain = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 const eq = (a, b, message) => assert.deepEqual(plain(a), plain(b), message);
 
-/* ---- E. Meals: every slot has exactly three options, in the order Strict, Medium, Free ---- */
-eq(plan.map(s => [s.id, s.name]), [['B', 'Breakfast'], ['L', 'Lunch'], ['P', 'Snack'], ['D', 'Dinner']], 'breakfast, lunch, snack, dinner');
+/* ---- F. Meals (supersedes E): Lunch -> gym 4-6 pm -> Dinner -> an optional snack. No breakfast, no pre-gym meal ---- */
+eq(plan.map(s => [s.id, s.name]), [['L', 'Lunch'], ['D', 'Dinner'], ['P', 'Snack']], 'lunch, dinner, then the optional snack');
+assert.ok(!plan.some(s => /breakfast|pre-gym|pre gym/i.test([s.name, s.time, ...s.choices.flatMap(c => [c.title, ...c.items, ...c.how])].join(' '))), 'no breakfast and no pre-gym meal anywhere in the plan');
+const [L, D, P] = plan;
+eq(L.choices.slice(0, 2).map(c => [c.pinned, c.title, c.macros]), [[true, "Nando's ½ PERi chicken", [715, 108, 1.1, 30.8]], [true, "Gochi + 4 Nando's tenders", [445, 71.4, 25.9, 9.1]]], 'lunch pins the two go-tos first, with the exact macros');
+assert.ok(!L.choices[2].pinned && [D, P].every(s => s.choices.every(c => !c.pinned)), 'only the two lunch go-tos are pinned');
 const BANNED = /chicken breast|breast meat|salad|\brice\b|shellfish|prawn|shrimp|crab|lobster|oyster|mussel|scallop|squid|calamari|\bclams?\b|octopus|crayfish|bug meat/i;
 for (const slot of plan) {
   assert.equal(slot.choices.length, 3, slot.name + ' has exactly three options');
-  eq(slot.choices.map(c => c.tier), ['S', 'M', 'F'], slot.name + ': Strict, Medium, Free, in that order');
+  eq(slot.choices.map(c => c.tier), ['S', 'M', 'F'], slot.name + ': Strict, Medium, Free, in that order (the lunch go-tos first)');
   for (const c of slot.choices) {
     const where = slot.name + ' ' + c.tier + ' ' + c.title;
     assert.ok(c.title && c.items.length >= 1, where + ': a name and what is in it');
@@ -21,26 +25,68 @@ for (const slot of plan) {
     assert.ok(Math.abs(energy - c.macros[0]) / c.macros[0] < 0.1, where + ': macros add up to the kcal (' + energy.toFixed(0) + ' vs ' + c.macros[0] + ')');
     assert.ok(Array.isArray(c.how) && c.how.length >= 1 && c.how.length <= 3 && c.how.every(step => typeof step === 'string' && step.length > 3 && step.length <= 60), where + ': a how-to of at most three short steps');
     assert.equal(BANNED.test([c.title, ...c.items, ...c.how].join(' | ')), false, where + ': no chicken breast, salad, rice or shellfish');
-    assert.ok(c.items.every(i => !/(?:tsp|tbsp|cups?|oz|lbs?)\b/i.test(i)), where + ': metric');
+    assert.ok(c.items.every(i => !/\d\s*(?:tsp|tbsp|cups?|oz|lbs?)\b/i.test(i)), where + ': metric (a "chicken cup" is a product, "1 cup" a unit)');
   }
   const [strict, medium, free] = slot.choices;
   assert.ok(strict.items.length <= 5, slot.name + ' Strict: five ingredients at most');
-  assert.ok(!/uber|order|pick-up|takeaway/i.test(strict.title + strict.how.join(' ')), slot.name + ' Strict is bought or cooked at home, not ordered');
+  assert.ok(!/uber/i.test(strict.title + strict.how.join(' ')) && (strict.pinned || !/order|pick-up|takeaway/i.test(strict.title + strict.how.join(' '))), slot.name + ' Strict is bought or cooked, not delivered');
   assert.match(free.title, /^Uber Eats/, slot.name + ' Free is Uber Eats');
   assert.ok(free.how.some(step => /^Order /.test(step)) && free.how.some(step => /^(Ask|Add|No )/.test(step)), slot.name + ' Free says what to order and what to ask for');
   assert.ok(medium.title && medium.how.length, slot.name + ' Medium is easy');
 }
-eq(plain(plan.find(s => s.id === 'P').choices[1].macros.slice(0, 2)), [445, 71.4], "Gochi + 4 Nando's tenders: 445 kcal, 71.4 g protein");
-// Each tier, eaten all day, sums sensibly against the default Cut goals (1,900 kcal / 220 P / 150 C / 45 F).
-const day = tier => [0, 1, 2, 3].map(i => plan.reduce((t, s) => t + s.choices.find(c => c.tier === tier).macros[i], 0));
-const [sK, sP, sC, sF] = day('S'); assert.ok(Math.abs(sK - 1900) <= 60 && Math.abs(sP - 220) <= 10 && Math.abs(sC - 150) <= 15 && Math.abs(sF - 45) <= 6, 'a Strict day is the Cut day: ' + day('S').map(Math.round).join('/'));
-for (const tier of ['M', 'F']) { const [k, p] = day(tier); assert.ok(k >= 1850 && k <= 2150 && p >= 190, tier + ' day stays sensible: ' + day(tier).map(Math.round).join('/')); }
-console.log('PASS meals: 4 slots × exactly 3 options (Strict, Medium, Free in order), names, kcal + P/C/F that add up, how-to in ≤3 steps, Free = Uber Eats with what to order and ask, Strict ≤5 ingredients, no chicken breast/salad/rice/shellfish, Gochi 445/71.4; days Strict ' + day('S').map(Math.round).join('/') + ', Medium ' + day('M').map(Math.round).join('/') + ', Free ' + day('F').map(Math.round).join('/') + ' (kcal/P/C/F).');
+assert.match(P.time, /optional/i, 'the snack is optional'); assert.ok(P.choices.some(c => /YoPRO/.test(c.title + c.items.join(' '))) && P.choices.some(c => /shake/i.test(c.title)), 'snacks: YoPRO and a protein shake');
+assert.ok(D.choices[0].macros[0] > L.choices[0].macros[0] && D.choices[0].macros[0] > P.choices[0].macros[0], 'dinner is the biggest meal of a typical day');
+// A typical day (the ½ chicken, the Strict dinner, the Strict snack) is the Cut day: 1,900 kcal / 220 P / 150 C / 45 F.
+const sum3 = cs => [0, 1, 2, 3].map(i => cs.reduce((t, c) => t + c.macros[i], 0));
+const typical = sum3([L.choices[0], D.choices[0], P.choices[0]]);
+assert.ok(Math.abs(typical[0] - 1900) <= 60 && Math.abs(typical[1] - 220) <= 10 && Math.abs(typical[2] - 150) <= 15 && Math.abs(typical[3] - 45) <= 6, 'a typical day hits the goals: ' + typical.map(Math.round).join('/'));
+// Every dinner fills what a typical lunch leaves, with the snack that fits best (or none).
+const GOAL = [1900, 220];
+for (const lunch of L.choices.slice(0, 2)) for (const dinner of D.choices) {
+  const left = [1900 - lunch.macros[0] - dinner.macros[0], 220 - lunch.macros[1] - dinner.macros[1]], s = q.bestFit(left, P.choices, [], GOAL), day = sum3([lunch, dinner, ...(s >= 0 ? [P.choices[s]] : [])]);
+  assert.ok(day[0] >= 1550 && day[0] <= 2100 && day[1] >= 190, lunch.title + ' + ' + dinner.title + ' + the best snack: ' + day.map(Math.round).join('/'));
+}
+console.log('PASS meals: Lunch, Dinner, optional Snack (no breakfast, no pre-gym), exactly 3 options each in Strict, Medium, Free order, lunch go-tos pinned first at 715/108/1.1/30.8 and 445/71.4/25.9/9.1, macros add up, how-to in ≤3 steps, Free = Uber Eats, Strict ≤5 ingredients, no chicken breast/salad/rice/shellfish; typical day ' + typical.map(Math.round).join('/') + ' (kcal/P/C/F), every dinner works after either go-to.');
 
-/* ---- scoring (unchanged rules) with the v10 slots ---- */
+/* ---- F. Smart pick, remaining today, same as yesterday ---- */
+// After the ½ chicken (1,185 kcal and 112 g protein left, the snack still to come) the Strict dinner fits best.
+assert.equal(q.bestFit([1900 - 715, 220 - 108], D.choices, [{ choices: P.choices, optional: true }], GOAL), 0, 'after the go-to lunch: Strict dinner');
+assert.equal(q.bestFit([800, 68], D.choices, [], GOAL), 1, '800 kcal / 68 g left: Medium (820 / 68), Strict would overshoot');
+assert.equal(q.bestFit([940, 115], D.choices, [], GOAL), 2, '940 kcal / 115 g left: Free (945 / 115.5)');
+assert.equal(q.bestFit([180, 30], P.choices, [], GOAL), 0, 'snack, 180 / 30 left: YoPRO × 2');
+assert.equal(q.bestFit([320, 55], P.choices, [], GOAL), 2, 'snack, 320 / 55 left: the tenders');
+// Brute force agrees on random days: the pick is the cheapest option counting the snack that fits after it (or none).
+{
+  let r = 7; const rnd = () => (r = (r * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const cost = x => (x[0] < 0 ? -2 * x[0] : x[0]) / 1900 + Math.max(0, x[1]) / 220;
+  for (let n = 0; n < 200; n++) {
+    const left = [Math.round(rnd() * 1600), Math.round(rnd() * 180)], i = q.bestFit(left, D.choices, [{ choices: P.choices, optional: true }], GOAL);
+    const each = D.choices.map(d => Math.min(cost([left[0] - d.macros[0], left[1] - d.macros[1]]), ...P.choices.map(s => cost([left[0] - d.macros[0] - s.macros[0], left[1] - d.macros[1] - s.macros[1]]))));
+    assert.ok(each[i] <= Math.min(...each) + 1e-9, 'best fit ' + left);
+  }
+}
+const day0 = { target: 1900, proteinGoal: 220, carbsGoal: 150, fatGoal: 45, entries: [{ id: 'a', day: '2026-11-24', name: "Nando's ½ PERi chicken", kcal: 715, protein: 108, carbs: 1.1, fat: 30.8, planSlot: 'L' }], questsV5: { '2026-11-24': { picks: { L: 'S' } } } };
+eq(q.remaining(day0, '2026-11-24').map(n => Math.round(n * 10) / 10), [1185, 112, 148.9, 14.2], 'remaining today = goals minus what is logged');
+// Same as yesterday: a card from today's plan says so; anything else (a custom meal, an older plan's card) comes back as it was.
+const ys = { entries: [{ id: 'y', day: '2026-11-23', name: "Nando's ½ PERi chicken", kcal: 715, protein: 108, carbs: 1.1, fat: 30.8, planSlot: 'L' }, { id: 'z', day: '2026-11-23', name: 'Chook & spud bowl', kcal: 640, protein: 52, carbs: 60, fat: 18, planSlot: 'D', source: 'custom', parts: [{ name: 'Roast chook', amount: '200 g' }] }], questsV5: { '2026-11-23': { picks: { L: 'S', D: 'C' } } } };
+assert.equal(q.yesterdayMeal(ys, '2026-11-24', L).card, L.choices[0], 'yesterday’s go-to lunch is today’s Strict card');
+eq(q.yesterdayMeal(ys, '2026-11-24', D), { tier: 'C', entry: ys.entries[1] }, 'yesterday’s custom dinner comes back as it was');
+assert.equal(q.yesterdayMeal(ys, '2026-11-24', P), null, 'no snack yesterday: nothing to repeat');
+assert.equal(q.yesterdayMeal({ ...ys, entries: [{ ...ys.entries[0], name: 'PERi steak & spuds' }, ys.entries[1]] }, '2026-11-24', L).entry.name, 'PERi steak & spuds', 'an older plan’s card is repeated by name');
+assert.equal(q.yesterdayMeal(ys, '2026-11-25', L), null, 'only yesterday counts');
+console.log('PASS smart pick (best fit after a go-to lunch, by kcal and protein, brute-force checked on 200 days), remaining today, same as yesterday (a card, a custom meal, an older card, none).');
+
+/* ---- scoring: three meals + the session from 24 Nov 2026; earlier days unchanged ---- */
 const state = { target: 1900, proteinGoal: 220, entries: [], questsV5: {} };
-const complete = (key, tiers = 'SSSS') => { state.questsV5[key] = { picks: Object.fromEntries(plan.map((s, i) => [s.id, tiers[i]])), water: q.waterGoal(key), steps: true }; plan.forEach((slot, i) => { const c = slot.choices.find(c => c.tier === tiers[i]); state.entries.push({ day: key, kcal: c.macros[0], protein: c.macros[1] }); }); };
-complete('2026-11-24'); assert.equal(q.daily(state, '2026-11-24').score, 17); assert.equal(q.daily(state, '2026-11-24').grade, 'S'); assert.ok(q.daily(state, '2026-11-24').totals[1] >= 210);
+const sessionOf = key => { const s = T.WEEK[q.weekday(key)]; return s.kind === 'rest' ? { cardio: true } : { training: true }; };
+const complete = (key, tiers = 'SSS') => { state.questsV5[key] = { picks: Object.fromEntries(plan.map((s, i) => [s.id, tiers[i]])), water: q.waterGoal(key), steps: true, ...sessionOf(key) }; plan.forEach((slot, i) => { const c = slot.choices.find(c => c.tier === tiers[i]); state.entries.push({ day: key, kcal: c.macros[0], protein: c.macros[1] }); }); };
+complete('2026-11-24'); assert.equal(q.daily(state, '2026-11-24').score, 17, 'three Strict meals + the session + protein + water + steps = 17'); assert.equal(q.daily(state, '2026-11-24').grade, 'S'); assert.ok(q.daily(state, '2026-11-24').totals[1] >= 210);
+delete state.questsV5['2026-11-24'].training; assert.equal(q.daily(state, '2026-11-24').score, 14, 'the session is worth 3'); state.questsV5['2026-11-24'].training = true;
+state.questsV5['2026-11-24'].picks.D = 'C'; assert.equal(q.daily(state, '2026-11-24').score, 15, 'a custom meal is worth 1'); state.questsV5['2026-11-24'].picks.D = 'S';
+assert.equal(q.daily({ entries: [], questsV5: { '2026-11-24': { workout: { id: 'pull', start: 1, end: 2, sets: [] } } } }, '2026-11-24').score, 3, 'a finished workout is the session');
+assert.equal(q.daily({ entries: [], questsV5: { '2026-11-25': { training: true } } }, '2026-11-25').score, 3, 'Wednesday: Muay Thai');
+assert.equal(q.daily({ entries: [], questsV5: { '2026-11-29': { cardio: true } } }, '2026-11-29').score, 3, 'Sunday: the walk');
+assert.equal(q.daily({ entries: [], questsV5: { '2026-11-23': { training: true, picks: { L: 'S' } } } }, '2026-11-23').score, 3, 'before 24 Nov the session scores nothing (four meals then)');
 for (const [score, grade] of [[0, 'C'], [8, 'C'], [9, 'B'], [11, 'B'], [12, 'A'], [14, 'A'], [15, 'S'], [17, 'S']]) {
   let found = false;
   for (const tiers of ['SSSS', 'SSSM', 'SSMM', 'SMMM', 'MMMM', 'MMMF', 'MMFF', 'MFFF', 'FFFF', '']) for (let protein = 0; protein <= 1; protein++) for (let water = 0; water <= 1; water++) for (let steps = 0; steps <= 1; steps++) {
@@ -49,18 +95,22 @@ for (const [score, grade] of [[0, 'C'], [8, 'C'], [9, 'B'], [11, 'B'], [12, 'A']
   }
   assert.ok(found, 'grade boundary ' + score);
 }
-// A day from before v10 can hold an old Dessert pick next to a new Breakfast one: meal points still top out at 12.
-assert.equal(q.daily({ entries: [], questsV5: { k: { picks: { B: 'S', L: 'S', P: 'S', D: 'S', E: 'S' } } } }, 'k').score, 12);
-assert.equal(q.daily({ entries: [], questsV5: { k: { picks: { L: 'S', P: 'M', D: 'F', E: 'S' } } } }, 'k').score, 9, 'a v9 day scores as it did');
+// Meal points top out at four: a day from before v10 can hold an old Dessert pick next to a new one.
+assert.equal(q.daily({ entries: [], questsV5: { '2026-11-20': { picks: { B: 'S', L: 'S', P: 'S', D: 'S', E: 'S' } } } }, '2026-11-20').score, 12);
+assert.equal(q.daily({ entries: [], questsV5: { '2026-11-20': { picks: { L: 'S', P: 'M', D: 'F', E: 'S' } } } }, '2026-11-20').score, 9, 'a v9 day scores as it did');
+assert.equal(q.daily({ entries: [], questsV5: { '2026-11-24': { picks: { L: 'S', P: 'S', D: 'S', E: 'S' }, training: true } } }, '2026-11-24').score, 12, 'four old picks and the session: still twelve');
+assert.equal(q.daily({ entries: [], questsV5: { k: { picks: { L: 'S' }, training: true } } }, 'k').score, 3, 'an odd key never throws');
 for (const [date, name] of [['2026-12-06', 'cut'], ['2026-12-07', 'reset'], ['2026-12-13', 'reset'], ['2026-12-14', 'bulk'], ['2027-05-02', 'bulk']]) assert.equal(q.phase(state, date)[0], name);
 assert.equal(q.goals(state, '2026-12-07').target, 2700); assert.equal(q.goals(state, '2026-12-14').target, 3000); assert.equal(q.goals({ ...state, phaseMode: 'custom', customGoals: [2222, 111, 222, 33] }, '2026-12-14').target, 2222);
 eq(plain(q.goals({}, '2026-11-24')), { target: 1900, proteinGoal: 220, carbsGoal: 150, fatGoal: 45 }, 'default daily target 1,900 kcal / 220 P / 150 C / 45 F');
 assert.equal(q.dayKey(new Date('2026-12-06T14:29:59Z')), '2026-12-06'); assert.equal(q.dayKey(new Date('2026-12-06T14:30:00Z')), '2026-12-07'); assert.equal(q.shift('2027-01-01', -1), '2026-12-31'); assert.equal(q.monday('2026-11-29'), '2026-11-23');
 assert.equal(q.waterGoal('2026-11-29'), 3.5); assert.equal(q.waterGoal('2026-11-28'), 5); assert.equal(q.waterGoal('2026-11-24'), 4.5);
-state.entries = []; state.questsV5 = {}; for (let i = 0; i < 7; i++) complete(q.shift('2026-11-23', i));
-let stats = q.stats(state, '2026-11-29'); assert.equal(stats.week.total, 129); assert.equal(stats.week.bonus, 10); assert.equal(stats.level, 'AJ Mode'); assert.equal(stats.maxP, 7); assert.equal(stats.maxW, 7); assert.equal(stats.zero, true);
-state.questsV5['2026-11-23'].picks = { B: 'F', L: 'F', P: 'F', D: 'S' }; assert.equal(q.stats(state, '2026-11-29').week.bonus, 0); assert.equal(q.stats(state, '2026-11-29').zero, false);
-const legacy = q.rewards({ entries: [], legacyRewards: { xp: 3000, badges: ['first'] }, questsV5: {} }, '2026-11-24', { xp: 0, badges: [{ id: 'first', unlocked: false }] }); assert.equal(legacy.xp, 3000); assert.equal(legacy.name, 'CHAD Legend'); assert.equal(legacy.badges[0].unlocked, true);
+state.entries = []; state.questsV5 = {}; for (let i = 0; i < 7; i++) complete(q.shift('2026-11-30', i));
+let stats = q.stats(state, '2026-12-06'); assert.equal(stats.week.total, 129, 'a perfect week: 7 × 17 + 10'); assert.equal(stats.week.bonus, 10); assert.equal(stats.level, 'AJ Mode'); assert.equal(stats.maxP, 7); assert.equal(stats.maxW, 7);
+assert.equal(['perfect', 'fight', 'zero'].some(k => k in stats), false, 'no badge-only stats');
+state.questsV5['2026-11-30'].picks = { L: 'F', D: 'F', P: 'F' }; assert.equal(q.stats(state, '2026-12-06').week.bonus, 0, 'three Free picks: no bonus');
+state.questsV5['2026-11-30'].picks = { L: 'S', D: 'S' }; assert.equal(q.stats(state, '2026-12-06').week.complete, false, 'a meal missing: the week is not complete');
+const legacy = q.rewards({ entries: [], legacyRewards: { xp: 3000, badges: ['first'] }, questsV5: {} }, '2026-11-24', { xp: 0 }); assert.equal(legacy.xp, 3000); assert.equal(legacy.name, 'CHAD Legend'); assert.equal('badges' in legacy, false, 'no badges, even from a legacy journal');
 // water streak: days in a row on the goal, up to today (or yesterday while today is filling)
 const wet = { entries: [], questsV5: { '2026-11-21': { water: 5 }, '2026-11-22': { water: 3.5 }, '2026-11-23': { water: 4.5 }, '2026-11-24': { water: 1 } } };
 assert.equal(q.waterStreak(wet, '2026-11-24'), 3); wet.questsV5['2026-11-24'].water = 4.5; assert.equal(q.waterStreak(wet, '2026-11-24'), 4); wet.questsV5['2026-11-22'].water = 3; assert.equal(q.waterStreak(wet, '2026-11-24'), 2);
@@ -79,7 +129,7 @@ assert.equal(q.stats({ ...history, journeyStartDate: '2026-10-09' }, '2026-11-24
 assert.equal(q.stats({ ...history, journeyStartDate: '2026-11-25' }, '2026-11-24').streak, 0, 'a Day 1 still to come: no streak yet');
 assert.equal(q.stats(history, '2026-11-25').streak, 49);
 assert.equal(G.derive({ target: 1900, proteinGoal: 220, entries: history.entries, questsV5: history.questsV5 }, '2026-11-24').streak, 48, 'the game shows the same streak');
-console.log('PASS scoring: 17 = S with the v10 slots, all grade boundaries, meal points capped at four picks, phases and goals (default 1,900/220/150/45), Darwin midnight, weekly bonus/levels/badges, legacy awards, water streak; journey streak 48 on 2026-11-24 (empty journal and 40-of-48 logged), a day marked missed restarts it and clearing the mark restores it, Day 1 edits, future Day 1.');
+console.log('PASS scoring: 17 = S from three Strict meals + the session (from 24 Nov 2026; custom meal 1, earlier days unchanged), all grade boundaries, meal points capped at four, phases and goals (default 1,900/220/150/45), Darwin midnight, weekly bonus (three meals a day) and levels, no badges, legacy XP, water streak; journey streak 48 on 2026-11-24 (empty journal and 40-of-48 logged), a day marked missed restarts it and clearing the mark restores it, Day 1 edits, future Day 1.');
 
 /* ---- Perfect Week v1 ---- */
 eq(T.WEEK.map(s => s.name), ['Rest + walk', 'Push', 'Pull', 'Muay Thai', 'Delts + Arms', 'Upper chest + Back', 'Sprints + Legs']);
@@ -144,13 +194,13 @@ for (let round = 0; round < 12; round++) {
     journal.questsV5[key] = { picks, water: chance(.8) ? q.waterGoal(key) - (chance(.3) ? .5 : 0) : Math.round(random() * 40) / 10, steps: chance(.7), electrolyte: chance(.5), cardio: chance(.4), sleep: chance(.6), exercises: chance(.4) ? { 0: true, 2: chance(.5) } : undefined };
   }
   const keys = Array.from({ length: days + 8 }, (_, n) => q.shift(today, 4 - n));
-  eq(plain(keys.map(k => q.daily(journal, k))), plain(keys.map(k => shipped.daily(journal, k))), 'round ' + round + ': days');
+  eq(plain(keys.map(k => { const { sessionHit, ...d } = q.daily(journal, k); assert.equal(sessionHit, false); return d; })), plain(keys.map(k => shipped.daily(journal, k))), 'round ' + round + ': days');
   eq(plain(keys.map(k => q.week(journal, q.monday(k), today))), plain(keys.map(k => shipped.week(journal, shipped.monday(k), today))), 'round ' + round + ': weeks');
   for (const k of [today, q.shift(today, -9), q.shift(today, 3)]) {
     const { streak, longest, since, ...rest } = q.stats(journal, k), was = shipped.stats(journal, k);
-    delete was.streak; delete was.longest; eq(plain(rest), plain(was), 'round ' + round + ': stats');
+    for (const gone of ['streak', 'longest', 'perfect', 'fight', 'zero']) delete was[gone]; eq(plain(rest), plain(was), 'round ' + round + ': stats');
     assert.equal(streak, G.journey(journal, k).streak);
   }
   assert.equal(q.rewards(journal, today, { xp: 50, badges: [] }).xp, shipped.rewards(journal, today, { xp: 50, badges: [] }).xp, 'round ' + round + ': XP');
 }
-console.log('PASS v10 scoring equals the shipped v9 on 12 random journals (days, weeks, stats apart from the journey streak, XP without sessions).');
+console.log('PASS v10 scoring equals the shipped v9 on 12 random journals (days, weeks, stats apart from the journey streak and the badge-only ones, XP without sessions).');

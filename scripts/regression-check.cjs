@@ -26,33 +26,35 @@ const shots = process.env.CHAD_SHOTS || path.join(os.tmpdir(), 'chad-v10-regress
     assert.deepEqual((await page.locator('nav .ch-tab__label').allTextContents()).map(s => s.trim()), ['Today', 'Training', 'Progress', 'Settings']);
     fs.mkdirSync(shots, { recursive: true });
 
-    // A perfect day: four Strict meals, water target, steps = 17 / 17, grade S.
-    for (const slot of ['B', 'L', 'P', 'D']) await pick(slot, 'S');
-    assert.equal(await page.locator('#consumed').innerText(), '1,913'); assert.equal(await page.locator('#protein-total').innerText(), '222');
-    assert.match(await page.locator('#calorie-ring').getAttribute('aria-label'), /^1,913\.1 of 1,900 calories$/, 'exact totals stay in the labels');
-    assert.match(await page.locator('#protein-ring').getAttribute('aria-label'), /^221\.9 of 220 grams protein$/);
-    assert.equal(await page.locator('#carbs-total').innerText(), '156'); assert.equal(await page.locator('#fat-total').innerText(), '47', 'carbs and fat in the hero');
-    assert.match(await page.locator('#carbs-meter').getAttribute('aria-label'), /^155\.7 of 150 grams carbs$/);
-    assert.equal(await page.locator('#remaining').innerText(), '13'); assert.equal(await page.locator('#remaining-label').innerText(), 'over', 'a Strict day lands within 1% of the goal');
-    assert.equal(await score(), '14 / 17');
+    // A perfect day: three Strict meals (lunch, dinner, the snack), the session, water target, steps = 17 / 17, grade S.
+    for (const slot of ['L', 'D', 'P']) await pick(slot, 'S');
+    assert.equal(await page.locator('#consumed').innerText(), '1,908'); assert.equal(await page.locator('#protein-total').innerText(), '225');
+    assert.match(await page.locator('#calorie-ring').getAttribute('aria-label'), /^1,908\.2 of 1,900 calories$/, 'exact totals stay in the labels');
+    assert.match(await page.locator('#protein-ring').getAttribute('aria-label'), /^225 of 220 grams protein$/);
+    assert.equal(await page.locator('#carbs-total').innerText(), '140'); assert.equal(await page.locator('#fat-total').innerText(), '49', 'carbs and fat in the hero');
+    assert.match(await page.locator('#carbs-meter').getAttribute('aria-label'), /^139\.5 of 150 grams carbs$/);
+    assert.equal(await page.locator('#remaining').innerText(), '8'); assert.equal(await page.locator('#remaining-label').innerText(), 'over', 'a typical Strict day lands within 1% of the goal');
+    assert.equal(await score(), '11 / 17');
     assert.equal(await page.locator('#next-up').count(), 0, 'with every meal logged nothing needs to stay open');
-    assert.equal(await page.locator('.meal-row.is-logged').count(), 4, 'logged meals are quiet lines');
+    assert.equal(await page.locator('.meal-row.is-logged').count(), 3, 'logged meals are quiet lines');
     for (let i = 0; i < 9; i++) await page.locator('.water-row').click();
     await wrap(); await page.locator('#today [data-quest=steps]').click();
+    assert.equal(await score(), '14 / 17', 'three meals, protein, water, steps: the session is the last 3');
+    await tab('training'); await page.locator('.is-today [data-quest=training]').click(); await tab('today');
     assert.equal(await score(), '17 / 17'); assert.equal(await page.locator('#quest-grade').innerText(), 'S');
     assert.equal(await page.locator('#home-streak').getAttribute('aria-label'), '48 day streak', 'the journey streak');
     assert.equal(await page.locator('#week-strip .is-selected').getAttribute('class').then(c => c.includes('is-s')), true, 'an S day is gold in the week strip');
-    assert.equal((await saved(page)).entries.length, 4);
+    assert.equal((await saved(page)).entries.length, 3);
     await page.reload(); assert.equal(await score(), '17 / 17');
     // Switch tier without duplicating; tap the logged option again to remove it.
-    await pick('L', 'M'); assert.equal((await saved(page)).entries.length, 4); assert.equal(await score(), '16 / 17');
-    await pick('L', 'M'); assert.equal((await saved(page)).entries.length, 3); assert.equal(await score(), '12 / 17', 'no lunch: no protein points either');
+    await pick('L', 'M'); assert.equal((await saved(page)).entries.length, 3); assert.equal(await score(), '14 / 17', 'the Medium go-to has 71 g protein: under 210 g for the day');
+    await pick('L', 'M'); assert.equal((await saved(page)).entries.length, 2); assert.equal(await score(), '12 / 17', 'no lunch: no protein points either');
     await page.locator('[data-meal-toggle=L]').click();
     assert.equal(await page.locator('#next-up').getAttribute('data-meal-slot'), 'L', 'an unlogged lunch leads again at noon');
     await pick('L', 'S');
     // Going over target says so; other food is listed once.
     await page.evaluate(() => CHADUX.openFood('manual')); await page.locator('#food-name').fill('Synthetic extra'); await page.locator('#calories').fill('300'); await page.locator('#add-form button').click();
-    assert.equal(await page.locator('#remaining-label').innerText(), 'over'); assert.equal(await page.locator('#remaining').innerText(), '313');
+    assert.equal(await page.locator('#remaining-label').innerText(), 'over'); assert.equal(await page.locator('#remaining').innerText(), '308');
     assert.equal(await page.locator('#extras').isVisible(), true); assert.equal(await page.locator('#entries .entry').count(), 1, 'plan meals live in their lines; other food is listed below');
     await page.locator('#undo-toast button').click(); assert.equal(await page.locator('#extras').isVisible(), false);
     await wrap(); for (const field of ['electrolyte', 'cardio', 'sleep']) { await page.waitForTimeout(420); await page.locator(`#today [data-quest=${field}]`).click(); }
@@ -71,6 +73,8 @@ const shots = process.env.CHAD_SHOTS || path.join(os.tmpdir(), 'chad-v10-regress
     assert.match(await page.locator('.is-today').innerText(), /Pull/); assert.equal(await page.locator('.is-today .exercise-row').count(), 7);
     assert.equal(await page.locator('.is-today .exercise-row').first().locator('.ch-ex__set').innerText(), '10×8', 'the last top set shows on its row');
     await page.locator('.is-today .exercise-row').first().click(); assert.match(await page.locator('#detail-sheet').innerText(), /Last 10 kg × 8 → try 9 reps, then 12\.5 kg[\s\S]*Best set[\s\S]*10 kg × 8/); await page.keyboard.press('Escape');
+    // The session was marked done above (the last 3 of 17): Mark done again switches it off, and Start comes back.
+    await page.locator('.is-today [data-quest=training]').click(); await page.waitForTimeout(420); assert.equal((await saved(page)).questsV5['2026-11-24'].training, false);
     assert.equal(await page.locator('.is-today [data-gym-start]').count(), 1);
     await page.locator('.training-row[data-day="2026-11-25"]').click(); assert.match(await page.locator('.training-level').innerText(), /Muay Thai[\s\S]*10 min warm-up[\s\S]*6:30 pm[\s\S]*10 min stretch/);
     assert.equal(await page.locator('.training-level .exercise-row, .training-level [data-gym-start], .training-level [data-quest]').count(), 0, 'a day still to come has nothing to tap but its plan');
@@ -115,8 +119,7 @@ const shots = process.env.CHAD_SHOTS || path.join(os.tmpdir(), 'chad-v10-regress
     assert.equal(await page.locator('.chart-card').filter({ hasText: 'Calories' }).locator('.chart-values .ch-hint').count(), 30);
     await page.evaluate(() => document.fonts.ready); await page.screenshot({ path: path.join(shots, 'progress-dark.png') });
     assert.equal(await page.evaluate(() => [...document.querySelectorAll('#charts canvas')].every(c => c.width > 80 && c.height > 50)), true);
-    assert.equal(await page.locator('#badges .badge').count(), 12); assert.ok(await page.locator('#badges .badge.unlocked').count() >= 6, 'the journey unlocks the streak badges');
-    assert.match(await page.locator('#badge-count').innerText(), /^\d+\/12$/);
+    assert.equal(await page.locator('#badges, #badge-count, .badge, [data-badge]').count(), 0, 'no badges'); assert.doesNotMatch(await page.locator('#history').innerText(), /badge/i);
     assert.ok(await page.locator('#past-entries .entry-open').count() >= 29, 'past entries open their sheet');
     await page.locator('#open-level').click(); assert.equal(await page.locator('#level-up').isVisible(), true);
     assert.equal(await page.locator('#level-list li').count(), 6); assert.equal(await page.locator('#level-list .is-current').count(), 1);
@@ -171,7 +174,7 @@ const shots = process.env.CHAD_SHOTS || path.join(os.tmpdir(), 'chad-v10-regress
     await page.setViewportSize({ width: 390, height: 844 });
     for (const value of ['light', 'dark']) {
       await tab('settings'); await theme(value);
-      assert.equal(await page.locator('meta[name=theme-color]').first().getAttribute('content'), value === 'dark' ? '#000000' : '#F2F2F7');
+      assert.equal(await page.locator('meta[name=theme-color]').first().getAttribute('content'), value === 'dark' ? '#060A14' : '#EEF1F7');
       for (const view of ['today', 'training', 'history', 'settings']) {
         await tab(view); await page.evaluate(() => scrollTo(0, document.body.scrollHeight));
         assert.equal(await page.evaluate(() => document.querySelector('.view:not([hidden])').getBoundingClientRect().bottom < document.querySelector('.ch-dock-scrim').getBoundingClientRect().top), true, 'last row clears the dock and its fade ' + value + ' ' + view);
@@ -183,13 +186,13 @@ const shots = process.env.CHAD_SHOTS || path.join(os.tmpdir(), 'chad-v10-regress
     await page.evaluate(() => navigator.serviceWorker.ready); await page.waitForFunction(() => navigator.serviceWorker.controller);
     assert.equal(await page.evaluate(cache => caches.has(cache), CACHE), true);
     await context.setOffline(true); await page.reload();
-    assert.equal(await page.locator('#daily-checklist [data-meal-row], #daily-checklist [data-meal-slot]').count() >= 4, true, 'every meal is on screen offline');
+    assert.equal(await page.locator('#daily-checklist [data-meal-row], #daily-checklist [data-meal-slot]').count() >= 3, true, 'every meal is on screen offline');
     await page.evaluate(() => document.fonts.load('12px "Press Start 2P"')); assert.equal(await page.evaluate(() => document.fonts.check('12px "Press Start 2P"')), true);
     assert.equal(await page.evaluate(() => typeof CHADFood.startScanner), 'function'); assert.equal(await page.evaluate(() => typeof CHADGym.start), 'function');
     assert.deepEqual(await page.evaluate(async cache => (await (await caches.open(cache)).keys()).map(r => new URL(r.url).pathname).sort(), CACHE), shellFiles().map(f => new URL(f, 'http://127.0.0.1:8088/').pathname).sort());
     for (const file of shellFiles().filter(f => f !== './')) assert.equal(await page.evaluate(async file => (await fetch(file)).status, file), 200, file + ' offline');
     assert.deepEqual(errors, []);
-    console.log('PASS regression Edge 390x844: 17 = S from four Strict meals (1,913 kcal, 222 g protein) with whole-number hero and exact labels, logged meals as quiet lines, switch/remove/persist, other food listed once, over target; done chips; weigh-in and water edits; Training: moves with prescription, rest and last set, history sheet with the overload hint, Start, a future day read-only, Mark done (gold in the week), the plan card; v4 migration incl photos/goals/rewards; journey streak 48/49/50 whatever was logged, water streak 30, workouts with volume/duration/PR, records with est 1RM; nine canvases, heatmap, 7/30 range, badges, level details, manual theme pixel redraw, daily water goals; phases/add-ons/deload sets; theme hint, haptics/sound switches, phase dates; 320/430/680 no overflow incl. Gym mode; dock clearance both themes; offline complete shell, font, scanner, Gym mode; zero JS/console errors. Screenshots: ' + shots);
+    console.log('PASS regression Edge 390x844: 17 = S from three Strict meals (1,908 kcal, 225 g protein) and the session with whole-number hero and exact labels, logged meals as quiet lines, switch/remove/persist, other food listed once, over target; done chips; weigh-in and water edits; Training: moves with prescription, rest and last set, history sheet with the overload hint, Start, a future day read-only, Mark done (gold in the week), the plan card; v4 migration incl photos/goals/rewards; journey streak 48/49/50 whatever was logged, water streak 30, workouts with volume/duration/PR, records with est 1RM; nine canvases, heatmap, 7/30 range, badges, level details, manual theme pixel redraw, daily water goals; phases/add-ons/deload sets; theme hint, haptics/sound switches, phase dates; 320/430/680 no overflow incl. Gym mode; dock clearance both themes; offline complete shell, font, scanner, Gym mode; zero JS/console errors. Screenshots: ' + shots);
     await context.close();
   } finally { await browser.close(); server.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

@@ -53,7 +53,7 @@ const handler = (pathname, res) => {
     assert.deepEqual(await saved(page), before, 'v10 rewrites the v9 journal unchanged');
     assert.equal(await page.locator('#journey-day').innerText(), 'Day 48');
     assert.equal(await page.locator('[data-meal-row=L]').getAttribute('class').then(c => c.includes('is-logged')), true, 'v9 lunch shows as a logged row');
-    assert.equal(await page.locator('#next-up').getAttribute('data-meal-slot'), 'P', 'midday, lunch done: the snack is next');
+    assert.equal(await page.locator('#next-up').getAttribute('data-meal-slot'), 'D', 'midday, lunch done: dinner is next (no pre-gym meal)');
     assert.match(await page.locator('[data-meal-row=L]').innerText(), /Strict · 584 kcal/);
     assert.match(await page.locator('[data-row=wrap]').innerText(), /1 of 4/, 'v9 sleep counts in the wrap-up');
     assert.match(await page.locator('.water-total').innerText(), /^0\.5/);
