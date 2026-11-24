@@ -1,7 +1,7 @@
 ﻿const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),http=require('node:http'),assert=require('node:assert/strict');
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||path.join(os.tmpdir(),'chad-browser-qa/node_modules/playwright'));
 const root=path.resolve(__dirname,'..'),shots=path.join(os.tmpdir(),'chad-v7-qa');
-const server=http.createServer((req,res)=>{const file=path.resolve(root,'.'+new URL(req.url,'http://localhost').pathname.replace(/\/$/,'/index.html'));if(!file.startsWith(root+path.sep)){res.writeHead(403);return res.end();}const mime={'.js':'text/javascript','.css':'text/css','.html':'text/html','.webmanifest':'application/manifest+json','.png':'image/png','.ttf':'font/ttf'};fs.readFile(file,(e,data)=>{res.writeHead(e?404:200,{'Content-Type':mime[path.extname(file)]||'text/plain'});res.end(e?'missing':data);});});
+const server=http.createServer((req,res)=>{const file=path.resolve(root,'.'+new URL(req.url,'http://localhost').pathname.replace(/\/$/,'/index.html'));if(!file.startsWith(root+path.sep)){res.writeHead(403);return res.end();}const mime={'.js':'text/javascript','.css':'text/css','.html':'text/html','.webmanifest':'application/manifest+json','.svg':'image/svg+xml','.png':'image/png','.ttf':'font/ttf'};fs.readFile(file,(e,data)=>{res.writeHead(e?404:200,{'Content-Type':mime[path.extname(file)]||'text/plain'});res.end(e?'missing':data);});});
 (async()=>{
  await new Promise(r=>server.listen(8091,'127.0.0.1',r));const browser=await chromium.launch({executablePath:process.env.BROWSER_EXECUTABLE||'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',headless:true});
  try{
@@ -26,7 +26,10 @@ const server=http.createServer((req,res)=>{const file=path.resolve(root,'.'+new 
    assert.equal(await page.evaluate(()=>document.querySelector('.view:not([hidden])').getBoundingClientRect().bottom<document.querySelector('#today-scan').getBoundingClientRect().top),true,name+' '+view+' last row clears FAB');
   }
   await page.locator('[data-view=today]').tap();
-  const headerTop=await page.locator('.ch-header').evaluate(e=>e.getBoundingClientRect().height);assert.ok(headerTop>=(safe?91:44));
+  const headerTop=await page.locator('.date-header').evaluate(e=>e.getBoundingClientRect().height);assert.ok(headerTop>=(safe?91:44));
+  await page.locator('#previous-day').tap();await check('past date');
+  assert.equal(await page.locator('#day-title').evaluate(e=>e.scrollWidth<=e.clientWidth),true,name+' full past day title');
+  await page.locator('#return-today').tap();
   assert.equal(await page.locator('#today details,#training details').count(),0);
   await page.screenshot({path:path.join(shots,name.replaceAll(' ','-')+'.png')});
   await page.evaluate(()=>{window.qaTaps=0;document.addEventListener('click',()=>window.qaTaps++,true);});

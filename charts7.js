@@ -1,28 +1,33 @@
-/* CHAD v6 — charts6.js · iOS-clean canvas charts + SVG Activity rings. No dependencies.
-   Drop-in for v5 charts.js (same window.CHADCharts API), restyled: system font, rounded bars,
-   smooth line, no glow. One addition: rings().
+/* CHAD v7 — charts7.js · canvas charts, SVG Activity rings and a count-up. No dependencies.
+   Drop-in for charts6.js (same window.CHADCharts API). What changed:
+     rings()   new markup: gradient strokes, soft glow (dark theme), round caps, spring fill, and values above 1
+               lap the ring with a shadowed head (v6 clamped at 1; pass {max:1} to keep that).
+     count()   NEW  count-up for a number element.
+     heatmap() default colour is gold (v6: green). Bars get a soft vertical gradient. Everything else as v6.
    window.CHADCharts:
      barsVsGoal(el, data, goal, opts)  data: [n | null | {label, value}]
                                        opts: {highlight:index, unit:'', goalLabel:'Goal', goals:[per-bar goal], color, overColor}
      line(el, data, opts)              data: [n | null | {label, value}]   opts: {goal:n, color:'--ch-blue', unit:''}
-     heatmap(el, data, opts)           data: [0..1 | null] oldest first, 7 per column   opts: {color:'--ch-green', max:1, rows:7, today:index}
+     heatmap(el, data, opts)           data: [0..1 | null] oldest first, 7 per column   opts: {color:'--ch-gold', max:1, rows:7, today:index}
      ring(el, pct, opts)               pct 0..100+   opts: {color:'--ch-ring-move', label:'72%', sub:'kcal', width:px}
-     rings(el, values, opts)   NEW     Activity rings (SVG). values: up to 3 numbers 0..1 (outer → inner:
-                                       calories, protein, quests). opts: {labels:['Calories 72%', …]} for aria-label.
-                                       Call again with new values to animate to them. Styled by .ch-rings in theme6.css.
+     rings(el, values, opts)           Activity rings (SVG). values: up to 3 numbers, 0..1 = one lap (outer → inner:
+                                       calories, protein, score). opts: {labels:['Calories 72%', …], max:2, animate:false}
+                                       Call again with new values to animate to them. Styled by .ch-rings in theme7.css.
+     count(el, to, opts)               animates el.textContent from its current number to `to`.
+                                       opts: {duration:700, decimals:0, from:n, format:fn(n)->string, animate:false}
      redraw()                          re-render canvases (auto on resize / theme change)
-   `el` is a <canvas> or any block element (a canvas is created inside; give it a height,
-   e.g. class="ch-chart"). Colours come from theme6.css variables read on `el`.
-   Colour opts take a CSS variable name ('--ch-pink') or any CSS colour.
-   Draw-in animation is skipped when prefers-reduced-motion is set or opts.animate === false. */
+   `el` is a <canvas> or any block element (a canvas is created inside; give it a height, e.g. class="ch-chart").
+   Colours come from theme7.css variables read on `el`; colour opts take a CSS variable name ('--ch-pink') or any CSS colour.
+   Animation is skipped when prefers-reduced-motion is set or opts.animate === false. */
 (function (root) {
   'use strict';
   var doc = root.document;
   var RM = root.matchMedia ? root.matchMedia('(prefers-reduced-motion: reduce)') : null;
-  var reg = [];
-  var FONT = '-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif';
-  var NUM = 'ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif';
+  var reg = [], uid = 0;
+  var FONT = '-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif';
+  var NUM = 'ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif';
 
+  function still(opts) { return (opts && opts.animate === false) || (RM && RM.matches) || !root.requestAnimationFrame; }
   function v(el, name, fb) {
     var s = getComputedStyle(el).getPropertyValue(name);
     return (s && s.trim()) || fb;
@@ -42,11 +47,11 @@
   function col(el, c, fb) { return !c ? fb : (c.indexOf('--') === 0 ? tv(el, c, fb) : c); }
   function theme(el) {
     return {
-      gold: tv(el, '--ch-gold', '#B0894C'), cyan: tv(el, '--ch-cyan', '#00C3E3'),
+      gold: tv(el, '--ch-gold', '#B0894C'), cyan: tv(el, '--ch-cyan', '#00A8DC'),
       magenta: tv(el, '--ch-magenta', '#FF2D55'), green: tv(el, '--ch-green', '#34C759'),
-      blue: tv(el, '--ch-blue', '#007AFF'), move: tv(el, '--ch-ring-move', '#FA114F'),
-      text: tv(el, '--ch-text', '#000'), muted: tv(el, '--ch-muted', '#6E6E73'),
-      track: tv(el, '--ch-track', 'rgba(120,120,128,.16)'), line: tv(el, '--ch-line', 'rgba(60,60,67,.16)'),
+      blue: tv(el, '--ch-blue', '#007AFF'), move: tv(el, '--ch-ring-move', '#F5133F'),
+      text: tv(el, '--ch-text', '#0B1220'), muted: tv(el, '--ch-muted', '#5E6779'),
+      track: tv(el, '--ch-track', 'rgba(116,122,140,.16)'), line: tv(el, '--ch-line', 'rgba(20,40,75,.11)'),
       surface: tv(el, '--ch-surface', '#fff')
     };
   }
@@ -90,7 +95,7 @@
         paint(s.ctx, s.w, s.h, T, t);
         s.ctx.restore();
       }
-      if (!animated || (opts && opts.animate === false) || (RM && RM.matches)) { frame(1); return; }
+      if (!animated || still(opts)) { frame(1); return; }
       var t0 = 0, dur = (opts && opts.duration) || 800;
       (function tick(now) {
         if (!t0) t0 = now || performance.now();
@@ -122,26 +127,28 @@
   function barsVsGoal(el, data, goal, opts) {
     opts = opts || {};
     var d = norm(data);
-    mount(el, 170, opts, function (ctx, w, h, T, t) {
+    mount(el, 168, opts, function (ctx, w, h, T, t) {
       var hasLabels = d.some(function (p) { return p.label; });
       var top = 20, bot = hasLabels ? 20 : 4, H = h - top - bot, n = d.length || 1;
       var goals = opts.goals || d.map(function () { return goal; });
       var max = Math.max.apply(null, d.map(function (p) { return p.value || 0; }).concat(goals, [goal || 0, 1])) * 1.1;
-      var slot = w / n, bw = Math.max(2, Math.min(22, slot * 0.46)), r = Math.min(7, bw / 2);
+      var slot = w / n, bw = Math.max(2, Math.min(24, slot * 0.5)), r = Math.min(8, bw / 2);
       var over = col(el, opts.overColor, T.magenta), under = col(el, opts.color, T.cyan);
       var hi = opts.highlight;
-      // baseline
       ctx.fillStyle = T.line; ctx.fillRect(0, top + H, w, 1);
       d.forEach(function (p, i) {
         var cx = slot * i + slot / 2, x = cx - bw / 2, base = top + H;
-        if (p.label) label(ctx, p.label, cx, h - 4, hi === i ? T.text : T.muted, 'center', 11, hi === i ? 600 : 500);
+        if (p.label) label(ctx, p.label, cx, h - 4, hi === i ? T.text : T.muted, 'center', 11, hi === i ? 700 : 500);
         if (p.value == null) { ctx.fillStyle = T.track; rrect(ctx, x, base - 4, bw, 4, 2); ctx.fill(); return; }
         var bh = Math.max(3, p.value / max * H * t);
         var c = (goals[i] && p.value > goals[i]) ? over : under;
         if (hi === i) c = T.gold;
-        ctx.fillStyle = c;
         ctx.save(); ctx.beginPath(); ctx.rect(x - 1, top - 4, bw + 2, H + 4); ctx.clip();
-        rrect(ctx, x, base - bh, bw, bh + r, r); ctx.fill(); ctx.restore();
+        ctx.fillStyle = c; rrect(ctx, x, base - bh, bw, bh + r, r); ctx.fill();
+        var g = ctx.createLinearGradient(0, base - bh, 0, base);          // lift the top, settle the base
+        g.addColorStop(0, 'rgba(255,255,255,.22)'); g.addColorStop(0.5, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(0,0,0,.14)');
+        ctx.fillStyle = g; rrect(ctx, x, base - bh, bw, bh + r, r); ctx.fill();
+        ctx.restore();
       });
       if (goal) {
         dashed(ctx, T.muted);
@@ -179,7 +186,7 @@
   function line(el, data, opts) {
     opts = opts || {};
     var d = norm(data);
-    mount(el, 170, opts, function (ctx, w, h, T, t) {
+    mount(el, 168, opts, function (ctx, w, h, T, t) {
       var pts = [], vals = [];
       d.forEach(function (p, i) { if (p.value != null) { pts.push({ i: i, v: p.value }); vals.push(p.value); } });
       if (!pts.length) return;
@@ -187,7 +194,7 @@
       var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
       var pad = (hi - lo) * 0.18 || 1; lo -= pad; hi += pad;
       var hasLabels = d.some(function (p) { return p.label; });
-      var L = 4, R = 10, top = 26, bot = hasLabels ? 20 : 8, W = w - L - R, H = h - top - bot, n = Math.max(1, d.length - 1);
+      var L = 4, R = 12, top = 28, bot = hasLabels ? 20 : 8, W = w - L - R, H = h - top - bot, n = Math.max(1, d.length - 1);
       var c = col(el, opts.color, T.blue);
       function X(i) { return L + (d.length > 1 ? i / n * W : W / 2); }
       function Y(val) { return top + H - (val - lo) / (hi - lo) * H; }
@@ -204,18 +211,18 @@
       ctx.beginPath(); ctx.rect(0, 0, L + W * t + (t >= 1 ? R : 0), h); ctx.clip();
       var grad = ctx.createLinearGradient(0, top, 0, top + H);
       grad.addColorStop(0, c); grad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.globalAlpha = 0.2; ctx.fillStyle = grad;
+      ctx.globalAlpha = 0.22; ctx.fillStyle = grad;
       ctx.beginPath(); smooth(ctx, P);
       ctx.lineTo(P[P.length - 1].x, top + H); ctx.lineTo(P[0].x, top + H); ctx.closePath(); ctx.fill();
       ctx.globalAlpha = 1;
-      ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = c;
+      ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = c;
       ctx.beginPath(); smooth(ctx, P); ctx.stroke();
       ctx.restore();
       var last = P[P.length - 1], lv = pts[pts.length - 1].v;
       if (t >= 1) {
-        ctx.fillStyle = T.surface; ctx.beginPath(); ctx.arc(last.x, last.y, 6.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = T.surface; ctx.beginPath(); ctx.arc(last.x, last.y, 7, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = c; ctx.beginPath(); ctx.arc(last.x, last.y, 4.5, 0, Math.PI * 2); ctx.fill();
-        label(ctx, fmt(lv) + (opts.unit ? ' ' + opts.unit : ''), w - 2, 14, T.text, 'right', 15, 600, NUM);
+        label(ctx, fmt(lv) + (opts.unit ? ' ' + opts.unit : ''), w - 2, 16, T.text, 'right', 15, 700, NUM);
       }
       if (hasLabels) {
         var step = Math.ceil(d.length / 7);
@@ -234,7 +241,7 @@
       cell = Math.max(3, cell);
       var max = opts.max || Math.max.apply(null, d.map(function (p) { return p.value || 0; }).concat([1e-9]));
       if (!opts.max && max <= 4 && max > 1) max = 4;
-      var c = col(el, opts.color, T.green), shown = Math.ceil(d.length * t), r = Math.min(5, cell * 0.28);
+      var c = col(el, opts.color, T.gold), shown = Math.ceil(d.length * t), r = Math.min(5, cell * 0.3);
       d.forEach(function (p, i) {
         var x = Math.floor(i / rows) * (cell + gap), y = (i % rows) * (cell + gap);
         ctx.globalAlpha = 1; ctx.fillStyle = T.track; rrect(ctx, x, y, cell, cell, r); ctx.fill();
@@ -265,34 +272,88 @@
       ctx.beginPath(); ctx.arc(cx, cy, r, a0, a0 + Math.PI * 2 * Math.max(frac, 0.0001)); ctx.stroke();
       var txt = opts.label != null ? String(opts.label) : Math.round(pct * t) + '%';
       var fs = Math.max(13, Math.round(size * 0.2));
-      label(ctx, txt, cx, cy + (opts.sub ? fs * 0.18 : fs * 0.35), T.text, 'center', fs, 600, NUM);
+      label(ctx, txt, cx, cy + (opts.sub ? fs * 0.18 : fs * 0.35), T.text, 'center', fs, 700, NUM);
       if (opts.sub) label(ctx, String(opts.sub), cx, cy + fs * 0.18 + 15, T.muted, 'center', 11, 500);
     });
   }
 
-  /* ---- Activity rings (SVG, animated by CSS in theme6.css) ---- */
+  /* ---- Activity rings (SVG; colour, glow and motion live in theme7.css) ----
+     Per ring: a track, two half arcs with a vertical gradient each (together they read as an angular
+     gradient), revealed by a round-capped mask. Past one lap the whole gradient rotates and a head
+     with a soft shadow rides on top, the way a closed Activity ring does. */
+  var R = [88, 66, 44], SW = 20;
+  function circlePath(r) { return 'M100 ' + (100 - r) + 'a' + r + ' ' + r + ' 0 1 1 0 ' + (2 * r) + 'a' + r + ' ' + r + ' 0 1 1 0 ' + (-2 * r) + 'z'; }
+  function ringsMarkup(n, id) {
+    var defs = '', body = '', glow = '', cap = SW / 2;
+    for (var i = 0; i < n; i++) {
+      var r = R[i], k = i + 1, top = 100 - r, bot = 100 + r;
+      defs +=
+        '<linearGradient id="' + id + 'a' + k + '" class="ch-rings__grad--' + k + '" gradientUnits="userSpaceOnUse" x1="0" y1="' + top + '" x2="0" y2="' + bot + '"><stop offset="0" class="ch-rings__s0"/><stop offset="1" class="ch-rings__s50"/></linearGradient>' +
+        '<linearGradient id="' + id + 'b' + k + '" class="ch-rings__grad--' + k + '" gradientUnits="userSpaceOnUse" x1="0" y1="' + bot + '" x2="0" y2="' + top + '"><stop offset="0" class="ch-rings__s50"/><stop offset="1" class="ch-rings__s100"/></linearGradient>' +
+        '<mask id="' + id + 'm' + k + '" maskUnits="userSpaceOnUse" x="-20" y="-20" width="240" height="240"><circle class="ch-rings__reveal ch-rings__reveal--' + k + '" cx="100" cy="100" r="' + r + '" pathLength="100" transform="rotate(-90 100 100)"/></mask>' +
+        '<clipPath id="' + id + 'c' + k + '"><path clip-rule="evenodd" d="' + circlePath(r + cap) + circlePath(r - cap) + '"/></clipPath>';
+      body +=
+        '<g class="ch-rings__ring ch-rings__ring--' + k + '">' +
+          '<circle class="ch-rings__track" cx="100" cy="100" r="' + r + '"/>' +
+          '<g mask="url(#' + id + 'm' + k + ')"><g class="ch-rings__spin">' +
+            '<path class="ch-rings__half" d="M100 ' + top + 'A' + r + ' ' + r + ' 0 0 1 100 ' + bot + '" stroke="url(#' + id + 'a' + k + ')"/>' +
+            '<path class="ch-rings__half" d="M100 ' + bot + 'A' + r + ' ' + r + ' 0 0 1 100 ' + top + '" stroke="url(#' + id + 'b' + k + ')"/>' +
+            '<circle class="ch-rings__cap" cx="100" cy="' + top + '" r="' + cap + '"/>' +
+          '</g></g>' +
+          '<g clip-path="url(#' + id + 'c' + k + ')"><g class="ch-rings__head">' +
+            '<circle class="ch-rings__shadow" cx="' + (100 + SW * 0.3) + '" cy="' + top + '" r="' + cap + '" filter="url(#' + id + 's)"/>' +
+            '<circle class="ch-rings__tip" cx="100" cy="' + top + '" r="' + cap + '"/>' +
+          '</g></g>' +
+        '</g>';
+      glow += '<circle class="ch-rings__g ch-rings__g--' + k + '" cx="100" cy="100" r="' + r + '" pathLength="100" transform="rotate(-90 100 100)"/>';
+    }
+    defs += '<filter id="' + id + 's" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="2.6"/></filter>';
+    return '<svg class="ch-rings__glow" viewBox="0 0 200 200" aria-hidden="true" focusable="false">' + glow + '</svg>' +
+           '<svg class="ch-rings__svg" viewBox="0 0 200 200" aria-hidden="true" focusable="false"><defs>' + defs + '</defs>' + body + '</svg>';
+  }
   function rings(el, values, opts) {
     if (!el) return;
     opts = opts || {};
     values = (values || []).slice(0, 3);
-    if (!el.querySelector('svg')) {
-      var R = [88, 66, 44], s = '<svg viewBox="0 0 200 200" aria-hidden="true" focusable="false">';
-      for (var i = 0; i < Math.max(1, values.length); i++) {
-        s += '<g class="ch-rings__ring ch-rings__ring--' + (i + 1) + '">' +
-          '<circle class="ch-rings__track" cx="100" cy="100" r="' + R[i] + '"/>' +
-          '<circle class="ch-rings__arc" cx="100" cy="100" r="' + R[i] + '" pathLength="100"/></g>';
-      }
-      el.classList.add('ch-rings');
-      el.innerHTML = s + '</svg>';
-      el.getBoundingClientRect(); // commit the 0 state so the first set animates
+    var n = Math.max(1, values.length), max = opts.max == null ? 2 : +opts.max, fresh = false;
+    if (!el.querySelector('.ch-rings__svg') || el.__chRingsN !== n) {
+      el.__chRingsId = el.__chRingsId || ('chr' + (++uid) + '-');
+      el.__chRingsN = n;
+      el.classList.add('ch-rings', 'ch-rings--7');
+      el.innerHTML = ringsMarkup(n, el.__chRingsId);
+      fresh = true;
     }
     el.setAttribute('role', 'img');
     if (opts.labels) el.setAttribute('aria-label', opts.labels.join(', '));
     var apply = function () {
-      values.forEach(function (val, i) { el.style.setProperty('--p' + (i + 1), String(Math.max(0, Math.min(1, +val || 0)))); });
+      values.forEach(function (val, i) { el.style.setProperty('--p' + (i + 1), String(Math.max(0, Math.min(max, +val || 0)))); });
     };
-    if (opts.animate === false || (RM && RM.matches) || !root.requestAnimationFrame) apply();
-    else root.requestAnimationFrame(apply);
+    if (still(opts)) {                     // jump: suspend the CSS transition for this write
+      el.style.transition = 'none'; apply(); el.getBoundingClientRect(); el.style.transition = '';
+      return;
+    }
+    if (fresh) el.getBoundingClientRect();  // commit the empty state so the first set animates
+    root.requestAnimationFrame(apply);
+  }
+
+  /* ---- count-up ---- */
+  function count(el, to, opts) {
+    if (!el) return;
+    opts = opts || {};
+    to = +to || 0;
+    var dec = opts.decimals || 0;
+    var f = opts.format || function (n) { return n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec }); };
+    var from = opts.from != null ? +opts.from : (el.__chCount != null ? el.__chCount : (parseFloat(String(el.textContent).replace(/[^0-9.\-]/g, '')) || 0));
+    if (el.__chCountRaf) cancelAnimationFrame(el.__chCountRaf);
+    el.__chCount = to;
+    if (still(opts) || from === to) { el.textContent = f(to); return; }
+    var t0 = 0, dur = opts.duration || 700, k = Math.pow(10, dec);
+    (function tick(now) {
+      if (!t0) t0 = now || performance.now();
+      var p = Math.min(1, ((now || t0) - t0) / dur), e = 1 - Math.pow(1 - p, 4);
+      el.textContent = f(p < 1 ? Math.round((from + (to - from) * e) * k) / k : to);
+      if (p < 1) el.__chCountRaf = requestAnimationFrame(tick);
+    })(0);
   }
 
   function redraw(animated) {
@@ -312,5 +373,5 @@
     }
   }
 
-  root.CHADCharts = { barsVsGoal: barsVsGoal, line: line, heatmap: heatmap, ring: ring, rings: rings, redraw: redraw };
+  root.CHADCharts = { barsVsGoal: barsVsGoal, line: line, heatmap: heatmap, ring: ring, rings: rings, count: count, redraw: redraw, version: 7 };
 })(window);

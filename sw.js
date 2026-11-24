@@ -1,6 +1,6 @@
 'use strict';
-const CACHE = 'rec-calories-shell-v7-ux';
-const SHELL = ['./', './index.html', './style.css', './theme6.css', './sprites.js', './icons6.js', './charts6.js', './ux.js', './app.js', './game.js', './plan-data.js', './quest.js', './fonts/press-start-2p.ttf', './fonts/OFL.txt', './scan.js', './food.js', './vendor/zxing-browser.min.js', './vendor/ZXING-LICENSE', './vendor/README.md', './manifest.webmanifest', './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png'];
+const CACHE = 'rec-calories-shell-v7';
+const SHELL = ['./', './index.html', './style.css', './theme7.css', './icons7.js', './charts7.js', './ux.js', './app.js', './game.js', './plan-data.js', './quest.js', './fonts/press-start-2p.ttf', './fonts/OFL.txt', './scan.js', './food.js', './vendor/zxing-browser.min.js', './vendor/ZXING-LICENSE', './vendor/README.md', './manifest.webmanifest', './icons/icon.svg', './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
 });

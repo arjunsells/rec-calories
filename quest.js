@@ -46,7 +46,7 @@
     return g;
   }
   let api, current, lastStreak=null, settingsReady=false;
-  const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls){const kit={card:'ch-card',secondary:'ch-btn ch-btn--block',checks:'ch-quests','check-card':'ch-quest','check-box':'ch-quest__box',checked:'is-done','meal-options':'ch-meals ch-meals--stack','meal-pick':'ch-meal','tier-S':'ch-meal--strict','tier-M':'ch-meal--medium','tier-F':'ch-meal--free',selected:'is-selected','tier-label':'ch-meal__tier','meal-title':'ch-meal__name','meal-macros':'ch-meal__macros','phase-chip':'ch-chip ch-chip--cyan',deload:'ch-deload'};e.className=cls+' '+cls.split(' ').map(c=>kit[c]||'').join(' ');}if(text!==undefined)e.textContent=text;return e;};
+  const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls){const kit={card:'ch-card',secondary:'ch-btn ch-btn--block',checks:'ch-quests','check-card':'ch-quest','check-box':'ch-quest__box',checked:'is-done','meal-slot':'ch-slot','meal-options':'ch-meals','meal-choice':'ch-meal','meal-pick':'ch-meal__hit','meal-info':'ch-meal__info','daily-quests':'ch-flow','water-row':'ch-water','bottles':'ch-bottles','bottle':'ch-bottle','water-total':'ch-water__val','quest-chips':'ch-qchips','exercise':'ch-ex','exercise-toggle':'ch-ex__hit','exercise-info':'ch-ex__info','cardio-note':'ch-session__foot','addons':'ch-qchips--wrap','tier-S':'ch-meal--strict','tier-M':'ch-meal--medium','tier-F':'ch-meal--free',selected:'is-selected','tier-label':'ch-meal__tier','meal-title':'ch-meal__name','meal-macros':'ch-meal__macros','phase-chip':'ch-chip ch-chip--cyan',deload:'ch-deload'};e.className=cls+' '+cls.split(' ').map(c=>kit[c]||'').join(' ');}if(text!==undefined)e.textContent=text;return e;};
   const button=(text,fn,cls='secondary')=>{const b=el('button',cls,text);b.type='button';b.onclick=fn;return b;};
   const fmt=n=>new Intl.NumberFormat('en-AU',{maximumFractionDigits:1}).format(n);
   function chime(){if(!current.arcadeSound||matchMedia('(prefers-reduced-motion: reduce)').matches)return;try{const ac=new (window.AudioContext||window.webkitAudioContext)();[523,659,784].forEach((f,i)=>{const o=ac.createOscillator(),g=ac.createGain();o.type='square';o.frequency.value=f;g.gain.setValueAtTime(.025,ac.currentTime+i*.07);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+i*.07+.1);o.connect(g).connect(ac.destination);o.start(ac.currentTime+i*.07);o.stop(ac.currentTime+i*.07+.11);});setTimeout(()=>ac.close(),600);}catch{/* Sound remains optional. */}}
@@ -80,34 +80,35 @@
   }
   function removeEntry(state,e,save){const quests={...state.questsV5};if(e.planSlot){const q={...quests[e.day],picks:{...quests[e.day]?.picks}};delete q.picks[e.planSlot];quests[e.day]=q;}save({...state,questsV5:quests,entries:state.entries.filter(x=>x.id!==e.id)});}
   function toggle(field,label,q,container,key=activeKey()){
-    const done=!!q[field],b=button(label,()=>{
+    const done=!!q[field],pill=container.classList.contains('training-level'),b=button(pill?label:'',()=>{
       const patch=field==='training'?{training:!done,exercises:Object.fromEntries(training[weekday(key)].ex.map((_,i)=>[i,!done]))}:{[field]:!done};
       update(patch,!done,key,label+(done?' removed':' logged'));
-    },'quest-chip'+(done?' checked':''));
+    },'quest-chip ch-qchip'+(pill?' ch-qchip--pill':'')+(done?' checked':''));
+    if(!pill){const ic=el('span','ch-qchip__icon');ic.innerHTML=CHADIcons.icon({electrolyte:'electrolyte',training:'dumbbell',cardio:'run',steps:'shoe',sleep:'sleep'}[field]||'check',26);b.append(ic,el('span','ch-qchip__label',label==='10k steps'?'Steps':label));b.setAttribute('aria-label',label);}
     b.dataset.quest=field;b.setAttribute('aria-pressed',done);container.append(b);
   }
   function mealDetail(slot,c){
-    const list=el('ul','meal-items');c.items.forEach(item=>list.append(el('li','',item)));
-    const other=button('Log another meal',()=>window.CHADUX.openFood('camera',slot.id==='P'||slot.id==='E'?'Snacks':slot.name));
-    window.CHADUX.detail(c.title,[el('p','',({S:'Strict',M:'Medium',F:'Free'}[c.tier])+' \u00b7 '+c.macros[0]+' kcal \u00b7 P '+c.macros[1]+' / C '+c.macros[2]+' / F '+c.macros[3]+' g'),list,el('p','',c.tip),el('p','hint',c.fix),other]);
+    const list=el('ul','ch-bullets');c.items.forEach(item=>list.append(el('li','',item)));
+    const macros=el('div','ch-macros');['kcal','Protein','Carbs','Fat'].forEach((label,i)=>{const item=el('div','ch-macros__item'+(i===0?' ch-macros__item--kcal':''));item.append(el('b','',fmt(c.macros[i])),el('span','',label));macros.append(item);});
+    const note=(icon,text)=>{const n=el('div','ch-note');n.innerHTML=CHADIcons.icon(icon,22);n.append(el('p','',text));return n;};
+    const other=button('Log another meal',()=>window.CHADUX.openFood('camera',slot.id==='P'||slot.id==='E'?'Snacks':slot.name),'ch-btn ch-btn--primary ch-btn--block');
+    window.CHADUX.detail(c.title,[macros,list,note('lightbulb',c.tip),note('swap',c.fix),other]);
   }
   function render(state,actions){
     current=state;api=actions;const key=activeKey(),d=daily(state,key),s=stats(state,dayKey()),p=phase(state,key);
     const hero=$('quest-hero');hero.replaceChildren();hero.hidden=true;
-    $('home-streak').textContent=s.streak+' day streak';$('streak').textContent=s.streak+' day streak';
+    $('home-streak').innerHTML=CHADIcons.icon('flame',18)+'<b class="ch-px">'+s.streak+'</b>';$('home-streak').setAttribute('aria-label',s.streak+' day streak');$('streak').textContent=s.streak+' day streak';
     $('daily-grade').textContent=d.grade;$('daily-grade').className='ch-grade ch-grade--'+d.grade.toLowerCase();$('grade-detail').textContent=d.score+'/17 pts';
     if(lastStreak!==null&&s.streak>lastStreak){$('celebration').textContent='Streak saved \u00b7 '+s.streak+' days';$('celebration').hidden=false;setTimeout(()=>$('celebration').hidden=true,3500);}lastStreak=s.streak;
     const checklist=$('daily-checklist');checklist.replaceChildren();
     const quests=el('section','daily-quests');quests.setAttribute('aria-label','Daily quests');
-    const water=el('div','water-row'),amount=d.water||0,target=waterGoal(key);
-    water.append(el('span','water-total',fmt(amount)+' / '+target+' L'));
-    const bottles=el('div','bottles');bottles.setAttribute('role','group');bottles.setAttribute('aria-label','Water bottles');
+    const amount=d.water||0,target=waterGoal(key),water=button('',()=>update({water:Math.max(0,Math.min(30,Math.round((amount+(amount>=target?-.5:.5))*10)/10))},amount<target,key,amount>=target?'Bottle removed':'Bottle added'),'water-row'+(amount>=target?' is-full':''));
+    water.setAttribute('aria-label',(amount>=target?'Remove 500 mL water. ':'Add 500 mL water. ')+fmt(amount)+' of '+target+' litres');
+    const bottles=el('span','bottles');bottles.setAttribute('aria-hidden','true');
     for(let i=0;i<Math.ceil(target/.5);i++){
-      const filled=amount>i*.5,b=button('',()=>update({water:Math.max(0,Math.min(30,Math.round((amount+(amount>=target?-.5:.5))*10)/10))},amount<target,key,amount>=target?'Bottle removed':'Bottle added'),'bottle'+(filled?' filled':''));
-      b.dataset.water=String(i);b.setAttribute('aria-label',amount>=target?'Remove 500 mL water':'Add 500 mL water');b.setAttribute('aria-pressed',filled);
-      b.append(el('span','bottle-symbol','\u25a5'));bottles.append(b);
+      const filled=amount>i*.5,b=el('i','bottle'+(filled?' filled':''));b.dataset.water=String(i);b.style.setProperty('--fill',Math.max(0,Math.min(1,(amount-i*.5)/.5)));bottles.append(b);
     }
-    water.append(bottles);quests.append(water);
+    const total=el('span','water-total');total.innerHTML=fmt(amount)+'<small>/'+target+' L</small>';water.append(bottles,total);quests.append(water);
     const chips=el('div','quest-chips');for(const [field,label] of [['electrolyte','Hydralyte'],['training','Training'],['cardio','Cardio'],['steps','10k steps'],['sleep','Sleep']])toggle(field,label,d,chips,key);
     quests.append(chips);
     // A vertical list keeps every choice one tap away; the current slot leads.
@@ -116,13 +117,13 @@
     const slotId=pending?.id||CHADPlan[currentIndex].id,slots=[...CHADPlan].sort((a,b)=>(b.id===slotId)-(a.id===slotId));
     slots.forEach((slot,i)=>{
       const block=el('section','meal-slot'+(i===0?' next-up':''));block.dataset.mealSlot=slot.id;if(i===0)block.id='next-up';
-      const heading=el('div','section-heading'),title=el('h2','',(i===0&&pending?'Next \u00b7 ':'')+slot.name);title.id='slot-heading-'+slot.id;block.setAttribute('aria-labelledby',title.id);heading.append(title,el('span','hint',slot.time));block.append(heading);
+      const heading=el('div','section-heading ch-slot__head'),title=el('h2','ch-slot__name',(i===0&&pending?'Next \u00b7 ':'')+slot.name);title.id='slot-heading-'+slot.id;block.setAttribute('aria-labelledby',title.id);const meta=el('span','ch-slot__meta');if(d.picks[slot.id])meta.innerHTML=CHADIcons.icon('check',14,{weight:2.6})+({S:'Strict',M:'Medium',F:'Free'}[d.picks[slot.id]]);else meta.textContent=slot.time;heading.append(title,meta);block.append(heading);
       const grid=el('div','meal-options');
       for(const c of slot.choices){
         const selected=d.picks[slot.id]===c.tier,wrap=el('div','meal-choice'),b=button('',()=>pick(slot,c.tier),'meal-pick tier-'+c.tier+(selected?' selected':''));
         b.dataset.slot=slot.id;b.dataset.tier=c.tier;b.setAttribute('aria-pressed',selected);
         b.setAttribute('aria-label',(selected?'Undo ':'Log ')+({S:'Strict',M:'Medium',F:'Free'}[c.tier])+' '+slot.name+': '+c.title);
-        b.append(el('span','tier-label',({S:'Strict',M:'Medium',F:'Free'}[c.tier])+(selected?' \u2713':'')),el('strong','meal-title',c.title),el('span','meal-macros',fmt(c.macros[0])+' kcal'),el('span','meal-macros','P '+fmt(c.macros[1])+' g'));
+        const kcal=el('span','ch-meal__kcal');kcal.innerHTML=fmt(Math.round(c.macros[0]))+'<small>kcal</small>';b.append(el('span','tier-label',{S:'Strict',M:'Medium',F:'Free'}[c.tier]),el('span','meal-title',c.title),kcal,el('span','meal-macros',fmt(Math.round(c.macros[1]))+' g protein'));
         // Long press opens the same sheet as the accessible info button, without logging.
         let timer,suppress=false,origin;
         b.addEventListener('pointerdown',e=>{suppress=false;origin={x:e.clientX,y:e.clientY};timer=setTimeout(()=>{timer=null;suppress=true;mealDetail(slot,c);},550);});
@@ -131,7 +132,7 @@
         b.addEventListener('pointerup',cancel);b.addEventListener('pointercancel',cancel);b.addEventListener('pointerleave',cancel);
         b.addEventListener('click',e=>{if(suppress){e.stopImmediatePropagation();e.preventDefault();suppress=false;}},true);
         b.addEventListener('contextmenu',e=>e.preventDefault());
-        const info=button('\u24d8',()=>mealDetail(slot,c),'meal-info');info.setAttribute('aria-label',slot.name+' '+({S:'Strict',M:'Medium',F:'Free'}[c.tier])+' details');
+        const info=button('',()=>mealDetail(slot,c),'meal-info');info.innerHTML=CHADIcons.icon('info',20);info.setAttribute('aria-label',slot.name+' '+({S:'Strict',M:'Medium',F:'Free'}[c.tier])+' details');
         wrap.append(b,info);grid.append(wrap);
       }
       block.append(grid);checklist.append(block);if(i===0)checklist.append(quests);
@@ -140,7 +141,7 @@
       const box=el('section','card addons');box.append(el('h2','',p[1]+' add-ons'));
       const addons=p[0]==='bulk'?[['bagel','Plain bagel',[313,10,60,2]],['wrap','Protein wrap',[175,10,24,4]],['shake','Daily shake',[610,38,83,13]]]:[['shake','Daily shake',[610,38,83,13]],['banana','Extra banana',[89,1.1,23,.3]]];
       for(const [id,name,m] of addons){const eid='addon-'+key+'-'+id,has=state.entries.some(e=>e.id===eid),old=state.entries.find(e=>e.id===eid);
-        const b=button(name+' \u00b7 '+m[0]+' kcal',()=>{if(api.save({...current,entries:has?current.entries.filter(e=>e.id!==eid):[...current.entries,{id:eid,day:key,name,kcal:m[0],protein:m[1],carbs:m[2],fat:m[3],source:'addon',meal:'Snacks'}]})){if(!has)api.popXP();window.CHADUX.toast(has?'Add-on removed':'Add-on logged',()=>api.save({...current,entries:[...current.entries.filter(e=>e.id!==eid),...(old?[old]:[])]}));}},'quest-chip'+(has?' checked':''));b.setAttribute('aria-pressed',has);box.append(b);
+        const b=button(name+' \u00b7 '+m[0]+' kcal',()=>{if(api.save({...current,entries:has?current.entries.filter(e=>e.id!==eid):[...current.entries,{id:eid,day:key,name,kcal:m[0],protein:m[1],carbs:m[2],fat:m[3],source:'addon',meal:'Snacks'}]})){if(!has)api.popXP();window.CHADUX.toast(has?'Add-on removed':'Add-on logged',()=>api.save({...current,entries:[...current.entries.filter(e=>e.id!==eid),...(old?[old]:[])]}));}},'quest-chip ch-qchip ch-qchip--pill'+(has?' checked':''));b.setAttribute('aria-pressed',has);box.append(b);
       }checklist.append(box);
     }
     let weigh=$('local-weight');if(!weigh){
@@ -158,17 +159,17 @@
     const todayIndex=weekday(key),start=monday(key),order=[todayIndex,...[1,2,3,4,5,6,0].filter(i=>i!==todayIndex)];
     for(const i of order){
       const session=training[i],isToday=i===todayIndex,sessionKey=shift(start,(i+6)%7),q=daily(state,sessionKey);
-      const card=el('section','card training-level'+(isToday?' is-today':'')+(q.training?' is-done':''));card.dataset.day=sessionKey;
-      const heading=el('div','ch-day');heading.append(el('h2','',session.name),el('span','hint',isToday?(key===dayKey()?'Today':sessionKey):['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][i]+' \u00b7 '+sessionKey));card.append(heading);
-      if(isToday)toggle('training','Session complete',q,card,sessionKey);
+      const card=el('section','training-level ch-session'+(isToday?' is-today':' ch-session--compact')+(q.training?' is-done':''));card.dataset.day=sessionKey;
+      const heading=el('div','ch-session__head'),hb=el('div','ch-grow'),nm=session.name.charAt(0)+session.name.slice(1).toLowerCase(),doneN=session.ex.filter((_,x)=>q.training||q.exercises?.[x]).length;hb.append(el('p','ch-eyebrow',(isToday&&key===dayKey()?'Today \u00b7 ':'')+['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][i]),el('h2','ch-session__name',nm));if(isToday)hb.append(el('p','ch-session__focus',session.muscles));heading.append(hb);if(isToday){const ring=el('div','ch-ring');ring.style.cssText='--p:'+(doneN/session.ex.length*100)+';--size:56px;--w:6px;--c:var(--ch-gold)';ring.setAttribute('role','img');ring.setAttribute('aria-label',doneN+' of '+session.ex.length+' done');const v=el('strong','ch-ring__val',doneN+'/'+session.ex.length);v.style.fontSize='15px';ring.append(v);heading.append(ring);}else{const m=el('span','ch-session__meta');if(q.training)m.innerHTML=CHADIcons.icon('check',16,{weight:2.6})+'Done';else m.textContent=doneN?doneN+' of '+session.ex.length:session.ex.length+' moves';heading.append(m);}card.append(heading);
+      if(isToday)toggle('training','Whole session done',q,card,sessionKey);
       session.ex.forEach((text,j)=>{
         const [name,sets]=text.split('|'),row=el('div','exercise'),exDone=!!q.training||!!q.exercises?.[j];let prescription=sets||'';
         if(deload(sessionKey)&&prescription)prescription=prescription.replace(/^(\d+)(?:\u2013(\d+))?/,(_,a,b)=>Math.ceil(Number(a)/2)+(b?'\u2013'+Math.ceil(Number(b)/2):''));
-        const b=button((exDone?'\u2713 ':'')+name+(prescription?' \u00b7 '+prescription:''),()=>{
+        const b=button('',()=>{
           const now=daily(current,sessionKey),done=!!now.training||!!now.exercises?.[j],ex={...now.exercises,[j]:!done};if(now.training)session.ex.forEach((_,x)=>ex[x]=x!==j);
           update({exercises:ex,training:session.ex.every((_,x)=>ex[x])},!done,sessionKey,done?'Exercise removed':'Exercise logged');
-        },'exercise-toggle');b.dataset.exercise=String(j);b.setAttribute('aria-pressed',exDone);row.append(b);
-        const info=button('\u24d8',()=>{
+        },'exercise-toggle');b.append(el('span','ch-ex__check'),el('span','ch-ex__name',name));if(prescription)b.append(el('span','ch-ex__meta',prescription.replace('x',' \u00d7 ')));b.setAttribute('aria-label',name+(prescription?', '+prescription:''));b.dataset.exercise=String(j);b.setAttribute('aria-pressed',exDone);row.append(b);
+        const info=button('',()=>{
           const nodes=[el('p','',session.muscles),el('p','',session.note||'Stop 2 reps before failure. Add reps, then weight.')];
           if(sets&&name!=='Hill sprints'){
             const form=el('form','top-set-form'),kg=el('input'),reps=el('input');kg.type=reps.type='number';kg.min='0';kg.max='1000';kg.step='.5';kg.placeholder='kg';kg.setAttribute('aria-label',name+' weight kg');reps.min='1';reps.max='200';reps.placeholder='reps';reps.setAttribute('aria-label',name+' reps');kg.required=reps.required=true;
@@ -178,7 +179,7 @@
               if(!update({topSets:{...daily(current,sessionKey).topSets,[name]:record}},false,sessionKey,'Top set saved'))return;window.CHADUX.closeSheets();if(value>best){$('celebration').textContent='Personal record \u00b7 '+name;$('celebration').hidden=false;setTimeout(()=>$('celebration').hidden=true,3500);chime();}
             };nodes.push(form);
           }window.CHADUX.detail(name,nodes);
-        },'exercise-info text-button');info.setAttribute('aria-label',name+' details and top set');row.append(info);card.append(row);
+        },'exercise-info');info.innerHTML=CHADIcons.icon('info',20);info.setAttribute('aria-label',name+' details and top set');row.append(info);card.append(row);
       });card.append(el('p','cardio-note',session.cardio));box.append(card);
     }
   }
