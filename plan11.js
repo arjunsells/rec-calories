@@ -1,5 +1,6 @@
 'use strict';
 // Meal-plan inputs only. No personal measurements or source documents. Metric throughout.
+// v11: the plan is unchanged from v10 pass 2; the two one-tap favourites for Today's Quick log are new (bottom of file).
 // v10 (pass 2): Arjun's real day. No breakfast, no pre-gym meal: Lunch -> gym 4-6 pm -> Dinner (after the gym, the
 // biggest meal) -> an optional high-protein snack that closes the gap to the goals (1,900 kcal / 220 P / 150 C / 45 F).
 // Every slot has exactly three options in a fixed order:
@@ -54,4 +55,10 @@ window.CHADPlan = [
         how: ['Order 4 PERi chicken tenders', 'No chips or dips', 'Add a YoPRO from the fridge'], macros: [311.1, 54.8, 6.8, 7] }
     ]
   }
+];
+// v11: one-tap favourites for Today's Quick log (Arjun's own label numbers). A tap logs one more, on the day in view,
+// as other food (not a meal slot); Undo takes it back. Ids are stable: entries remember them as `fav`.
+window.CHADFavourites = [
+  { id: 'yopro-pouch', name: 'YoPRO Perform pouch', short: 'YoPRO pouch', portion: '1 pouch', macros: [120, 20.1, 6.8, 1.2] },
+  { id: 'gochi-noodle', name: 'Gochi noodle meal', short: 'Gochi noodle', portion: '1 meal', macros: [225, 31.8, 25.2, 2.6] }
 ];

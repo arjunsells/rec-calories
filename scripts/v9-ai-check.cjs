@@ -1,4 +1,4 @@
-// Snap + Say end to end against a mock AI proxy on another origin (so CORS is real) and the built-in proxy address
+// Ask AI (Snap + Say) end to end against a mock AI proxy on another origin (so CORS is real) and the built-in proxy address
 // answered inside the browser (so no test ever reaches the real one), plus the example Cloudflare Worker run under Node
 // with a stubbed provider. Synthetic tokens and key only: no real AI request, no credential.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), http = require('node:http'), { pathToFileURL } = require('node:url');
@@ -111,7 +111,8 @@ function jpegSize(dataURL) {
     const card = () => page.evaluate(() => ['name', 'grams', 'kcal', 'protein', 'carbs', 'fat'].map(k => document.getElementById('result-' + k).value));
     const keys = () => page.evaluate(() => [localStorage.getItem('chad.aiProxyUrl'), localStorage.getItem('chad.aiProxyToken')]);
     const toastText = () => page.locator('#undo-toast').innerText();
-    const advanced = async () => { await tap(page.locator('[data-view=settings]')); if (!await page.locator('#advanced-settings').evaluate(d => d.open)) await page.locator('#advanced-settings > summary').click(); };
+    // v11: Settings is behind the gear on Today, and its AI section is always open (one disclosure inside, at most).
+    const advanced = async () => { if (!await page.locator('#settings').isVisible()) { if (!await page.locator('#today').isVisible()) await tap(page.locator('[data-view=today]')); await tap(page.locator('#open-settings')); } await page.locator('#advanced-settings').scrollIntoViewIfNeeded(); };
     const status = () => page.locator('#ai-status-title').innerText();
     const clearAI = async () => { await page.evaluate(() => ['chad.aiProxyUrl', 'chad.aiProxyToken', 'rec-calories-ai-key'].forEach(k => localStorage.removeItem(k))); await page.goto(APP + '/'); };
 
@@ -122,9 +123,9 @@ function jpegSize(dataURL) {
     await photo(); await page.locator('#photo-preview').waitFor({ state: 'visible' });
     assert.match(await page.locator('#photo-image').getAttribute('src'), /^data:image\/jpeg;base64,/); assert.match(await gentle(), /Got it\. What is it\?/);
     await page.locator('#food-description').fill('Synthetic chicken wrap'); await tap(page.locator('[data-snap=manual]'));
-    assert.equal(await page.locator('#manual-sheet').isVisible(), true); assert.equal(await page.locator('#food-name').inputValue(), 'Synthetic chicken wrap'); await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#confirm-sheet').isVisible(), true); assert.equal(await page.locator('#confirm-title').innerText(), 'Type it in'); assert.equal(await page.locator('#result-name').inputValue(), 'Synthetic chicken wrap', 'the words go along'); await page.keyboard.press('Escape');
     await snap(); assert.equal(await page.locator('#photo-preview').isVisible(), false, 'a photo is never kept'); await tap(page.locator('[data-snap=barcode]')); assert.equal(await page.locator('#scan').getAttribute('data-mode'), 'barcode'); await page.keyboard.press('Escape');
-    await advanced(); assert.equal(await status(), 'Not set up'); assert.equal(await page.locator('#ai-mode').innerText(), 'Not set up');
+    await advanced(); assert.equal(await status(), 'Not set up');
     assert.equal(await page.locator('#ai-test').isVisible(), false); assert.equal(await page.locator('#ai-disconnect').isVisible(), false);
     assert.equal(proxyCalls.length + probes.length + health + builtIn.length + openai.length, 0, 'no request without a token, key or address of your own');
 
@@ -161,7 +162,7 @@ function jpegSize(dataURL) {
 
     // 4. Settings › Advanced: status, Test (health + token check), the setup link field, other ways to connect.
     await advanced(); await page.waitForFunction(() => document.getElementById('ai-status-title').textContent === 'Connected');
-    assert.equal(await page.locator('#ai-mode').innerText(), 'Connected'); assert.match(await page.locator('#ai-dot').getAttribute('class'), /is-ok/); assert.match(await page.locator('#ai-status-text').innerText(), /127\.0\.0\.1:8095/);
+    assert.match(await page.locator('#ai-dot').getAttribute('class'), /is-ok/); assert.match(await page.locator('#ai-status-text').innerText(), /127\.0\.0\.1:8095/);
     const probesBefore = probes.length; await tap(page.locator('#ai-test')); await page.waitForFunction(() => document.getElementById('ai-status-title').textContent === 'Connected');
     assert.ok(probes.length > probesBefore && health >= 2, 'Test checks health and the token'); assert.equal(probes.at(-1).headers['x-chad-token'], TOKEN); assert.equal(proxyCalls.length, 0, 'and never runs an estimate');
     await page.evaluate(() => localStorage.setItem('chad.aiProxyToken', 'synthetic-wrong')); await tap(page.locator('#ai-test'));
@@ -230,7 +231,7 @@ function jpegSize(dataURL) {
     await page.clock.runFor(3100); await page.locator('#confirm-sheet').waitFor({ state: 'visible' }); assert.equal(proxyCalls.length - callsBefore, 2); await page.keyboard.press('Escape');
 
     // 6. Every failure ends in the same friendly place: plain words, the one fix that helps, and search / barcode / quick add.
-    for (const [which, title, again] of [['fail', /The AI couldn’t finish that one/, true], ['f502', /The AI couldn’t finish that one[\s\S]*Quick add it/, true], ['badjson', /garbled/, true], ['nocors', /AI is offline[\s\S]*Describe it or use Quick add \/ barcode/, true], ['limit', /needs a breather/, false], ['large', /too big/, false], ['empty', /No food spotted/, false]]) {
+    for (const [which, title, again] of [['fail', /The AI couldn’t finish that one/, true], ['f502', /The AI couldn’t finish that one[\s\S]*type it in/, true], ['badjson', /garbled/, true], ['nocors', /AI is offline[\s\S]*Search, scan a barcode or type it in/, true], ['limit', /needs a breather/, false], ['large', /too big/, false], ['empty', /No food spotted/, false]]) {
       mode = which; await snap(); await page.locator('#food-description').fill('synthetic toast'); await tap(page.locator('#describe-button'));
       await page.locator('#snap-ways').waitFor({ state: 'visible', timeout: 15000 });
       assert.match(await gentle(), title, which); assert.equal(await page.locator('#confirm-sheet').isVisible(), false, which);
@@ -240,13 +241,13 @@ function jpegSize(dataURL) {
     }
     mode = 'ok'; await tap(page.locator('#describe-button')); await page.locator('#confirm-sheet').waitFor({ state: 'visible' }); await page.keyboard.press('Escape');   // the retry works
     mode = 'fail'; await snap(); await page.locator('#food-description').fill('synthetic toast'); await tap(page.locator('#describe-button')); await page.locator('#snap-ways').waitFor({ state: 'visible' });
-    await tap(page.locator('[data-snap=search]')); assert.equal(await page.locator('#food-search').inputValue(), 'synthetic toast', 'the words go along to search'); await page.keyboard.press('Escape');
+    await tap(page.locator('[data-snap=search]')); await page.locator('#builder-sheet').waitFor({ state: 'visible' }); assert.equal(await page.locator('#builder-search').inputValue(), 'synthetic toast', 'the words go along to search in the add-food sheet'); await page.locator('#builder-sheet [data-close=builder-sheet]').click();
     // A wrong token: say so, hide Estimate, and one tap to the setup link field.
     mode = 'ok'; await page.evaluate(() => localStorage.setItem('chad.aiProxyToken', 'synthetic-wrong'));
     await snap(); assert.equal(await page.locator('#food-description').inputValue(), '', 'handed to search, the words do not linger'); await page.locator('#food-description').fill('synthetic toast'); await tap(page.locator('#describe-button')); await page.locator('#snap-ways').waitFor({ state: 'visible' });
     assert.match(await gentle(), /AI needs setting up again[\s\S]*fresh setup link/); assert.equal(await page.locator('#snap-setup').isVisible(), true); assert.equal(await page.locator('#describe-button').isVisible(), false);
     await tap(page.locator('#snap-setup'));
-    assert.equal(await page.locator('#settings').isVisible(), true); assert.equal(await page.locator('#advanced-settings').evaluate(d => d.open), true);
+    assert.equal(await page.locator('#settings').isVisible(), true); assert.equal(await page.locator('#advanced-settings').isVisible(), true);
     assert.equal(await page.evaluate(() => document.activeElement.id), 'ai-link', 'ready to paste'); await page.waitForFunction(() => document.getElementById('ai-status-title').textContent === 'Set up again');
     await page.evaluate(token => localStorage.setItem('chad.aiProxyToken', token), TOKEN);
     // Too slow: honest words as time passes, then after 100 seconds the same way out (the clock is fast-forwarded).
@@ -274,7 +275,7 @@ function jpegSize(dataURL) {
 
     // 7. Backups never carry AI settings: no proxy, no token, no key. The journal never holds them either.
     await page.evaluate(() => localStorage.setItem('rec-calories-ai-key', 'synthetic-key-qa'));
-    await tap(page.locator('[data-view=settings]'));
+    await advanced();
     const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#export-backup').click()]);
     const backup = fs.readFileSync(await download.path(), 'utf8');
     for (const secret of [TOKEN, 'synthetic-key-qa', '127.0.0.1:8095', 'aiProxy', 'ai-key', new URL(scan.DEFAULT_PROXY).host]) assert.equal(backup.includes(secret), false, 'backup excludes ' + secret);
@@ -284,7 +285,7 @@ function jpegSize(dataURL) {
     await snap(); await page.locator('#food-description').fill('rice'); await tap(page.locator('#describe-button')); await page.locator('#confirm-sheet').waitFor({ state: 'visible' }); await page.keyboard.press('Escape');
     assert.equal(openai.length, 0, 'proxy first');
     await advanced(); await tap(page.locator('#ai-disconnect'));
-    assert.deepEqual(await keys(), [null, null]); assert.equal(await page.locator('#ai-mode').innerText(), 'Own key'); assert.match(await toastText(), /AI disconnected/);
+    assert.deepEqual(await keys(), [null, null]); assert.equal(await status(), 'Own key'); assert.match(await toastText(), /AI disconnected/);
     await tap(page.locator('#undo-toast button')); assert.deepEqual(await keys(), [PROXY + '/', TOKEN], 'Undo reconnects with the same token');
     await tap(page.locator('#ai-disconnect'));
     if (!await page.locator('#ai-more').evaluate(d => d.open)) await page.locator('#ai-more > summary').click(); assert.equal(await page.locator('#ai-key').inputValue(), 'synthetic-key-qa');
@@ -297,18 +298,20 @@ function jpegSize(dataURL) {
 
     // 8. The card on a 375 × 667 phone: no sideways scroll, every field a real target, Log it within reach.
     const small = await browser.newContext({ viewport: { width: 375, height: 667 }, ...IPHONE, reducedMotion: 'reduce' }), little = await small.newPage(), smallErrors = watch(little, text => /40[0-9]|net::/.test(text));
-    await little.goto(APP + '/'); await little.evaluate(() => CHADUX.openFood('search'));
-    await little.route('https://*.openfoodfacts.org/**', route => route.fulfill({ json: { products: [{ code: '1', product_name: 'Synthetic yoghurt with a rather long name for a small phone', serving_size: '170 g', serving_quantity: 170, nutriments: { 'energy-kcal_100g': 70.6, proteins_100g: 5.9, carbohydrates_100g: 7.1, fat_100g: 1.8 } }] } }));
-    await little.locator('#food-search').fill('yoghurt'); await little.locator('#search-form button').click(); await little.locator('#food-results button').first().tap();
+    const yoghurt = { code: '10000001', product_name: 'Synthetic yoghurt with a rather long name for a small phone', serving_size: '170 g', serving_quantity: 170, nutriments: { 'energy-kcal_100g': 70.6, proteins_100g: 5.9, carbohydrates_100g: 7.1, fat_100g: 1.8 } };
+    await little.route('https://*.openfoodfacts.org/**', route => route.fulfill({ json: route.request().url().includes('/product/') ? { status: 1, product: yoghurt } : { products: [yoghurt] } }));
+    await little.goto(APP + '/'); await little.locator('#add-food').scrollIntoViewIfNeeded(); await little.locator('#add-food').tap(); await little.locator('#builder-barcode').tap();
+    await little.locator('#barcode').fill('10000001'); await little.locator('#barcode-form button').tap();
     await little.locator('#confirm-sheet').waitFor({ state: 'visible' });
     assert.deepEqual(await little.evaluate(() => ['grams', 'kcal'].map(k => document.getElementById('result-' + k).value)), ['170', '120']);
     assert.equal(await little.evaluate(() => { const b = document.querySelector('#confirm-sheet .ch-sheet__body'); return b.scrollWidth <= b.clientWidth + 1 && document.documentElement.scrollWidth <= innerWidth; }), true, 'no sideways scroll');
-    for (const box of await little.locator('#confirm-sheet .ch-num, #result-name, #scan-confirm-form button[type=submit]').evaluateAll(es => es.map(e => e.getBoundingClientRect().height))) assert.ok(box >= 44, 'target ' + box);
+    for (const box of await little.locator('#confirm-sheet .ch-num, #result-name, #scan-confirm-form button[type=submit]').evaluateAll(es => es.map(e => e.getBoundingClientRect().height))) assert.ok(box >= 48, 'target ' + box);
     await little.locator('#result-grams').fill('85'); assert.equal(await little.locator('#result-kcal').inputValue(), '60');
     await little.locator('#scan-confirm-form button[type=submit]').scrollIntoViewIfNeeded(); await little.locator('#scan-confirm-form button[type=submit]').tap();
-    const logged = (await saved(little)).entries.at(-1); assert.deepEqual([logged.kcal, logged.portion, logged.source], [60, '85 g', 'search']);
+    await little.locator('#builder-sheet').waitFor({ state: 'visible' }); await little.locator('#builder-log').tap();
+    const logged = (await saved(little)).entries.at(-1); assert.deepEqual([logged.kcal, logged.portion, logged.source], [60, '85 g', 'barcode']);
     assert.deepEqual(smallErrors, []);
     await small.close();
-    console.log('PASS Snap + Say against a mock proxy on another origin and the built-in address (intercepted): nothing sent without a token; setup link for the built-in proxy (stored, wiped from the address bar, quiet "AI connected", Undo/Redo, token-only link, wrong token flagged); links to other proxies ask first; Settings status / Test (health + token check, no estimate) / paste link (masked, emptied, hash-only, junk refused) / other ways (https rule, hidden token); analysing card (photo, about 10 s, bar ~70% at 10 s, inputs aside), 1024 px JPEG upload, contract and token header, editable card (name, weight, kcal, P/C/F, confidence, folded breakdown) with weight scaling, typed overrides, validation, one-tap log, no photo kept, Undo/Redo; CHAD answer shape; busy retry with status; friendly failures for 500/502/bad JSON/offline/429/413/no food with Try again only where it helps; wrong token → set up again; 100 s timeout with progress words; Cancel keeps photo and words and drops the request; estimate kept when the sheet closes; backups and journal free of AI settings; proxy before own key; Disconnect with Undo; own-key fallback; 375 × 667 card. Zero unexpected console errors.');
+    console.log('PASS Ask AI (Snap + Say) against a mock proxy on another origin and the built-in address (intercepted): nothing sent without a token; setup link for the built-in proxy (stored, wiped from the address bar, quiet "AI connected", Undo/Redo, token-only link, wrong token flagged); links to other proxies ask first; Settings status / Test (health + token check, no estimate) / paste link (masked, emptied, hash-only, junk refused) / other ways (https rule, hidden token); analysing card (photo, about 10 s, bar ~70% at 10 s, inputs aside), 1024 px JPEG upload, contract and token header, editable card (name, weight, kcal, P/C/F, confidence, folded breakdown) with weight scaling, typed overrides, validation, one-tap log, no photo kept, Undo/Redo; CHAD answer shape; busy retry with status; friendly failures for 500/502/bad JSON/offline/429/413/no food with Try again only where it helps; wrong token → set up again; 100 s timeout with progress words; Cancel keeps photo and words and drops the request; estimate kept when the sheet closes; backups and journal free of AI settings; proxy before own key; Disconnect with Undo; own-key fallback; 375 × 667 card. Zero unexpected console errors.');
   } finally { stalled.forEach(res => { try { res.destroy(); } catch { /* closed */ } }); await browser.close(); server.close(); proxy.close(); proxy.closeAllConnections?.(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

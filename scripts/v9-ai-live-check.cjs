@@ -41,8 +41,8 @@ const card = page => page.evaluate(() => ['name', 'grams', 'kcal', 'protein', 'c
 // The token is never on screen or in the page's markup, fields or journal.
 const shown = page => page.evaluate(token => [document.documentElement.outerHTML, ...[...document.querySelectorAll('input,textarea')].map(e => e.value), localStorage.getItem('rec-calories-v1') || '', location.href].some(text => text.includes(token)), TOKEN);
 const status = page => page.evaluate(() => document.getElementById('ai-status-title').textContent);
-const openSnap = async page => { await tap(page.locator('[data-view=today]')); await tap(page.locator('#today-scan')); await tap(page.locator('[data-add=camera]')); await page.locator('#scan-sheet').waitFor({ state: 'visible' }); await page.waitForTimeout(450); };
-const toSettings = async page => { await tap(page.locator('[data-view=settings]')); if (!await page.locator('#advanced-settings').evaluate(d => d.open)) await tap(page.locator('#advanced-settings > summary')); };
+const openSnap = async page => { await tap(page.locator('[data-view=today]')); await tap(page.locator('#add-food')); await tap(page.locator('#builder-ask-go')); await page.locator('#scan-sheet').waitFor({ state: 'visible' }); await page.waitForTimeout(450); };
+const toSettings = async page => { if (await page.locator('#settings').isVisible()) return; await tap(page.locator('[data-view=today]')); await tap(page.locator('#open-settings')); await page.locator('#advanced-settings').scrollIntoViewIfNeeded(); };
 async function estimateCard(page, label) {
   const started = Date.now();
   await page.locator('#snap-analysing').waitFor({ state: 'visible' });
@@ -65,10 +65,11 @@ async function halve(page, values) {
 }
 async function logAndUndo(page, values, source) {
   const before = await page.evaluate(() => JSON.parse(localStorage.getItem('rec-calories-v1') || '{"entries":[]}').entries.length);
-  await tap(page.locator('#scan-confirm-form button[type=submit]'));
+  await tap(page.locator('#scan-confirm-form button[type=submit]'));                 // Add to meal
+  await page.locator('#builder-sheet').waitFor({ state: 'visible' }); await tap(page.locator('#builder-log'));
   const journal = await page.evaluate(() => JSON.parse(localStorage.getItem('rec-calories-v1')));
   const entry = journal.entries.at(-1);
-  assert.equal(journal.entries.length, before + 1); assert.deepEqual([entry.name, entry.kcal, entry.protein, entry.carbs, entry.fat, entry.portion.replace(/,/g, ''), entry.source], [values[0], Number(values[2]), Number(values[3]), Number(values[4]), Number(values[5]), values[1] + ' g', source]);
+  assert.equal(journal.entries.length, before + 1); assert.deepEqual([entry.name, entry.kcal, entry.protein, entry.carbs, entry.fat, entry.portion.replace(/,/g, ''), entry.source], [values[0], Number(values[2]), Number(values[3]), Number(values[4]), Number(values[5]), Math.round(Number(values[1])) + ' g', source]);
   assert.equal(JSON.stringify(journal).includes('data:image'), false, 'no photo in the journal');
   await page.locator('#undo-toast button').waitFor(); await tap(page.locator('#undo-toast button'));
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('rec-calories-v1')).entries.length), before, 'Undo removes it');
@@ -140,8 +141,8 @@ async function logAndUndo(page, values, source) {
     await openSnap(page); await page.locator('#food-description').fill('a banana'); await tap(page.locator('#describe-button'));
     await page.locator('#snap-ways').waitFor({ state: 'visible', timeout: 30000 });
     results.unreachable = (await page.locator('#snap-ways-title').innerText()) + ' / ' + (await page.locator('#snap-ways-text').innerText());
-    await tap(page.locator('[data-snap=manual]')); assert.equal(await page.locator('#food-name').inputValue(), 'a banana', 'Quick add takes the words');
-    await page.keyboard.press('Escape'); await page.locator('#manual-sheet').waitFor({ state: 'hidden' });
+    await tap(page.locator('[data-snap=manual]')); assert.equal(await page.locator('#result-name').inputValue(), 'a banana', 'Type it takes the words');
+    await page.keyboard.press('Escape'); await page.locator('#confirm-sheet').waitFor({ state: 'hidden' }); await page.locator('#builder-sheet').waitFor({ state: 'visible' }); await page.keyboard.press('Escape');
     // Back to the real link, then Disconnect (with Undo).
     await page.goto(LINK); await page.locator('#undo-toast').filter({ hasText: 'AI connected' }).waitFor();
     await toSettings(page); await page.waitForFunction(() => document.getElementById('ai-status-title').textContent === 'Connected', null, { timeout: 20000 });

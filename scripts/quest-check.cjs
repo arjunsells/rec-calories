@@ -1,7 +1,11 @@
-﻿// v10 scoring, calendar, journey streak, meal plan, training program and workout maths. All data here is synthetic.
+﻿// v11 scoring (kept, never shown), calendar, journey streak, meal plan and favourites, the one thing to do now, training
+// program and workout maths. All data here is synthetic.
 const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm'), { execFileSync } = require('node:child_process');
-const load = files => { const ctx = { window: {}, Intl, Date, Math, matchMedia: () => ({ addEventListener() {} }) }; vm.createContext(ctx); for (const f of files) vm.runInContext(fs.readFileSync(f, 'utf8'), ctx); return ctx; };
-const ctx = load(['game10.js', 'train10.js', 'quest10.js', 'plan10.js']);
+// The screens read Darwin time: a fixed clock (noon, Tue 24 Nov 2026) and a time block the test sets.
+let NOW = Date.parse('2026-11-24T12:00:00+09:30'), block = 'midday';
+class Clock extends Date { constructor(...a) { super(...(a.length ? a : [NOW])); } static now() { return NOW; } }
+const load = (files, extra = {}) => { const ctx = { window: { CHADUX: { timeBlock: () => block } }, Intl, Date: Clock, Math, matchMedia: () => ({ addEventListener() {} }), ...extra }; vm.createContext(ctx); for (const f of files) vm.runInContext(fs.readFileSync(f, 'utf8'), ctx); return ctx; };
+const ctx = load(['game10.js', 'train10.js', 'quest11.js', 'plan11.js']); ctx.CHADPlan = ctx.window.CHADPlan;       // the screens read the plan as a global, as in the page
 const q = ctx.window.CHADQuest, plan = ctx.window.CHADPlan, T = ctx.CHADTrain, G = ctx.RECGame;
 const plain = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 const eq = (a, b, message) => assert.deepEqual(plain(a), plain(b), message);
@@ -110,7 +114,7 @@ let stats = q.stats(state, '2026-12-06'); assert.equal(stats.week.total, 129, 'a
 assert.equal(['perfect', 'fight', 'zero'].some(k => k in stats), false, 'no badge-only stats');
 state.questsV5['2026-11-30'].picks = { L: 'F', D: 'F', P: 'F' }; assert.equal(q.stats(state, '2026-12-06').week.bonus, 0, 'three Free picks: no bonus');
 state.questsV5['2026-11-30'].picks = { L: 'S', D: 'S' }; assert.equal(q.stats(state, '2026-12-06').week.complete, false, 'a meal missing: the week is not complete');
-const legacy = q.rewards({ entries: [], legacyRewards: { xp: 3000, badges: ['first'] }, questsV5: {} }, '2026-11-24', { xp: 0 }); assert.equal(legacy.xp, 3000); assert.equal(legacy.name, 'CHAD Legend'); assert.equal('badges' in legacy, false, 'no badges, even from a legacy journal');
+assert.equal('rewards' in q, false, 'no XP or levels are worked out for the screen any more (stored legacy XP stays in the journal)');
 // water streak: days in a row on the goal, up to today (or yesterday while today is filling)
 const wet = { entries: [], questsV5: { '2026-11-21': { water: 5 }, '2026-11-22': { water: 3.5 }, '2026-11-23': { water: 4.5 }, '2026-11-24': { water: 1 } } };
 assert.equal(q.waterStreak(wet, '2026-11-24'), 3); wet.questsV5['2026-11-24'].water = 4.5; assert.equal(q.waterStreak(wet, '2026-11-24'), 4); wet.questsV5['2026-11-22'].water = 3; assert.equal(q.waterStreak(wet, '2026-11-24'), 2);
@@ -129,7 +133,7 @@ assert.equal(q.stats({ ...history, journeyStartDate: '2026-10-09' }, '2026-11-24
 assert.equal(q.stats({ ...history, journeyStartDate: '2026-11-25' }, '2026-11-24').streak, 0, 'a Day 1 still to come: no streak yet');
 assert.equal(q.stats(history, '2026-11-25').streak, 49);
 assert.equal(G.derive({ target: 1900, proteinGoal: 220, entries: history.entries, questsV5: history.questsV5 }, '2026-11-24').streak, 48, 'the game shows the same streak');
-console.log('PASS scoring: 17 = S from three Strict meals + the session (from 24 Nov 2026; custom meal 1, earlier days unchanged), all grade boundaries, meal points capped at four, phases and goals (default 1,900/220/150/45), Darwin midnight, weekly bonus (three meals a day) and levels, no badges, legacy XP, water streak; journey streak 48 on 2026-11-24 (empty journal and 40-of-48 logged), a day marked missed restarts it and clearing the mark restores it, Day 1 edits, future Day 1.');
+console.log('PASS scoring: 17 = S from three Strict meals + the session (from 24 Nov 2026; custom meal 1, earlier days unchanged), all grade boundaries, meal points capped at four, phases and goals (default 1,900/220/150/45), Darwin midnight, weekly bonus (three meals a day) and levels, no badges, no XP worked out, water streak; journey streak 48 on 2026-11-24 (empty journal and 40-of-48 logged), a day marked missed restarts it and clearing the mark restores it, Day 1 edits, future Day 1.');
 
 /* ---- Perfect Week v1 ---- */
 eq(T.WEEK.map(s => s.name), ['Rest + walk', 'Push', 'Pull', 'Muay Thai', 'Delts + Arms', 'Upper chest + Back', 'Sprints + Legs']);
@@ -172,16 +176,14 @@ const best = T.records(gym).find(r => r.name === 'Incline DB press'); assert.equ
 assert.ok(!T.records(gym).some(r => r.name === 'Hill sprints'));
 assert.equal(T.records(gym).find(r => r.name === 'Pull-ups').reps, 9, 'bodyweight records by reps');
 eq(plain(T.progress(gym, '2026-11-24')), { total: 20, done: 1, exercises: 0 });
-// XP: 10 per session move once done (as in v9), plus 5 per logged set; derived, so Undo/Redo never doubles it.
-const xp = s => q.rewards(s, '2026-11-24', { xp: 0, badges: [] }).xp;
-const before = xp(gym); gym.questsV5['2026-11-24'].workout.sets.push({ x: 'Pull-ups', kg: 0, reps: 8, at: 9 }); assert.equal(xp(gym) - before, 5);
-gym.questsV5['2026-11-24'].training = true; assert.equal(xp(gym) - before, 5 + 70, 'finishing Pull: 7 moves × 10');
-console.log('PASS workouts: last session, volume, duration, PRs vs earlier days (v9 top sets count), history newest first, best set + est 1RM per exercise, bodyweight records, progress, set and session XP.');
+gym.questsV5['2026-11-24'].workout.sets.push({ x: 'Pull-ups', kg: 0, reps: 8, at: 9 }); eq(plain(T.progress(gym, '2026-11-24')), { total: 20, done: 2, exercises: 0 }, 'a set more');
+gym.questsV5['2026-11-24'].training = true; assert.equal(T.summary(gym, '2026-11-24').done, true, 'marked done');
+console.log('PASS workouts: last session, volume, duration, PRs vs earlier days (v9 top sets count), history newest first, best set + est 1RM per exercise, bodyweight records, progress.');
 
 // v10 keeps v9's daily and weekly scoring (proven identical to v8 before). Prove it again against the shipped v9 code
 // (Git, 472da71) on random synthetic journals: every day and week identical; stats identical except the streak, which
 // is now the journey streak by design; XP identical where no session was done (session XP follows the new program).
-const old = load([]); vm.runInContext(execFileSync('git', ['show', '472da71:quest9.js'], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 }), old);
+const old = load([], { Date }); vm.runInContext(execFileSync('git', ['show', '472da71:quest9.js'], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 }), old);
 const shipped = old.window.CHADQuest;
 let seed = 20261124; const random = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296, chance = p => random() < p, tiers = 'SMF';
 for (let round = 0; round < 12; round++) {
@@ -201,6 +203,49 @@ for (let round = 0; round < 12; round++) {
     for (const gone of ['streak', 'longest', 'perfect', 'fight', 'zero']) delete was[gone]; eq(plain(rest), plain(was), 'round ' + round + ': stats');
     assert.equal(streak, G.journey(journal, k).streak);
   }
-  assert.equal(q.rewards(journal, today, { xp: 50, badges: [] }).xp, shipped.rewards(journal, today, { xp: 50, badges: [] }).xp, 'round ' + round + ': XP');
 }
-console.log('PASS v10 scoring equals the shipped v9 on 12 random journals (days, weeks, stats apart from the journey streak and the badge-only ones, XP without sessions).');
+console.log('PASS v11 scoring (kept for the data, not shown) equals the shipped v9 on 12 random journals (days, weeks, stats apart from the journey streak and the badge-only ones).');
+
+/* ---- v11: the two one-tap favourites, and the same numbers in the add-food sheet ---- */
+const favs = ctx.window.CHADFavourites, builder = require('../builder11.js');
+eq(favs.map(f => [f.id, f.name, f.macros]), [['yopro-pouch', 'YoPRO Perform pouch', [120, 20.1, 6.8, 1.2]], ['gochi-noodle', 'Gochi noodle meal', [225, 31.8, 25.2, 2.6]]], 'YoPRO Perform pouch 120 / 20.1 / 6.8 / 1.2 and Gochi noodle meal 225 / 31.8 / 25.2 / 2.6, exactly');
+for (const f of favs) { const food = builder.FOODS.find(x => x.id === f.id); assert.ok(food, f.id + ' is a food in the add-food sheet too'); eq(food.per, f.macros, f.id + ': the same numbers there'); }
+eq(builder.FOODS.slice(0, 2).map(f => f.id), ['yopro-pouch', 'gochi-noodle'], 'and first among its favourites');
+const half = builder.FOODS.find(f => f.id === 'nandos-half'); eq(half.per, L.choices[0].macros, "the ½ chicken is the same everywhere");
+console.log('PASS favourites: YoPRO Perform pouch 120/20.1/6.8/1.2 and Gochi noodle meal 225/31.8/25.2/2.6, the same in the add-food sheet, first there.');
+
+/* ---- v11: ONE thing to do now, by Darwin time: water in the morning, lunch until 4 pm, the session 4-6:30 pm, then
+   dinner, the snack while protein is short, water, the wrap-up; another day: its first meal still to log ---- */
+const TUE = '2026-11-24', WED = '2026-11-25', SUN = '2026-11-29';
+const at = (b, s, key = TUE) => { block = b; const n = q.nowFor(s, key); return n.id === 'meal' ? 'meal ' + n.slot.id : n.id; };
+const day = (fields = {}, entries = []) => ({ target: 1900, proteinGoal: 220, carbsGoal: 150, fatGoal: 45, entries, questsV5: { [TUE]: fields, [WED]: fields, [SUN]: fields } });
+const ate = (slot, tier, key = TUE) => { const c = plan.find(s => s.id === slot).choices.find(c => c.tier === tier); return { id: 'plan-' + key + '-' + slot, day: key, name: c.title, kcal: c.macros[0], protein: c.macros[1], carbs: c.macros[2], fat: c.macros[3], planSlot: slot }; };
+const habits = { steps: true, sleep: true, electrolyte: true };
+assert.equal(at('morning', day()), 'water', '8 am: water first');
+assert.equal(at('morning', day({ water: 4.5 })), 'meal L', 'water done early: lunch next');
+assert.equal(at('midday', day()), 'meal L', 'noon: lunch');
+assert.equal(at('midday', day({ picks: { L: 'S' } }, [ate('L', 'S')])), 'water', 'lunch in: water');
+assert.equal(at('midday', day({ picks: { L: 'S' }, water: 4.5 }, [ate('L', 'S')])), 'session', 'lunch and water done: the session, early');
+assert.equal(at('gym', day()), 'session', '4:30 pm: the session');
+assert.equal(at('gym', day({ training: true })), 'meal D', 'session marked done: dinner');
+assert.equal(at('gym', day({ workout: { id: 'pull', start: 1, end: 2, sets: [] } })), 'meal D', 'workout finished: dinner');
+assert.equal(at('gym', day({ workout: { id: 'pull', start: 1, sets: [] } })), 'session', 'mid-workout: still the session (Resume)');
+assert.equal(at('evening', day()), 'meal D', '7 pm: dinner');
+assert.equal(at('evening', day({ picks: { L: 'M', D: 'M' } }, [ate('L', 'M'), ate('D', 'M')])), 'meal P', 'dinner in, protein short (139 g of 220): the snack');
+assert.equal(at('evening', day({ picks: { L: 'S', D: 'F' } }, [ate('L', 'S'), ate('D', 'F')])), 'water', 'dinner in, protein fine (223.5 g): water');
+assert.equal(at('evening', day({ picks: { L: 'S', D: 'F' }, water: 4.5 }, [ate('L', 'S'), ate('D', 'F')])), 'wrap', 'and water done: the wrap-up');
+assert.equal(at('evening', day({ picks: { L: 'S', D: 'F' }, water: 4.5, ...habits }, [ate('L', 'S'), ate('D', 'F')])), 'done', 'everything in: done');
+assert.equal(at('evening', day({ picks: { L: 'S', D: 'M', P: 'S' }, water: 4.5 }, [ate('L', 'S'), ate('D', 'M'), ate('P', 'S')])), 'wrap', 'the snack logged: never offered again');
+// The snack is offered only while protein is at least SNACK_GAP short.
+assert.equal(q.SNACK_GAP, 20);
+// Wednesday: Muay Thai at 6:30 is the session in the gym window; Sunday: the walk.
+const wed = { target: 1900, proteinGoal: 220, entries: [], questsV5: {} }, sun = { target: 1900, proteinGoal: 220, entries: [], questsV5: {} };
+block = 'gym'; NOW = Date.parse(WED + 'T17:00:00+09:30'); assert.equal(q.nowFor(wed, WED).id, 'session'); assert.equal(q.nowFor({ ...wed, questsV5: { [WED]: { training: true } } }, WED).slot?.id, 'D', 'Muay Thai done: dinner');
+NOW = Date.parse(SUN + 'T17:00:00+09:30'); assert.equal(q.nowFor(sun, SUN).id, 'session'); assert.equal(q.nowFor({ ...sun, questsV5: { [SUN]: { cardio: true } } }, SUN).slot?.id, 'D', 'walk done: dinner');
+NOW = Date.parse(TUE + 'T12:00:00+09:30');
+// Another day (yesterday, at any hour): its first meal still to log; then the wrap-up; then done.
+const MON = '2026-11-23';
+for (const b of ['morning', 'midday', 'gym', 'evening']) { block = b; assert.equal(q.nowFor({ target: 1900, proteinGoal: 220, entries: [], questsV5: {} }, MON).slot?.id, 'L', 'another day: lunch first, at ' + b); }
+assert.equal(q.nowFor({ target: 1900, proteinGoal: 220, entries: [ate('L', 'S', MON)], questsV5: { [MON]: { picks: { L: 'S' } } } }, MON).slot?.id, 'D');
+assert.equal(q.nowFor({ target: 1900, proteinGoal: 220, entries: [ate('L', 'S', MON), ate('D', 'F', MON)], questsV5: { [MON]: { picks: { L: 'S', D: 'F' }, ...habits } } }, MON).id, 'done', 'protein reached: no snack needed, the day is done');
+console.log('PASS the one thing to do now: 8 am water (then lunch), noon lunch (then water, then the session early), 4:30 pm the session (Resume mid-workout; done -> dinner), 7 pm dinner, then the snack only while protein is 20 g+ short, water, the wrap-up, done; Wednesday Muay Thai and Sunday the walk as the session; another day: its first meal still to log.');

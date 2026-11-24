@@ -1,5 +1,5 @@
-// Gym mode end to end, on a Monday at 16:20 in Darwin (Push): Start from Today -> every set of every exercise -> the
-// rest timer (+15 s, Skip, and true time through a locked screen) -> Finish -> workout history and records -> Undo and
+// Gym mode end to end, on a Monday at 16:20 in Darwin (Push): Start from Today's one big button -> every set of every
+// exercise -> the rest timer (+15 s, Skip, and true time through a locked screen) -> Finish -> workout history and records -> Undo and
 // Redo of a set, the finish and the start. Also: the wake lock is held while Gym mode is open and taken again when the
 // page comes back; a haptic tick on each set; a closed app resumes mid-workout (offline, from the shell); 56 px targets
 // (72 px for the main ones) within thumb reach. Synthetic data in a disposable profile only.
@@ -47,21 +47,21 @@ const MONDAY = '2026-11-23', START = '2026-11-23T16:20:00+09:30';
     const toast = () => page.locator('#undo-toast button');
     const restText = () => page.locator('#gym-rest-time').innerText();
 
-    // 1. Today at 16:20 is the gym window: the session is the hero, with one big Start.
-    const hero = page.locator('#session-hero');
-    assert.match(await hero.innerText(), /Push[\s\S]*6 exercises · 60 min/); assert.match(await hero.innerText(), /Today · 4–6 pm/i);
-    const startBox = await page.locator('#session-hero [data-gym-start]').boundingBox(); assert.ok(startBox.height >= 72, 'Start is a big button: ' + startBox.height);
-    assert.equal(await page.locator('#next-up').count(), 0, 'no meal competes with the session at 4 pm');
+    // 1. Today at 16:20 is the gym window: the session is the one thing to do, with one big Start.
+    const hero = page.locator('#now');
+    assert.equal(await hero.getAttribute('data-now'), 'session'); assert.match(await hero.innerText(), /Push[\s\S]*6 exercises · 60 min · then 2 km Zone 2/); assert.match(await hero.innerText(), /Now · 4–6 pm/i);
+    const startBox = await page.locator('#now [data-gym-start]').boundingBox(); assert.ok(startBox.height >= 72, 'Start is a big button: ' + startBox.height);
+    assert.equal(await page.locator('#now .meal-pick').count(), 0, 'no meal competes with the session at 4 pm');
     // Start, Undo (gone again), Redo (in progress: Resume), Resume.
-    await zero(); await tap(page.locator('#session-hero [data-gym-start]')); assert.equal(await taps(), 1, 'one tap starts');
+    await zero(); await tap(page.locator('#now [data-gym-start]')); assert.equal(await taps(), 1, 'one tap starts');
     assert.equal(await gymOpen(), true); assert.equal(await page.evaluate(() => document.documentElement.classList.contains('is-gym')), true);
     assert.deepEqual({ ...(await workout()), start: 0 }, { id: 'push', start: 0, sets: [] });
     assert.equal(await page.evaluate(() => document.querySelector('main').inert), true, 'the page behind is inert');
     assert.equal(await page.evaluate(() => qaLocks.active), 1, 'the screen stays awake');
     await tap(toast()); assert.equal(await workout(), undefined, 'Undo takes the start back'); assert.equal(await gymOpen(), false);
     assert.equal(await page.evaluate(() => qaLocks.active), 0, 'and lets the screen sleep');
-    await tap(toast()); assert.ok(await workout(), 'Redo'); assert.match(await page.locator('#session-hero [data-gym-start]').innerText(), /Resume/);
-    await tap(page.locator('#session-hero [data-gym-start]')); assert.equal(await gymOpen(), true);
+    await tap(toast()); assert.ok(await workout(), 'Redo'); assert.match(await page.locator('#now [data-gym-start]').innerText(), /Resume/);
+    await tap(page.locator('#now [data-gym-start]')); assert.equal(await gymOpen(), true);
 
     // 2. One exercise at a time: name, prescription, the overload hint, kg/reps from last time.
     assert.equal(await page.locator('#gym-name').innerText(), 'Incline DB press'); assert.match(await page.locator('#gym-rx').innerText(), /3 × 6–10 reps · rest 2 min/);
@@ -112,9 +112,9 @@ const MONDAY = '2026-11-23', START = '2026-11-23T16:20:00+09:30';
     assert.equal(await page.locator('#gym-dots .is-done').count(), 1); assert.equal(await page.locator('#gym-rest').isVisible(), true, 'the rest timer carried on');
     await context.setOffline(false);
     // Minimise: back to Today, which offers Resume.
-    await tap(page.locator('[data-gym=close]')); assert.equal(await gymOpen(), false); assert.match(await page.locator('#session-hero').innerText(), /Resume[\s\S]*3 of 18 sets/);
+    await tap(page.locator('[data-gym=close]')); assert.equal(await gymOpen(), false); assert.match(await page.locator('#now').innerText(), /Resume[\s\S]*3 of 18 sets/);
     assert.equal(await page.evaluate(() => qaLocks.active), 0, 'no wake lock once minimised');
-    await tap(page.locator('#session-hero [data-gym-start]')); assert.equal(await page.locator('#gym-name').innerText(), 'Machine chest press', 'Resume opens where it was');
+    await tap(page.locator('#now [data-gym-start]')); assert.equal(await page.locator('#gym-name').innerText(), 'Machine chest press', 'Resume opens where it was');
 
     // 6. Every remaining set: one tap each (kg and reps are already there), the next exercise slides in by itself.
     let guard = 0, gold = false;
@@ -128,18 +128,19 @@ const MONDAY = '2026-11-23', START = '2026-11-23T16:20:00+09:30';
     assert.deepEqual([...new Set(w.sets.map(s => s.x))], ['Incline DB press', 'Machine chest press', 'Low-to-high cable fly', 'Seated DB shoulder press', 'Cable side raise', 'Overhead cable triceps ext']);
     assert.equal(await page.locator('#gym-rest').isVisible(), false, 'no rest after the very last set');
 
-    // 7. Finish: XP, volume, time, sets, records, and what is next. Then Done.
+    // 7. Finish: volume, time, sets, records, and what is next (no XP any more). Then Done.
     await zero(); await tap(page.locator('#gym-go')); assert.equal(await taps(), 1);
     w = await workout(); assert.ok(w.end > w.start); assert.equal((await saved(page)).questsV5[MONDAY].training, true);
     assert.equal(await page.locator('#gym-done').isVisible(), true); assert.equal(await page.locator('#gym-done-title').innerText(), 'Push done');
     const expected = await page.evaluate(key => CHADTrain.summary(JSON.parse(localStorage.getItem('rec-calories-v1')), key), MONDAY);
-    assert.equal(await page.locator('#gym-done-xp').innerText(), '+150', '18 sets × 5 + 6 moves × 10');
+    assert.equal(await page.locator('#gym-done-xp').count(), 0); assert.doesNotMatch(await page.locator('#gym-done').innerText(), /\bXP\b/, 'no XP on the finish screen');
     assert.equal(await page.locator('#gym-done-volume').innerText(), Math.round(expected.volume).toLocaleString('en-AU'));
     assert.equal(await page.locator('#gym-done-sets').innerText(), '18'); assert.equal(await page.locator('#gym-done-time').innerText(), String(expected.minutes));
     assert.ok(expected.prs.length >= 1); assert.match(await page.locator('#gym-done-prs').innerText(), /Incline DB press/); assert.match(await page.locator('#gym-done-next').innerText(), /Next: 2 km Zone 2/);
     assert.ok((await page.locator('[data-gym=done]').boundingBox()).height >= 72);
     await tap(page.locator('[data-gym=done]')); assert.equal(await gymOpen(), false); assert.equal(await page.evaluate(() => qaLocks.active), 0);
-    assert.match(await page.locator('#session-hero').innerText(), /18 sets/); assert.equal(await page.locator('#session-hero [data-gym-start]').count(), 0);
+    assert.equal(await page.locator('#now').getAttribute('data-meal-slot'), 'D', 'the session done: dinner is the thing to do'); assert.equal(await page.locator('[data-gym-start]').count(), 0, 'no Start left anywhere');
+    await tap(page.locator('#later-toggle')); assert.match(await page.locator('#later-more .ch-later__session').innerText(), new RegExp('Push[\\s\\S]*Done · ' + expected.minutes + ' min'));
 
     // 8. History and records.
     await tap(page.locator('[data-view=history]'));
@@ -153,11 +154,11 @@ const MONDAY = '2026-11-23', START = '2026-11-23T16:20:00+09:30';
     await tap(page.locator('[data-view=today]'));
     assert.match(await page.locator('#undo-toast').innerText(), /Push done · 18 sets/);
     await tap(toast()); w = await workout(); assert.equal(w.end, undefined); assert.equal(w.sets.length, 18); assert.equal((await saved(page)).questsV5[MONDAY].training, undefined);
-    assert.match(await page.locator('#session-hero').innerText(), /Resume/);
+    assert.equal(await page.locator('#now').getAttribute('data-now'), 'session'); assert.match(await page.locator('#now').innerText(), /Resume/);
     await tap(toast()); assert.ok((await workout()).end, 'Redo'); assert.equal((await saved(page)).questsV5[MONDAY].training, true);
     await tap(page.locator('[data-view=history]')); assert.equal(await page.locator(`#workouts [data-workout="${MONDAY}"]`).count(), 1);
     assert.deepEqual(errors, []);
-    console.log('PASS Gym mode: Start from the 4 pm hero in 1 tap (Undo/Redo/Resume), one exercise at a time with prescription, "Last 22.5 kg × 8 → try 9 reps, then 25 kg" and pre-filled kg/reps, ±2.5 kg; a set = 1 tap with haptic, dot and toast; rest 2:00 with +15 s, Skip, true time through a locked screen and a success buzz; dot tap removes a set, Undo restores it in place; wake lock held, dropped when hidden, taken again, released on minimise/finish; resumed after a reload offline with the rest timer running; all 18 sets, auto-advance, gold Finish; finish screen +150 XP, volume, minutes, sets, PRs, next cardio; history row (date, session, volume, duration, PR) and records with est 1RM; Undo/Redo of the finish; 56 px targets, 72 px main buttons in thumb reach; zero errors.');
+    console.log('PASS Gym mode: Start from the 4 pm card on Today in 1 tap (Undo/Redo/Resume), one exercise at a time with prescription, "Last 22.5 kg × 8 → try 9 reps, then 25 kg" and pre-filled kg/reps, ±2.5 kg; a set = 1 tap with haptic, dot and toast; rest 2:00 with +15 s, Skip, true time through a locked screen and a success buzz; dot tap removes a set, Undo restores it in place; wake lock held, dropped when hidden, taken again, released on minimise/finish; resumed after a reload offline with the rest timer running; all 18 sets, auto-advance, gold Finish; finish screen (no XP) with volume, minutes, sets, PRs, next cardio, then dinner on top; history row (date, session, volume, duration, PR) and records with est 1RM; Undo/Redo of the finish; 56 px targets, 72 px main buttons in thumb reach; zero errors.');
     await context.close();
   } finally { await browser.close(); server.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });
