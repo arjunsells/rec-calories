@@ -2,6 +2,7 @@
 // Open Food Facts data: https://world.openfoodfacts.org (ODbL).
 // v8: anonymous OFF requests are shed with intermittent 503s, so every lookup retries across hosts with
 // backoff, remembers good answers (memory + localStorage) and degrades to saved results or Quick add.
+// v9: portions are shown in metric only ("1 cup (240 ml)" -> "240 mL", "2 oz (56 g)" -> "56 g").
 ((root) => {
   const WORLD = 'https://world.openfoodfacts.org', AU = 'https://au.openfoodfacts.org', SAL = 'https://search.openfoodfacts.org';
   const FIELDS = 'code,product_name,product_name_en,brands,serving_size,serving_quantity,nutriments';
@@ -21,6 +22,16 @@
     cancelled: 'Search cancelled.'
   };
   const fail = (kind, message, extra) => Object.assign(Error(message || MESSAGES[kind] || MESSAGES.unavailable), { kind }, extra);
+  // Metric only. Imperial serving text keeps just its metric part; metric text is tidied ("30g" -> "30 g", "ml" -> "mL").
+  const IMPERIAL = /(?:\d|\b)(?:fl\.?\s*oz|oz|ounces?|lbs?|pounds?|cups?|tbsps?|tablespoons?|tsps?|teaspoons?|pints?|quarts?|gallons?|inch(?:es)?|ft|feet)\b/i;
+  const UNIT = { kg: 'kg', g: 'g', ml: 'mL', l: 'L' };
+  const metricAmount = (n, unit) => { const u = unit.toLowerCase(); return u === 'cl' ? `${round(n * 10)} mL` : `${n} ${UNIT[u]}`; };
+  function metricPortion(text, grams) {
+    const s = String(text || '').replace(/\s+/g, ' ').trim(), found = s.match(/(\d+(?:[.,]\d+)?)\s*(kg|g|ml|cl|l)\b/i);
+    const fallback = grams ? `${grams} g` : '1 serving';
+    if (IMPERIAL.test(s)) return found ? metricAmount(Number(found[1].replace(',', '.')), found[2]) : fallback;
+    return s ? s.replace(/(\d+(?:[.,]\d+)?)\s*(kg|g|ml|cl|l)\b/gi, (_, n, u) => metricAmount(Number(n.replace(',', '.')), u)) : fallback;
+  }
   const transient = error => ['busy', 'network', 'timeout', 'parse', 'http'].includes(error.kind);
 
   function normalize(product) {
@@ -43,7 +54,7 @@
     return {
       name: String(product.product_name || product.product_name_en || product.brands || 'Packaged food').slice(0, 80),
       ...Object.fromEntries(Object.entries(nutrition).map(([k, v]) => [k, round(Number(v))])),
-      portion: basis === 'serving' ? servingText || `${servingGrams || 1}${servingGrams ? ' g' : ' serving'}` : '100 g / ml (check pack)',
+      portion: basis === 'serving' ? metricPortion(servingText, servingGrams) : '100 g/mL (check pack)',
       basis, servingGrams: basis === 'serving' ? servingGrams : 100,
       code: String(product.code || ''), source: 'barcode', ...(brand ? { brand } : {})
     };
@@ -235,7 +246,7 @@
       throw Error(error.name === 'NotAllowedError' ? 'Camera permission was declined. Enter the barcode digits below.' : 'Could not open the camera. Enter the barcode digits below.');
     }
   }
-  const api = { search, find, lookup, normalize, scale, startScanner, loadScanner, recent, clearCache, MESSAGES, CACHE_KEY };
+  const api = { search, find, lookup, normalize, scale, metricPortion, startScanner, loadScanner, recent, clearCache, MESSAGES, CACHE_KEY };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.CHADFood = api;
 })(globalThis);

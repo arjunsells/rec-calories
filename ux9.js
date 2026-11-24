@@ -1,10 +1,12 @@
 'use strict';
-// v8 navigation, week strip, sheets and toasts. Storage and scoring remain in app8.js / quest8.js.
+// CHAD v9 · navigation (swipe, a week strip that folds away, arrow keys), sheets, toasts with Undo and Redo, and the
+// shared macro builders. The journal lives in app9.js; scoring and screens in quest9.js.
 (() => {
   const $ = id => document.getElementById(id);
   const M = () => window.CHADMotion;
   const make = (tag, className, text) => { const n = document.createElement(tag); n.className = className || ''; if (text !== undefined) n.textContent = text; return n; };
-  let selectedDay = null, stopScanner = () => {}, refresh = () => {}, undoTimer, leaveTimer, foodMeal = null, lastGrade = null, ringKey = null;
+  let selectedDay = null, stopScanner = () => {}, refresh = () => {}, undoTimer, leaveTimer, armTimer, shieldTimer, foodMeal = null, lastGrade = null, ringKey = null, weekOpen = false;
+  const closedRings = new Set();                                  // a ring closing again after Undo/Redo is not a new moment
   const dateKey = () => selectedDay || CHADQuest.dayKey();
   const defaultJourneyStart = '2026-10-08';
   const validDate = key => typeof key === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(key) && Number.isFinite(Date.parse(key + 'T00:00:00Z')) && new Date(key + 'T00:00:00Z').toISOString().slice(0, 10) === key;
@@ -12,6 +14,24 @@
   const journeyDay = (key, start = defaultJourneyStart) => Math.round((Date.parse(key + 'T00:00:00Z') - Date.parse((validDate(start) ? start : defaultJourneyStart) + 'T00:00:00Z')) / 86400000) + 1;
   const darwin = (key, options) => new Date(key + 'T12:00:00+09:30').toLocaleDateString('en-AU', { timeZone: 'Australia/Darwin', ...options });
   const activePage = () => document.querySelector('.view:not([hidden]) .ch-page');
+  const tenth = new Intl.NumberFormat('en-AU', { maximumFractionDigits: 1 }), whole = new Intl.NumberFormat('en-AU', { maximumFractionDigits: 0 });
+
+  /* ---- macros, the same way everywhere: "P63 C51 F16" in a line, four tiles in a sheet ---- */
+  function pcf(protein, carbs, fat, exact) {
+    const box = make('span', 'ch-pcf'), f = n => exact ? tenth.format(n || 0) : whole.format(Math.round(n || 0));
+    for (const [k, v] of [['p', protein], ['c', carbs], ['f', fat]]) { const part = make('span', 'ch-pcf__' + k); part.append(make('b', '', k.toUpperCase()), f(v)); box.append(part); }
+    box.title = `Protein ${f(protein)} g · Carbs ${f(carbs)} g · Fat ${f(fat)} g`;
+    return box;
+  }
+  function macroTiles(values) {
+    const box = make('div', 'ch-macros');
+    ['kcal', 'Protein', 'Carbs', 'Fat'].forEach((label, i) => {
+      const item = make('div', 'ch-macros__item' + (i ? '' : ' ch-macros__item--kcal')), value = make('b', '', tenth.format(values[i] || 0));
+      if (i) value.append(make('small', '', 'g'));
+      item.append(value, make('span', '', label)); box.append(item);
+    });
+    return box;
+  }
 
   /* ---- days ---- */
   function goTo(key, gesture) {
@@ -27,6 +47,13 @@
   function currentSlot(date = new Date()) {
     const hour = Number(new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Darwin', hour: 'numeric', hourCycle: 'h23' }).format(date));
     return hour < 14 ? 'L' : hour < 18 ? 'P' : hour < 21 ? 'D' : 'E';
+  }
+  // "Yesterday", "Tomorrow" or "Mon 23 Nov": names the day a change landed on when it is not today.
+  function dayLabel(key) {
+    const today = CHADQuest.dayKey();
+    if (key === CHADQuest.shift(today, -1)) return 'Yesterday';
+    if (key === CHADQuest.shift(today, 1)) return 'Tomorrow';
+    return darwin(key, { weekday: 'short', day: 'numeric', month: 'short' }).replace(/,/g, '');
   }
   // Seven persistent buttons, so the selection pill slides instead of being rebuilt.
   function weekStrip(strip, state, mode) {
@@ -49,29 +76,39 @@
       if (k === key) b.setAttribute('aria-current', 'date'); else b.removeAttribute('aria-current');
     });
     strip.style.setProperty('--i', (CHADQuest.weekday(key) + 6) % 7);
-    if (strip.dataset.start && strip.dataset.start !== start) M()?.pulse(strip, start > strip.dataset.start ? 'is-from-next' : 'is-from-prev', 500);
+    if (strip.dataset.start && strip.dataset.start !== start && !strip.hidden) M()?.pulse(strip, start > strip.dataset.start ? 'is-from-next' : 'is-from-prev', 500);
     strip.dataset.start = start;
   }
+  // The week folds away: swipe changes the day, and one header button shows the strip when you want to jump.
+  function setWeek(open) {
+    weekOpen = !!open;
+    for (const [strip, toggle] of [['week-strip', 'week-toggle'], ['training-week', 'training-week-toggle']]) {
+      $(strip).hidden = !weekOpen; $(toggle).setAttribute('aria-expanded', String(weekOpen));
+      if (weekOpen) M()?.pulse($(strip), 'is-opening', 500);
+    }
+  }
 
-  /* ---- toast: one line, one Undo, within thumb reach ---- */
+  /* ---- toast: one line, one action, within thumb reach ---- */
   function hideToast(instant) {
     const bar = $('undo-toast');
-    clearTimeout(undoTimer); clearTimeout(leaveTimer);
+    clearTimeout(undoTimer); clearTimeout(leaveTimer); clearTimeout(armTimer);
     if (bar.hidden) return;
     if (instant || !M() || M().reduced()) { bar.hidden = true; bar.classList.remove('is-leaving'); return; }
     bar.classList.add('is-leaving');
     leaveTimer = setTimeout(() => { bar.hidden = true; bar.classList.remove('is-leaving'); }, 230);
   }
-  function toast(text, undo, options = {}) {
-    clearTimeout(undoTimer); clearTimeout(leaveTimer);
-    const bar = $('undo-toast'), tick = make('span', 'ch-toast__icon' + (options.kind === 'off' ? ' is-undo' : ''));
-    tick.innerHTML = CHADIcons.icon(options.kind === 'off' ? 'undo' : options.icon || 'check', 14, { weight: 3.2 });
+  function toast(text, action, options = {}) {
+    clearTimeout(undoTimer); clearTimeout(leaveTimer); clearTimeout(armTimer);
+    const bar = $('undo-toast'), off = options.kind === 'off', tick = make('span', 'ch-toast__icon' + (off ? ' is-undo' : ''));
+    tick.innerHTML = CHADIcons.icon(off ? 'undo' : options.icon || 'check', 14, { weight: 3.2 });
     bar.classList.remove('is-leaving');
     bar.replaceChildren(tick, make('span', 'ch-toast__text', text));
     if (options.xp > 0) bar.append(make('span', 'ch-toast__xp', '+' + options.xp + ' XP'));
-    if (undo) {
+    if (action) {
       const b = make('button', 'ch-toast__action', options.action || 'Undo'); b.type = 'button';
-      b.onclick = () => { hideToast(true); M()?.haptic('off'); undo(); };
+      // Armed after a beat, so a double tap on Undo can never land on the Redo that takes its place.
+      b.disabled = true; armTimer = setTimeout(() => { b.disabled = false; }, 350);
+      b.onclick = () => { if (b.disabled) return; hideToast(true); action(); };
       bar.append(b);
     }
     const life = options.life || 6000;
@@ -91,7 +128,10 @@
     d.classList.remove('is-opening', 'is-dragging'); d.classList.add('is-closing');
     setTimeout(() => { if (d.classList.contains('is-closing')) finishClose(d); }, 340);   // animationend normally gets there first
   }
-  function closeSheets() { document.querySelectorAll('dialog.ch-sheet[open]').forEach(finishClose); stopScanner(); }
+  // When an action closes a sheet, the page underneath ignores touches for a moment: the second tap of a double tap on
+  // "Log" must not land on whatever sits under that button once the sheet is gone.
+  function shield() { const app = document.querySelector('.ch-app'); if (!app) return; app.dataset.shield = ''; clearTimeout(shieldTimer); shieldTimer = setTimeout(() => delete app.dataset.shield, 400); }
+  function closeSheets() { const open = document.querySelectorAll('dialog.ch-sheet[open]'); if (open.length) shield(); open.forEach(finishClose); stopScanner(); }
   function show(d) {
     d.classList.remove('is-closing', 'is-dragging'); d.classList.add('is-opening');      // the entrance plays once per opening
     d.showModal();
@@ -106,7 +146,6 @@
     const camera = kind === 'camera';
     $('scan').dataset.mode = kind;
     $('scan-title').textContent = camera ? 'Snap + Say' : kind === 'barcode' ? 'Scan a barcode' : 'Search foods';
-    try { $('key-card').hidden = !camera || !!localStorage.getItem('rec-calories-ai-key'); } catch { $('key-card').hidden = !camera; }
     $('food-credit').hidden = camera;
     show($('scan-sheet'));
     window.CHADUX.onFoodOpen?.(kind);
@@ -115,18 +154,27 @@
   function detail(title, nodes) { closeSheets(); $('detail-title').textContent = title; $('detail-content').replaceChildren(...nodes); show($('detail-sheet')); }
 
   const HELP = [
-    ['Logging', ['Tap a meal to log it; tap again to remove it. The info button or a long press shows ingredients, tips and swaps. Water bottles add 500 mL; tapping a full row removes 500 mL. Undo reverses your last action.', 'Swipe left or right, use the arrows, or tap a day in the week strip to change days. Pull a sheet down to close it.']],
-    ['Scoring & rewards', ['Meals: Strict 3, Medium 2, Free 1. Protein 210 g+ earns 2; water target earns 2; 10k steps earns 1. Max 17. S 15+, A 12+, B 9+, C ≤ 8. Grade B+ saves your streak. Weekly bonus +10 after a full Mon-Sun with at most 2 Free picks. Existing XP, levels and badges are retained.', 'Weekly ranks: Rookie below 60; Grinder 60-84; Beast 85-104; Champion 105-119; AJ Mode 120+.']],
+    ['Logging', ['The next meal sits at the top: tap an option to log it, tap it again to remove it, or tap another option to switch. Other meals wait in rows below; tap a row, the ⓘ button or long-press a card for ingredients, macros, tips and swaps, and log from there.', 'Tap the bottles to add 500 mL of water and − to take 500 mL off. Hydralyte, training, cardio, steps and sleep switch on and off with one tap. Every change shows Undo for six seconds, and Undo offers Redo.']],
+    ['Days', ['Swipe left or right to change day, or use the arrow keys. The calendar button shows the week with each day’s ring: tap a day to jump. Today brings you back. Anything you log goes to the day on screen, and the Undo toast names that day when it is not today.']],
+    ['Scoring & rewards', ['Meals: Strict 3, Medium 2, Free 1. Protein 210 g+ earns 2; water target earns 2; 10k steps earns 1. Max 17. S 15+, A 12+, B 9+, C ≤ 8. Grade B+ saves your streak. Weekly bonus +10 after a full Mon-Sun with at most 2 Free picks. XP, levels and badges are worked out from what is logged, so undoing and redoing never adds XP twice.', 'Weekly ranks: Rookie below 60; Grinder 60-84; Beast 85-104; Champion 105-119; AJ Mode 120+.']],
     ['Hydration', ['Hydration: 1 L by 10 am, 2 L by 1 pm, 3 L by 3:30 pm, 1 L at gym with Hydralyte, and 500 mL at dinner. Sunday target 3.5 L; Saturday 5 L; weekdays 4.5 L. Protein points start at 210 g; the ring uses your phase goal.']],
-    ['Training', ['Training: stop 2 reps before failure. Add reps, then weight. Gym around 3:30 pm; cardio follows. Easy day if sleep is under 6 hours, joints hurt, or strength drops two sessions in a row. Deload halves sets, rounded up: 28 Dec-3 Jan, 8-14 Feb, 22-28 Mar, 3-9 May. Sauna or ice bath: Sunday only.']],
-    ['Photo estimates & food data', ['Photo and text estimates go directly to OpenAI using your own key. Estimates can miss portions or ingredients; API usage may cost money. Food lookup uses Open Food Facts; check the package label. Recent search results are kept on this device so they still open on bad reception.', 'Reset and Bulk add-ons are estimates. Shake: 500 mL high-protein milk, 60 g oats and a banana.']]
+    ['Training', ['Training: stop 2 reps before failure. Add reps, then weight. Gym around 3:30 pm; cardio follows. Easy day if sleep is under 6 hours, joints hurt, or strength drops two sessions in a row. Deload halves sets, rounded up: 28 Dec-3 Jan, 8-14 Feb, 22-28 Mar, 3-9 May. Sauna or ice bath: Sunday only. Long-press any exercise for its notes.']],
+    ['Photo estimates & food data', ['Snap + Say estimates a meal through the CHAD proxy once this device is connected with its setup link (Settings › Advanced; paste it there in the home-screen app), or, as a fallback, your own OpenAI key. The answer opens as a card you can edit: change the weight and kcal and macros follow, then one tap logs it. With no AI, or when it is offline, say what it is and log it from search, barcode or quick add. Estimates can miss portions; check before logging.', 'Food lookup uses Open Food Facts; check the package label. Recent search results are kept on this device so they still open on bad reception. Everything is metric: kg, g, L, mL. Reset and Bulk add-ons are estimates. Shake: 500 mL high-protein milk, 60 g oats and a banana.']]
   ];
 
   function setup(actions) {
     stopScanner = actions.stopScanner; refresh = actions.render;
-    $('previous-day').onclick = () => navigate(-1); $('next-day').onclick = () => navigate(1);
-    $('return-today').onclick = () => goTo(CHADQuest.dayKey());
+    $('return-today').onclick = $('training-today').onclick = () => goTo(CHADQuest.dayKey());
+    for (const id of ['week-toggle', 'training-week-toggle']) $(id).onclick = () => { M()?.haptic('tap'); setWeek(!weekOpen); };
+    setWeek(false);
     for (const [view, page] of [['today', 'day-page'], ['training', 'training-page']]) M()?.pager($(view), { target: () => $(page), commit: (dir, gesture) => navigate(dir, gesture) });
+    // Keyboards and mice: the arrow keys change the day on Today and Training.
+    addEventListener('keydown', e => {
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+      if (document.querySelector('dialog[open]') || e.target.closest?.('input,textarea,select,[contenteditable],.ch-seg')) return;
+      if (!['today', 'training'].includes(document.querySelector('.view:not([hidden])')?.id)) return;
+      e.preventDefault(); navigate(e.key === 'ArrowLeft' ? -1 : 1);
+    });
     // Big title -> compact bar. Two thresholds, so it can never flicker around one scroll position.
     let ticking = false, collapsed = false;
     const scrolled = () => {
@@ -157,8 +205,11 @@
       M()?.sheet(d, closeSheet);
     });
     $('activity-rings').addEventListener('ch:ringclosed', e => {
+      const fresh = e.detail.all.filter(i => !closedRings.has(dateKey() + ':' + i));
+      if (!fresh.length) return;
+      fresh.forEach(i => closedRings.add(dateKey() + ':' + i));
       M()?.haptic('success');
-      if (e.detail.all.includes(2)) M()?.confetti($('activity-rings'));                              // 17 / 17
+      if (fresh.includes(2)) M()?.confetti($('activity-rings'));                                    // 17 / 17
     });
     const help = $('help-settings');
     for (const [title, paragraphs] of HELP) { const d = make('details', 'ch-disclosure'); d.append(make('summary', '', title), ...paragraphs.map(text => make('p', '', text))); help.append(d); }
@@ -176,7 +227,7 @@
     $('day-title').textContent = relative; $('date-label').textContent = label;
     $('training-day-title').textContent = relative; $('training-date-label').textContent = label;
     $('grade-label').textContent = relative || label;
-    $('return-today').hidden = isToday;
+    $('return-today').hidden = $('training-today').hidden = isToday;
     ring.style.setProperty('--p', d.score / 17 * 100); ring.setAttribute('aria-label', `${d.score} of 17 quest points, grade ${d.grade}`);
     const turned = ringKey !== null && ringKey !== key;                          // another day: show it as it is, no count, no sweep
     if (M()) M().count($('quest-total'), d.score, { from: 0, instant: turned }); else $('quest-total').textContent = d.score;
@@ -190,5 +241,5 @@
     ringKey = key;
     weekStrip($('week-strip'), state, 'score'); weekStrip($('training-week'), state, 'training');
   }
-  window.CHADUX = { setup, render, tab, currentSlot, dateKey, navigate, goTo, toast, hideToast, detail, closeSheets, closeSheet, showSheet: show, openAdd, openFood, journeyDay, validDate, defaultJourneyStart, foodMeal: () => foodMeal };
+  window.CHADUX = { setup, render, tab, currentSlot, dateKey, navigate, goTo, dayLabel, setWeek, weekOpen: () => weekOpen, toast, hideToast, detail, closeSheets, closeSheet, showSheet: show, openAdd, openFood, journeyDay, validDate, defaultJourneyStart, foodMeal: () => foodMeal, pcf, macroTiles };
 })();

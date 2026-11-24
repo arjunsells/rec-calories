@@ -1,6 +1,6 @@
 ﻿// v5 scoring, calendar and plan invariants. All measurements below are synthetic.
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const ctx={window:{},Intl,Date,matchMedia:()=>({addEventListener(){}})};vm.createContext(ctx);vm.runInContext(fs.readFileSync('quest8.js','utf8'),ctx);vm.runInContext(fs.readFileSync('plan-data.js','utf8'),ctx);
+const ctx={window:{},Intl,Date,matchMedia:()=>({addEventListener(){}})};vm.createContext(ctx);vm.runInContext(fs.readFileSync('quest9.js','utf8'),ctx);vm.runInContext(fs.readFileSync('plan9.js','utf8'),ctx);
 const q=ctx.window.CHADQuest,plan=ctx.window.CHADPlan;
 const state={target:1900,proteinGoal:220,entries:[],questsV5:{}};
 const complete=(key,tiers='SSSS')=>{state.questsV5[key]={picks:Object.fromEntries(['L','P','D','E'].map((id,i)=>[id,tiers[i]])),water:q.waterGoal(key),steps:true};plan.forEach((slot,i)=>{const c=slot.choices.find(c=>c.tier===tiers[i]);state.entries.push({day:key,kcal:c.macros[0],protein:c.macros[1]});});};
@@ -22,11 +22,11 @@ const g=q.rewards({entries:[],legacyRewards:{xp:3000,badges:['first']},questsV5:
 assert.equal(q.training[1].ex.length,5);assert.equal(q.training[2].ex.length,7);assert.equal(q.training[4].ex.length,8);assert.equal(q.training[5].ex.length,5);assert.equal(q.training[6].ex.length,9);
 console.log('PASS v5: 12 sourced cards, precise macros, 17=S, all grade boundaries, B+ streak/gaps, weekly bonus/cap/levels/badges, Darwin midnight, phases/edit/custom, deload boundaries, weekday hydration, preserved legacy awards, full training plan.');
 
-// v8 indexes entries by day. Prove it changes nothing: random synthetic journals scored by the shipped v7 code
-// (read from Git, commit dcf132a) and by v8 must agree on every day, week, streak, badge and XP total.
+// v9 keeps v8's scoring (which was proven identical to v7). Prove it again: random synthetic journals scored by the
+// shipped v8 code (read from Git, commit 7ddd9ab) and by v9 must agree on every day, week, streak, badge and XP total.
 const old={window:{},Intl,Date,matchMedia:()=>({addEventListener(){}})};vm.createContext(old);
-vm.runInContext(require('node:child_process').execFileSync('git',['show','dcf132a:quest.js'],{encoding:'utf8',maxBuffer:8*1024*1024}),old);
-const v7=old.window.CHADQuest,plain=value=>JSON.parse(JSON.stringify(value));
+vm.runInContext(require('node:child_process').execFileSync('git',['show','7ddd9ab:quest8.js'],{encoding:'utf8',maxBuffer:8*1024*1024}),old);
+const shipped=old.window.CHADQuest,plain=value=>JSON.parse(JSON.stringify(value));
 let seed=20261124;const random=()=>(seed=(seed*1664525+1013904223)>>>0)/4294967296,chance=p=>random()<p,tiers='SMF';
 let slow=0,fast=0;
 for(let round=0;round<12;round++){
@@ -40,11 +40,15 @@ for(let round=0;round<12;round++){
  }
  if(chance(.5))journal.entries.sort(()=>random()-.5);          // entry order must not matter
  const keys=Array.from({length:days+8},(_,n)=>q.shift(today,4-n));
- let t=process.hrtime.bigint();const a={daily:keys.map(k=>v7.daily(journal,k)),weeks:keys.map(k=>v7.week(journal,v7.monday(k),today)),stats:[today,q.shift(today,-9),q.shift(today,3)].map(k=>v7.stats(journal,k)),xp:v7.rewards(journal,today,{xp:50,badges:[{id:'first',unlocked:false}]})};slow+=Number(process.hrtime.bigint()-t);
+ let t=process.hrtime.bigint();const a={daily:keys.map(k=>shipped.daily(journal,k)),weeks:keys.map(k=>shipped.week(journal,shipped.monday(k),today)),stats:[today,q.shift(today,-9),q.shift(today,3)].map(k=>shipped.stats(journal,k)),xp:shipped.rewards(journal,today,{xp:50,badges:[{id:'first',unlocked:false}]})};slow+=Number(process.hrtime.bigint()-t);
  t=process.hrtime.bigint();const b={daily:keys.map(k=>q.daily(journal,k)),weeks:keys.map(k=>q.week(journal,q.monday(k),today)),stats:[today,q.shift(today,-9),q.shift(today,3)].map(k=>q.stats(journal,k)),xp:q.rewards(journal,today,{xp:50,badges:[{id:'first',unlocked:false}]})};fast+=Number(process.hrtime.bigint()-t);
- assert.deepEqual(plain(b),plain(a),'round '+round+': v8 scoring differs from v7');
+ assert.deepEqual(plain(b),plain(a),'round '+round+': v9 scoring differs from v8');
  // The index notices a journal that is mutated in place (length change) as well as a replaced one.
- const extra={id:'late',day:today,name:'Late',kcal:500,protein:50};journal.entries.push(extra);assert.deepEqual(plain(q.daily(journal,today)),plain(v7.daily(journal,today)));
- journal.entries=journal.entries.filter(e=>e!==extra);assert.deepEqual(plain(q.daily(journal,today)),plain(v7.daily(journal,today)));
+ const extra={id:'late',day:today,name:'Late',kcal:500,protein:50};journal.entries.push(extra);assert.deepEqual(plain(q.daily(journal,today)),plain(shipped.daily(journal,today)));
+ journal.entries=journal.entries.filter(e=>e!==extra);assert.deepEqual(plain(q.daily(journal,today)),plain(shipped.daily(journal,today)));
 }
-console.log('PASS v8 scoring is identical to shipped v7 on 12 random journals (days, weeks, streaks, badges, XP); same workload '+(slow/1e6).toFixed(0)+' ms in v7, '+(fast/1e6).toFixed(0)+' ms in v8.');
+// The meal plan only changed its words (teaspoons are grams now): titles, tiers and macros are the shipped v8 ones.
+const oldPlan={window:{}};vm.createContext(oldPlan);vm.runInContext(require('node:child_process').execFileSync('git',['show','7ddd9ab:plan-data.js'],{encoding:'utf8'}),oldPlan);
+assert.deepEqual(plain(plan.map(s=>[s.id,s.name,s.time,s.choices.map(c=>[c.tier,c.title,c.macros,c.quantities])])),plain(oldPlan.window.CHADPlan.map(s=>[s.id,s.name,s.time,s.choices.map(c=>[c.tier,c.title,c.macros,c.quantities])])));
+assert.ok(plan.every(s=>s.choices.every(c=>c.items.every(i=>!/(?:tsp|tbsp|cups?|oz|lbs?)/i.test(i)))),'metric item text');
+console.log('PASS v9 scoring is identical to shipped v8 on 12 random journals (days, weeks, streaks, badges, XP); same workload '+(slow/1e6).toFixed(0)+' ms in v8, '+(fast/1e6).toFixed(0)+' ms in v9. Plan macros unchanged, item text metric.');

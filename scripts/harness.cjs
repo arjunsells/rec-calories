@@ -16,7 +16,7 @@ function serve(port, options = {}) {
   });
   return new Promise(resolve => server.listen(port, '127.0.0.1', () => resolve(server)));
 }
-const launch = () => chromium.launch({ executablePath: process.env.BROWSER_EXECUTABLE || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true });
+const launch = (args = []) => chromium.launch({ executablePath: process.env.BROWSER_EXECUTABLE || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true, args });
 const IPHONE = { deviceScaleFactor: 3, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' };
 // Collects uncaught errors and console errors; `ignore` filters expected network noise.
 function watch(page, ignore = () => false) {
@@ -45,4 +45,4 @@ function decodePNG(buffer) {
 }
 const saved = page => page.evaluate(() => JSON.parse(localStorage.getItem('rec-calories-v1')));
 const shellFiles = () => [...fs.readFileSync(path.join(root, 'sw.js'), 'utf8').match(/^const SHELL = (.+);$/m)[1].matchAll(/'([^']+)'/g)].map(m => m[1]);
-module.exports = { root, serve, launch, watch, saved, shellFiles, decodePNG, IPHONE, MIME, NOON: '2026-11-24T12:00:00+09:30', CACHE: 'rec-calories-shell-v8' };
+module.exports = { root, serve, launch, watch, saved, shellFiles, decodePNG, IPHONE, MIME, NOON: '2026-11-24T12:00:00+09:30', CACHE: 'rec-calories-shell-v9', V8: '7ddd9ab' };

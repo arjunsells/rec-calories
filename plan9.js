@@ -1,5 +1,6 @@
 'use strict';
 // Meal-plan inputs only. No personal measurements or source documents.
+// v9: metric throughout (teaspoons are now grams: 1 tsp cinnamon = 2 g, 1 tsp honey = 7 g, as the quantities always assumed).
 window.CHADPlan = [
   {
     "id": "L",
@@ -82,7 +83,7 @@ window.CHADPlan = [
         "title": "Cinnamon yoghurt bowl",
         "items": [
           "550 g Woolworths High Protein Plain Yoghurt",
-          "1 tsp ground cinnamon"
+          "2 g ground cinnamon"
         ],
         "quantities": {
           "hpy100": 5.5,
@@ -219,7 +220,7 @@ window.CHADPlan = [
         "items": [
           "350 g Woolworths High Protein Plain Yoghurt",
           "100 g Bulla Cottage Cheese",
-          "3 tsp honey + 1 tsp cinnamon"
+          "21 g honey + 2 g cinnamon"
         ],
         "quantities": {
           "hpy100": 3.5,

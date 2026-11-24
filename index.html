@@ -19,17 +19,17 @@
       // Paint the chosen theme before the first frame (no flash). Device-local preference only.
       try{var t=localStorage.getItem('rec-calories-theme');if(t!=='dark'&&t!=='light'&&t!=='system')t=(JSON.parse(localStorage.getItem('rec-calories-v1')||'{}')||{}).arcadeTheme;if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}
     </script>
-    <link rel="stylesheet" href="./theme8.css">
+    <link rel="stylesheet" href="./theme9.css">
     <script src="./icons8.js" defer></script>
     <script src="./motion8.js" defer></script>
     <script src="./charts8.js" defer></script>
     <script src="./game.js" defer></script>
-    <script src="./scan.js" defer></script>
-    <script src="./food8.js" defer></script>
-    <script src="./plan-data.js" defer></script>
-    <script src="./quest8.js" defer></script>
-    <script src="./ux8.js" defer></script>
-    <script src="./app8.js" defer></script>
+    <script src="./scan9.js" defer></script>
+    <script src="./food9.js" defer></script>
+    <script src="./plan9.js" defer></script>
+    <script src="./quest9.js" defer></script>
+    <script src="./ux9.js" defer></script>
+    <script src="./app9.js" defer></script>
   </head>
   <body>
     <div class="app ch-app">
@@ -42,12 +42,9 @@
             </div>
             <button id="return-today" type="button" class="ch-datebar__today" hidden>Today</button>
             <span id="home-streak" class="ch-chip ch-chip--streak"></span>
-            <div class="ch-datebar__nav" role="group" aria-label="Change day">
-              <button id="previous-day" type="button" aria-label="Previous day"><i data-icon="chevron-left"></i></button>
-              <button id="next-day" type="button" aria-label="Next day"><i data-icon="chevron"></i></button>
-            </div>
+            <button id="week-toggle" type="button" class="ch-datebar__cal" aria-label="Week" aria-expanded="false" aria-controls="week-strip"><i data-icon="calendar" data-size="21"></i></button>
           </header>
-          <div id="week-strip" class="ch-week" role="group" aria-label="Week"></div>
+          <div id="week-strip" class="ch-week" role="group" aria-label="Week" hidden></div>
           <div id="day-page" class="ch-page">
             <section class="ch-card ch-hero" aria-label="Daily progress">
               <div id="activity-rings" class="ch-rings"></div>
@@ -55,7 +52,7 @@
                 <div id="calorie-ring" class="ch-metric ch-metric--kcal" role="img" aria-label="Calorie progress">
                   <span class="ch-metric__label">Calories</span>
                   <span class="ch-metric__hint" id="remaining-hint"><span id="remaining">1,900</span> <span id="remaining-label">left</span></span>
-                  <div class="ch-metric__val"><span id="consumed">0</span><small>/<span id="target-label">1,900</span></small></div>
+                  <div class="ch-metric__val"><span id="consumed">0</span><small>/<span id="target-label">1,900</span> kcal</small></div>
                 </div>
                 <div id="protein-ring" class="ch-metric ch-metric--protein" role="img" aria-label="Protein progress">
                   <span class="ch-metric__label">Protein</span>
@@ -67,16 +64,7 @@
                   <span class="ch-metric__hint"><span id="quest-grade" class="ch-grade ch-grade--sm">C</span></span>
                 </div>
               </div>
-            </section>
-            <div id="quest-hero" hidden></div>
-            <div id="daily-checklist" class="ch-flow"></div>
-            <div id="quests" hidden></div>
-            <div class="below-fold ch-flow">
-              <div class="ch-section">
-                <h2 class="ch-h">Journal</h2>
-                <span id="entry-count"></span>
-              </div>
-              <div class="ch-card ch-macrobar">
+              <div class="ch-hero__macros">
                 <div class="ch-mini ch-mini--carbs" id="carbs-meter" role="img" aria-label="Carbs">
                   <span>Carbs</span>
                   <b><span id="carbs-total">0</span><small>/<span id="carbs-goal-label">150</span> g</small></b>
@@ -88,6 +76,15 @@
                   <i class="ch-bar" id="fat-bar"><i></i></i>
                 </div>
               </div>
+            </section>
+            <div id="quest-hero" hidden></div>
+            <div id="daily-checklist" class="ch-flow"></div>
+            <div id="quests" hidden></div>
+            <div id="extras" class="below-fold ch-flow" hidden>
+              <div class="ch-section">
+                <h2 class="ch-h">Other food</h2>
+                <span id="entry-count"></span>
+              </div>
               <ul id="entries" class="entries ch-list"></ul>
             </div>
           </div>
@@ -98,8 +95,10 @@
               <p class="ch-eyebrow"><b id="training-day-title"></b><span id="training-date-label"></span></p>
               <h1 class="ch-datebar__day">Training</h1>
             </div>
+            <button id="training-today" type="button" class="ch-datebar__today" hidden>Today</button>
+            <button id="training-week-toggle" type="button" class="ch-datebar__cal" aria-label="Week" aria-expanded="false" aria-controls="training-week"><i data-icon="calendar" data-size="21"></i></button>
           </header>
-          <div id="training-week" class="ch-week" role="group" aria-label="Training week"></div>
+          <div id="training-week" class="ch-week" role="group" aria-label="Training week" hidden></div>
           <div id="training-page" class="ch-page">
             <div id="training-content"></div>
           </div>
@@ -107,6 +106,7 @@
         <section id="history" class="view ch-view" hidden>
           <header class="ch-datebar">
             <div class="ch-datebar__title"><h1 class="ch-datebar__day">Progress</h1></div>
+            <img class="ch-mark" src="./icons/mark.svg" alt="" width="48" height="48" decoding="async" aria-hidden="true">
           </header>
           <section class="ch-card ch-levelcard" aria-label="Level">
             <div class="ch-levelcard__top">
@@ -170,21 +170,46 @@
               <label class="ch-cell"><span class="ch-cell__title">Carbs</span><input class="ch-input" id="carbs-goal" type="number" inputmode="decimal" required min="1" max="5000" step="0.1"><span class="ch-cell__unit">g</span></label>
               <label class="ch-cell"><span class="ch-cell__title">Fat</span><input class="ch-input" id="fat-goal" type="number" inputmode="decimal" required min="1" max="5000" step="0.1"><span class="ch-cell__unit">g</span></label>
             </div>
-            <h2 class="ch-list-h">Snap + Say</h2>
-            <div class="ch-list">
-              <label class="ch-cell"><span class="ch-cell__title">OpenAI key</span><input class="ch-input" id="ai-key" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Paste key"></label>
-            </div>
-            <p class="ch-list-f">Stored only in this browser and sent directly to OpenAI for estimates. Leave blank to remove it.</p>
-            <button class="primary ch-btn ch-btn--primary ch-btn--block">Save settings</button>
+            <button class="primary ch-btn ch-btn--primary ch-btn--block">Save goals</button>
           </form>
-          <div id="phase-settings" class="ch-group"></div>
           <div id="day-settings" class="ch-group"></div>
+          <div id="phase-settings" class="ch-group"></div>
           <h2 class="ch-list-h">Data</h2>
           <div id="data-settings" class="ch-list"></div>
-          <p class="ch-list-f">Your journal lives on this device. Clearing browser data removes it. A backup may contain private measurements and meal photos; API keys are excluded. In Safari, use Share → Add to Home Screen. <span id="offline-status">Preparing offline access…</span></p>
+          <p class="ch-list-f">Your journal lives on this device. Clearing browser data removes it. A backup may contain private measurements; AI settings and keys are never included. In Safari, use Share → Add to Home Screen. <span id="offline-status">Preparing offline access…</span></p>
           <h2 class="ch-list-h">How it works</h2>
           <div id="help-settings" class="ch-list"></div>
-          <p class="ch-version">CHAD v8 · One day stronger.</p>
+          <h2 class="ch-list-h">Advanced</h2>
+          <div class="ch-list">
+            <details class="ch-disclosure ch-advanced" id="advanced-settings">
+              <summary><span>AI photo estimates</span><span class="ch-cell__value"><i class="ch-dot" id="ai-dot" aria-hidden="true"></i><span id="ai-mode">Not set up</span></span></summary>
+              <div class="ch-advanced__body">
+                <div class="ch-aistatus" id="ai-status" role="status">
+                  <strong id="ai-status-title">Not set up</strong>
+                  <p id="ai-status-text">Paste the setup link from your CHAD proxy to turn on photo estimates.</p>
+                </div>
+                <div class="ch-advanced__actions">
+                  <button id="ai-test" type="button" class="ch-btn ch-btn--sm" hidden>Test</button>
+                  <button id="ai-disconnect" type="button" class="ch-btn ch-btn--sm ch-btn--danger" hidden>Disconnect</button>
+                </div>
+                <label class="ch-label" for="ai-link">Paste setup link</label>
+                <input class="ch-input ch-input--secret" id="ai-link" type="text" inputmode="url" enterkeyhint="done" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="https://…/rec-calories/#ai=…&amp;k=…">
+                <p class="ch-hint">The home-screen app keeps its own storage, so paste the link here once. The token stays on this device: never shown again, never in a backup.</p>
+                <details class="ch-sub" id="ai-more">
+                  <summary>Other ways to connect</summary>
+                  <label class="ch-label" for="ai-proxy">Proxy URL</label>
+                  <input class="ch-input" id="ai-proxy" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Built-in CHAD proxy">
+                  <label class="ch-label" for="ai-token">Access token</label>
+                  <input class="ch-input" id="ai-token" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Not set">
+                  <p class="ch-hint">CHAD posts <code>{image, text}</code> with an <code>X-Chad-Token</code> header and expects <code>{name, grams, kcal, protein_g, carbs_g, fat_g}</code> back. See the README and docs/proxy-example.js.</p>
+                  <label class="ch-label" for="ai-key">Your own OpenAI key</label>
+                  <input class="ch-input" id="ai-key" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Paste key">
+                  <p class="ch-hint">Used only when no proxy is set up. Kept in this browser only, never in a backup, sent only to OpenAI. Leave blank to remove it.</p>
+                </details>
+              </div>
+            </details>
+          </div>
+          <p class="ch-version">CHAD v9 · One day stronger.</p>
         </section>
       </main>
       <div class="ch-dock-scrim" aria-hidden="true"></div>
@@ -234,7 +259,7 @@
             <button type="button" class="ch-action" style="--c:var(--ch-orange)" data-add="manual">
               <span class="ch-action__icon"><i data-icon="bolt"></i></span>
               Quick add
-              <small>Name and calories</small>
+              <small>kcal and macros</small>
             </button>
           </div>
           <div id="recent-foods" hidden>
@@ -252,24 +277,41 @@
         </div>
         <div class="ch-sheet__body">
           <section id="scan" data-mode="camera">
-            <div class="ch-state" id="key-card" hidden>
-              <i data-icon="key" data-size="32"></i>
-              <strong>Paste your OpenAI key in Settings</strong>
-              <p>One step to photo estimates. Barcode and search are free.</p>
-              <div class="ch-state__actions">
-                <button id="scan-settings" type="button" class="ch-btn ch-btn--primary ch-btn--sm">Open Settings</button>
-                <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">Get a key ↗</a>
-              </div>
-            </div>
             <div id="camera-panel">
-              <button id="camera-button" type="button" class="primary ch-btn ch-btn--primary ch-btn--block"><i data-icon="camera" data-size="20"></i>Take a food photo</button>
-              <input type="file" accept="image/*" capture="environment" id="photo-input" hidden>
-              <div class="ch-field">
-                <label class="ch-label" for="food-description">Or describe your meal</label>
-                <textarea class="ch-input" id="food-description" placeholder="200 g chicken breast with rice"></textarea>
+              <div class="ch-photo" id="photo-preview" hidden>
+                <img id="photo-image" alt="Your food photo">
+                <button id="photo-clear" type="button" class="ch-photo__clear" aria-label="Remove photo"><i data-icon="xmark" data-size="12"></i></button>
               </div>
-              <button id="describe-button" type="button" class="secondary ch-btn ch-btn--block">Estimate meal</button>
-              <p class="ch-hint">Estimates use your own OpenAI key and can miss portions. Check before logging.</p>
+              <button id="camera-button" type="button" class="primary ch-btn ch-btn--primary ch-btn--block"><i data-icon="camera" data-size="20"></i><span id="camera-label">Take or choose a photo</span></button>
+              <input type="file" accept="image/*" id="photo-input" hidden>
+              <div class="ch-field">
+                <label class="ch-label" for="food-description">What is it?</label>
+                <textarea class="ch-input" id="food-description" maxlength="500" placeholder="200 g chicken breast with rice"></textarea>
+              </div>
+              <button id="describe-button" type="button" class="secondary ch-btn ch-btn--block" hidden>Estimate</button>
+              <div id="snap-analysing" class="ch-analysing" hidden>
+                <div class="ch-analysing__art" aria-hidden="true">
+                  <img id="analysing-image" alt="" hidden>
+                  <span class="ch-analysing__glyph"><i data-icon="sparkles" data-size="40"></i></span>
+                  <i class="ch-analysing__sweep"></i>
+                </div>
+                <div class="ch-analysing__words" role="status" aria-live="polite">
+                  <strong id="analysing-title">Analysing…</strong>
+                  <p id="analysing-text">About 10 s</p>
+                </div>
+                <div class="ch-analysing__bar" aria-hidden="true"><i></i></div>
+                <button id="analysing-cancel" type="button" class="ch-btn ch-btn--sm">Cancel</button>
+              </div>
+              <div id="snap-ways" class="ch-ways" hidden>
+                <div class="ch-ways__head" role="status"><strong id="snap-ways-title">Find it</strong><p id="snap-ways-text"></p></div>
+                <button id="snap-setup" type="button" class="ch-btn ch-btn--primary ch-btn--block" hidden><i data-icon="key" data-size="20"></i>Set up AI again</button>
+                <div class="ch-ways__actions">
+                  <button type="button" class="ch-way" data-snap="search"><i data-icon="magnifier"></i>Search</button>
+                  <button type="button" class="ch-way" data-snap="barcode"><i data-icon="barcode"></i>Barcode</button>
+                  <button type="button" class="ch-way" data-snap="manual"><i data-icon="bolt"></i>Quick add</button>
+                </div>
+              </div>
+              <p class="ch-hint" id="snap-hint"></p>
             </div>
             <div id="finder-panel">
               <div id="search-panel">
@@ -324,7 +366,7 @@
             </div>
             <div class="ch-row2">
               <div class="ch-field">
-                <label class="ch-label" for="calories">Calories</label>
+                <label class="ch-label" for="calories">Energy (kcal)</label>
                 <input class="ch-input" id="calories" type="number" inputmode="numeric" min="1" max="50000" required>
               </div>
               <div class="ch-field">
@@ -368,25 +410,33 @@
       </dialog>
 
       <dialog class="ch-sheet" id="confirm-sheet" aria-labelledby="confirm-title">
-        <form id="scan-confirm-form">
+        <form id="scan-confirm-form" novalidate>
           <div class="ch-sheet__grip" aria-hidden="true"></div>
           <div class="sheet-heading ch-sheet__head">
             <h2 id="confirm-title" class="ch-sheet__title">Your meal, decoded.</h2>
             <button id="cancel-scan" type="button" class="ch-sheet__close" aria-label="Close"><i data-icon="xmark" data-size="22"></i></button>
           </div>
           <div class="ch-sheet__body">
-            <div id="scan-items"></div>
-            <p id="confidence" class="ch-hint"></p>
-            <div id="scan-total" class="result-total"></div>
-            <div id="result-macros" class="ch-hint"></div>
-            <div class="ch-field" id="serving-control" hidden>
-              <label class="ch-label" for="serving-grams">Serving size (g)</label>
-              <input class="ch-input" id="serving-grams" type="number" inputmode="decimal" min="1" max="5000" value="100">
+            <div class="ch-result">
+              <img id="result-photo" class="ch-result__photo" alt="Your photo" hidden>
+              <div class="ch-result__id">
+                <label class="ch-sr" for="result-name">Food name</label>
+                <textarea class="ch-result__name" id="result-name" rows="1" maxlength="80" autocomplete="off" autocapitalize="sentences" enterkeyhint="done" spellcheck="false" required></textarea>
+                <p id="confidence" class="ch-result__meta"></p>
+              </div>
             </div>
-            <div class="ch-field">
-              <label class="ch-label" for="portion-slider">Portion <strong id="portion-label">1×</strong></label>
-              <input class="ch-input" id="portion-slider" type="range" min="0.5" max="2" step="0.1" value="1" data-nodrag>
+            <div class="ch-nums">
+              <label class="ch-num ch-num--kcal"><span class="ch-num__k">Energy<small>kcal</small></span><input id="result-kcal" type="number" inputmode="decimal" min="1" max="50000" step="any" required></label>
+              <label class="ch-num ch-num--g"><span class="ch-num__k">Weight<small>g</small></span><input id="result-grams" type="number" inputmode="decimal" min="1" max="20000" step="any" placeholder="–"></label>
+              <label class="ch-num ch-num--p"><span class="ch-num__k">Protein<small>g</small></span><input id="result-protein" type="number" inputmode="decimal" min="0" max="5000" step="any"></label>
+              <label class="ch-num ch-num--c"><span class="ch-num__k">Carbs<small>g</small></span><input id="result-carbs" type="number" inputmode="decimal" min="0" max="5000" step="any"></label>
+              <label class="ch-num ch-num--f"><span class="ch-num__k">Fat<small>g</small></span><input id="result-fat" type="number" inputmode="decimal" min="0" max="5000" step="any"></label>
             </div>
+            <p id="result-hint" class="ch-hint ch-result__hint">Change the weight and the rest follows.</p>
+            <details id="result-parts" class="ch-sub ch-parts" hidden>
+              <summary id="result-parts-title">What’s in it</summary>
+              <ul id="result-parts-list"></ul>
+            </details>
             <div class="ch-field">
               <label class="ch-label" for="scan-meal">Meal</label>
               <select class="ch-input" id="scan-meal">
@@ -397,7 +447,7 @@
               </select>
             </div>
             <button class="primary ch-btn ch-btn--primary ch-btn--block" type="submit">Log it</button>
-            <button id="copy-result" type="button" class="secondary ch-btn ch-btn--block">Copy summary</button>
+            <button id="copy-result" type="button" class="ch-link ch-link--center">Copy summary</button>
           </div>
         </form>
       </dialog>

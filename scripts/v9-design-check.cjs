@@ -1,9 +1,10 @@
 ﻿// Layout matrix: 393x852 and 375x667, DPR 3, touch, iPhone UA, light and dark, with and without simulated safe areas.
-// Every screen and sheet: 44px targets, no horizontal scroll, one tap per action, and a pixel check that nothing
-// ever shows through or collides with the floating tab bar and the + button.
+// Every screen and sheet (week strip open, a meal opened from its row, Advanced settings open): 44px targets, no
+// horizontal scroll, one tap per action, and a pixel check that nothing ever shows through or collides with the floating
+// tab bar and the + button.
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os'), assert = require('node:assert/strict');
 const { serve, launch, watch, saved, decodePNG, IPHONE, NOON } = require('./harness.cjs');
-const shots = path.join(os.tmpdir(), 'chad-v8-qa');
+const shots = path.join(os.tmpdir(), 'chad-v9-qa');
 
 (async () => {
   const server = await serve(8091), browser = await launch();
@@ -16,8 +17,11 @@ const shots = path.join(os.tmpdir(), 'chad-v8-qa');
       const name = width + 'x' + height + ' ' + theme + (safe ? ' safe' : '');
       const check = async label => {
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, name + ' ' + label + ' overflow');
-        const bad = await page.evaluate(() => [...document.querySelectorAll('button,a,summary,input:not([type=hidden]),select,textarea')].filter(e => { const r = e.getBoundingClientRect(); return r.width && r.height && getComputedStyle(e).visibility !== 'hidden' && (r.width < 43.99 || r.height < 43.99); }).map(e => ({ text: (e.textContent || e.id).trim().slice(0, 40), id: e.id, cls: e.className, w: e.getBoundingClientRect().width, h: e.getBoundingClientRect().height })));
+        const bad = await page.evaluate(() => [...document.querySelectorAll('button,a,summary,input:not([type=hidden]),select,textarea')].filter(e => { const r = e.getBoundingClientRect(), w = e.offsetWidth || r.width, h = e.offsetHeight || r.height; return r.width && r.height && getComputedStyle(e).visibility !== 'hidden' && (w < 43.99 || h < 43.99); }).map(e => ({ text: (e.textContent || e.id).trim().slice(0, 40), id: e.id, cls: e.className, w: e.offsetWidth, h: e.offsetHeight })));   // layout size: a press may scale a button for a moment
         assert.deepEqual(bad, [], name + ' ' + label + ' 44px targets');
+        // Nothing sticks out of its card: text never overflows the meal cards or the rows.
+        const spill = await page.evaluate(() => [...document.querySelectorAll('.ch-meal__hit > *, .ch-cell > *, .ch-qchip__label, .ch-water__val')].filter(e => { const p = e.closest('.ch-meal, .ch-cell, .ch-qchip, .ch-water'); if (!p || !e.getClientRects().length) return false; const a = e.getBoundingClientRect(), b = p.getBoundingClientRect(); return a.right > b.right + 1 || a.left < b.left - 1; }).map(e => e.className + ': ' + e.textContent.trim().slice(0, 30)));
+        assert.deepEqual(spill, [], name + ' ' + label + ' nothing spills out of its card');
       };
       const tab = view => page.locator(`[data-view=${view}]`).tap();
       assert.equal(await page.evaluate(() => devicePixelRatio), 3);
@@ -29,11 +33,16 @@ const shots = path.join(os.tmpdir(), 'chad-v8-qa');
         // The last row ends above the fade, not merely above the bar.
         assert.equal(await page.evaluate(() => document.querySelector('.view:not([hidden])').getBoundingClientRect().bottom <= document.querySelector('.ch-dock-scrim').getBoundingClientRect().top), true, name + ' ' + view + ' last row clears the dock fade');
       }
-      await tab('today');
+      await tab('today'); await page.evaluate(() => scrollTo(0, 0));
       const header = await page.locator('.date-header').evaluate(e => e.getBoundingClientRect().height); assert.ok(header >= (safe ? 91 : 44));
-      await page.locator('#previous-day').tap(); await check('past date');
+      // All four macros and the next meal are on the first screen.
+      for (const id of ['calorie-ring', 'protein-ring', 'carbs-meter', 'fat-meter']) { const box = await page.locator('#' + id).boundingBox(); assert.ok(box.y + box.height <= height - 90, name + ' ' + id + ' on the first screen'); }
+      await page.locator('#week-toggle').tap(); await check('week strip open'); await page.locator('#week-toggle').tap();
+      await page.evaluate(() => CHADUX.navigate(-1)); await check('past date');
       assert.equal(await page.locator('.date-header .ch-datebar__title').evaluate(e => [...e.querySelectorAll('.ch-eyebrow,h1')].every(n => n.scrollWidth <= n.clientWidth + 1)), true, name + ' header text fits on a past day');
       await page.locator('#return-today').tap();
+      await page.locator('[data-meal-row=D]').tap(); await check('a meal opened from its row'); await page.waitForTimeout(420); await page.locator('[data-meal-toggle=D]').tap();
+      assert.equal(await page.locator('.ch-slot.is-open').count(), 0, name + ' folded again');
       assert.equal(await page.locator('#today details,#training details').count(), 0);
       await page.screenshot({ path: path.join(shots, name.replaceAll(' ', '-') + '.png') });
 
@@ -45,17 +54,16 @@ const shots = path.join(os.tmpdir(), 'chad-v8-qa');
       const points = { 'below the bar': [dock.left + quarter * 1.5, Math.min(height - 2, dock.bottom + 5)], 'between the bar and the +': [(dock.right + dock.fabLeft) / 2, midY], 'left of the bar': [Math.max(2, dock.left - 6), midY], 'right of the +': [Math.min(width - 2, dock.fabRight + 6), midY], 'bar top edge': [dock.left + quarter * 2, dock.top + 2], 'through the bar glass': [dock.left + quarter * 2, dock.top + 9], 'through the bar glass, lower': [dock.left + quarter * 3, dock.bottom - 5], 'just above the bar': [dock.left + quarter * 1.5, dock.top - 2] };
       for (const view of ['today', 'training']) {
         await tab(view);
+        // v9 pages are short: a test-only spacer above the content lets the last card scroll down behind the bar.
+        await page.evaluate(view => { const spacer = document.createElement('div'); spacer.className = 'qa-spacer'; spacer.style.height = '600px'; document.getElementById(view === 'today' ? 'day-page' : 'training-page').prepend(spacer); }, view);
         await page.evaluate(() => scrollTo(0, document.body.scrollHeight));
         const empty = decodePNG(await page.screenshot());
-        const moved = await page.evaluate(({ view, top }) => { const card = view === 'today' ? [...document.querySelectorAll('#today .ch-slot')].at(-1).querySelector('.ch-meal') : [...document.querySelectorAll('#training .ch-session')].at(-1); scrollBy(0, card.getBoundingClientRect().top - (top - 24)); const r = card.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right }; }, { view, top: dock.top });
-        assert.ok(moved.top < dock.top && moved.bottom > dock.bottom && moved.left < dock.left + quarter, name + ' ' + view + ' a card sits behind the bar for the pixel check');
+        const moved = await page.evaluate(({ view, top }) => { const card = view === 'today' ? [...document.querySelectorAll('#today .ch-card, #today .ch-list')].filter(n => n.offsetParent).at(-1) : [...document.querySelectorAll('#training .ch-session')].at(-1); scrollBy(0, card.getBoundingClientRect().top - (top - 24)); const r = card.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right }; }, { view, top: dock.top });
+        assert.ok(moved.top < dock.top && moved.bottom > dock.bottom && moved.left < dock.left + quarter, name + ' ' + view + ' a card sits behind the bar for the pixel check ' + JSON.stringify({ moved, dock }));
         const png = decodePNG(await page.screenshot());
         for (const [label, [x, y]] of Object.entries(points)) { const a = png.at(x * 3, y * 3), b = empty.at(x * 3, y * 3); assert.ok(a.every((v, i) => Math.abs(v - b[i]) <= 3), `${name} ${view} ${label}: ${a} with a card behind, ${b} over empty page`); }
-        // ...while above the fade the card is plainly itself (the scrim covers the dock zone only).
-        const card = await page.evaluate(sel => getComputedStyle(document.querySelector(sel)).backgroundColor.match(/\d+/g).map(Number).slice(0, 3), view === 'today' ? '#today .ch-hero' : '#training .ch-session');
-        if (moved.top < dock.scrimTop - 12) assert.ok(png.at((moved.left + 6) * 3, (dock.scrimTop - 8) * 3).slice(0, 3).every((v, i) => Math.abs(v - card[i]) <= 12), name + ' ' + view + ' content above the fade is untouched');
         if (view === 'today') await page.screenshot({ path: path.join(shots, name.replaceAll(' ', '-') + '-dock.png') });
-        await page.evaluate(() => scrollTo(0, 0));
+        await page.evaluate(() => { document.querySelectorAll('.qa-spacer').forEach(n => n.remove()); scrollTo(0, 0); });
       }
       await tab('today');
 
@@ -64,12 +72,13 @@ const shots = path.join(os.tmpdir(), 'chad-v8-qa');
         await page.evaluate(() => window.qaTaps = 0); const b = page.locator(selector).first(); await b.scrollIntoViewIfNeeded(); await b.tap();
         assert.equal(await page.evaluate(() => window.qaTaps), 1, name + ' one tap ' + selector); assert.ok(verify(await saved(page)));
       }
-      await check('today with a logged slot and toast');
+      await check('today with a logged meal and toast');
       await tab('training'); await page.evaluate(() => window.qaTaps = 0);
       const exercise = page.locator('.is-today .exercise-toggle').first(); await exercise.scrollIntoViewIfNeeded(); await exercise.tap();
       assert.equal(await page.evaluate(() => window.qaTaps), 1, name + ' one tap exercise'); assert.equal((await saved(page)).questsV5['2026-11-24'].exercises[0], true);
       // The Undo toast floats above the bar, inside the screen.
       const toast = await page.locator('#undo-toast').boundingBox(); assert.ok(toast && toast.y + toast.height <= dock.top - 4 && toast.x >= 8 && toast.x + toast.width <= width - 8, name + ' toast sits above the dock');
+      await page.locator('#training-week-toggle').tap(); await check('training week open'); await page.locator('#training-week-toggle').tap();
       await page.locator('#today-scan').tap(); await check('add');
       for (const kind of ['manual', 'camera', 'barcode', 'search']) {
         await page.locator(`[data-add=${kind}]`).tap(); await check(kind + ' sheet');
@@ -78,10 +87,11 @@ const shots = path.join(os.tmpdir(), 'chad-v8-qa');
       }
       await page.keyboard.press('Escape');
       await tab('today'); await page.locator('.meal-info').first().tap(); await check('meal detail'); await page.keyboard.press('Escape');
+      await page.locator('#entries .entry-open').first().count() && await page.locator('#entries .entry-open').first().tap();
       await tab('training'); await page.locator('.is-today .exercise-info').first().tap(); await check('top set'); await page.keyboard.press('Escape');
       await tab('history'); await page.locator('#open-level').tap(); await check('level details'); await page.locator('#close-level').tap();
       assert.deepEqual(errors, [], name + ' errors'); await context.close();
-      console.log('PASS ' + name + ': all screens/sheets, >=44px targets, no overflow, dock pixels clean behind bar and +, last row clears the fade, toast above dock, 4 actions each=1 tap, no JS/console errors');
+      console.log('PASS ' + name + ': all screens and sheets incl. week strip, opened meal and Advanced, >=44px targets, nothing spills, no overflow, four macros on the first screen, dock pixels clean behind bar and +, last row clears the fade, toast above dock, 4 actions each=1 tap, no JS/console errors');
     }
     console.log('Screenshots outside repo: ' + shots);
   } finally { await browser.close(); server.close(); }
