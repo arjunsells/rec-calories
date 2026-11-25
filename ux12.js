@@ -91,6 +91,10 @@
 
   /* ---- sheets: one at a time ---- */
   let sheetEpoch = 0, lifecycleEpoch = 0;
+  const userOpenedAt = new WeakMap();
+  let openingEvent;
+  // Keep the dispatch itself, not a sticky activation flag: timers and synthetic clicks get no grace.
+  document.addEventListener('click', e => { if (e.isTrusted) openingEvent = e; }, true);
   const session = () => lifecycleEpoch;
   function focusSheet(field, delay = 50) {
     const epoch = session();
@@ -104,6 +108,7 @@
     d.classList.remove('is-opening', 'is-closing', 'is-dragging'); d.style.transform = ''; d.style.removeProperty('--drag');
   }
   function finishClose(d) {
+    userOpenedAt.delete(d);
     resetSheet(d);
     if (d.open) d.close();
   }
@@ -126,6 +131,7 @@
   }
   function show(d) {
     if (document.hidden) return;
+    if (!d.open && openingEvent?.isTrusted && openingEvent.eventPhase !== Event.NONE) userOpenedAt.set(d, performance.now());
     ++sheetEpoch; resetSheet(d);
     d.classList.remove('is-closing', 'is-dragging'); d.classList.add('is-opening');      // the entrance plays once per opening
     if (!d.open) d.showModal();
@@ -181,12 +187,14 @@
     const lift = () => {
       const style = document.documentElement.style, field = document.activeElement;
       const editing = field?.matches('input:not([type=button]):not([type=checkbox]):not([type=radio]),textarea,[contenteditable=true]') && field.closest('dialog[open]');
-      // Standalone Safari can retain keyboard geometry across launch/resume. Only an active sheet
-      // field may reduce the layout viewport; reject geometry too small to use the sheet.
+      // Live geometry can lift a focused sheet, but never sizes it or pushes its top off screen.
       const valid = vv && Math.abs(vv.scale - 1) <= 0.01 && editing && vv.height >= Math.max(240, innerHeight * .35);
       const top = valid ? Math.max(0, Math.min(vv.offsetTop, innerHeight - vv.height)) : 0;
       const height = valid ? Math.min(innerHeight - top, vv.height) : innerHeight;
-      style.setProperty('--ch-kb', (valid ? Math.max(0, innerHeight - height - top) : 0) + 'px');
+      const sheet = editing && field.closest('dialog[open]');
+      const safeTop = sheet ? parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ch-sat')) || 0 : 0;
+      const room = sheet ? Math.max(0, innerHeight - sheet.offsetHeight - safeTop - 16) : 0;
+      style.setProperty('--ch-kb', (valid ? Math.min(room, Math.max(0, innerHeight - height - top)) : 0) + 'px');
       style.setProperty('--ch-vv-top', top + 'px');
       style.setProperty('--ch-vvh', Math.floor(height) + 'px');
     };
@@ -195,17 +203,24 @@
     document.addEventListener('focusin', lift); document.addEventListener('focusout', () => setTimeout(lift, 0));
     lift();
     // Home-screen Safari may freeze an entrance, exit or drag while backgrounded or restore it from bfcache.
-    // Close on both edges; never resume an obsolete transform or leave a modal backdrop over Today.
-    const resetLifecycle = () => {
-      ++lifecycleEpoch; ++sheetEpoch;
-      foodCtx = null; window.CHADScan12?.suspend();
-      document.activeElement?.blur?.();
-      document.querySelectorAll('dialog').forEach(finishClose); stopScanner();
+    // A restored dialog has no fresh trusted open timestamp. Preserve only a fresh user tap
+    // on a foreground lifecycle event; backgrounding still invalidates callbacks and closes sheets.
+    const resetLifecycle = (event) => {
+      const preserve = !document.hidden && event?.type !== 'pagehide';
+      const recent = new Set([...document.querySelectorAll('dialog[open]')].filter(d => preserve && userOpenedAt.has(d) && performance.now() - userOpenedAt.get(d) < 2000));
+      if (!recent.size) {
+        ++lifecycleEpoch; ++sheetEpoch;
+        foodCtx = null; window.CHADScan12?.suspend();
+        document.activeElement?.blur?.();
+        stopScanner();
+      }
+      document.querySelectorAll('dialog').forEach(d => { if (!recent.has(d)) finishClose(d); });
       clearTimeout(shieldTimer);
       document.querySelectorAll('[data-shield]').forEach(n => n.removeAttribute('data-shield'));
       lift();
     };
     resetLifecycle();
+    document.addEventListener('DOMContentLoaded', resetLifecycle);
     document.addEventListener('visibilitychange', resetLifecycle);
     addEventListener('pagehide', resetLifecycle); addEventListener('pageshow', resetLifecycle);
     window.CHADIcons?.mount(document);
