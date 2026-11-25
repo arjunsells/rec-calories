@@ -254,11 +254,13 @@ function jpegSize(dataURL) {
     // 3. A link to any other proxy, opened from outside the app, asks first.
     await clearAI();
     const link = APP + '/#ai=' + encodeURIComponent(PROXY) + '&k=' + TOKEN;
-    await page.goto(link); await page.locator('#detail-sheet').waitFor({ state: 'visible' });
+    await page.goto(link);
+    assert.equal(await page.locator('dialog[open]').count(), 0, 'external connection opens no sheet on launch');
+    await tap(page.locator('#undo-toast button')); await page.locator('#detail-sheet').waitFor({ state: 'visible' });
     assert.equal(await page.evaluate(() => location.hash), '', 'wiped before the question');
     assert.match(await page.locator('#detail-content').innerText(), /127\.0\.0\.1:8095/); assert.deepEqual(await keys(), [null, null], 'nothing saved before Connect');
     await tap(page.locator('#detail-sheet').getByRole('button', { name: 'Not now' })); assert.deepEqual(await keys(), [null, null]);
-    await page.goto(link); await tap(page.locator('#detail-sheet').getByRole('button', { name: 'Connect' }));
+    await page.goto(link); await tap(page.locator('#undo-toast button')); await tap(page.locator('#detail-sheet').getByRole('button', { name: 'Connect' }));
     assert.deepEqual(await keys(), [PROXY + '/', TOKEN]); assert.match(await toastText(), /AI connected/);
 
     // 4. Settings › AI estimates: status, Test (health + token check), the setup link field, other ways to connect.

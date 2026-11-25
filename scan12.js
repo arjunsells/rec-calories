@@ -124,13 +124,15 @@
     $('nutrition12').addEventListener('close', () => {
       if ($('nutrition12').open) return;
       fixing = adding = false;
-      setTimeout(() => { if ($('nutrition12').open || document.querySelector('dialog.ch-sheet[open]') || !active?.add) return; const back = active.add; active.add = null; back(null); }, 0);
+      const epoch = U().session();
+      setTimeout(() => { if (epoch !== U().session() || document.hidden || $('nutrition12').open || document.querySelector('dialog.ch-sheet[open]') || !active?.add) return; const back = active.add; active.add = null; back(null); }, 0);
     });
     $('camera12-shutter').onclick = capture;
     $('camera12-file').onchange = async e => {
+      const epoch = U().session();
       const f = e.target.files[0]; e.target.value = '';
       if (!f) return;
-      try { await accept(await RECScan.compress(f)); } catch (err) { $('camera12-status').textContent = err.message; notice(err.message); }
+      try { await accept(await RECScan.compress(f), epoch); } catch (err) { $('camera12-status').textContent = err.message; notice(err.message); }
     };
     document.querySelectorAll('[data-mode12]').forEach(b => b.onclick = () => b.dataset.mode12 === 'gallery' ? choose(false) : setMode(b.dataset.mode12));
     $('camera12-search').onclick = () => search();
@@ -151,9 +153,9 @@
   function choose(capture) { const f = $('camera12-file'); if (capture) f.setAttribute('capture', 'environment'); else f.removeAttribute('capture'); f.click(); }
   function open(nextMode = 'food', ctx = null) { context = ctx; handoff = false; U().closeSheets(); U().showSheet($('camera12')); setMode(nextMode); }
   // The meal being built waits in the add-food sheet; a sheet opened in the meantime wins (the close event is queued).
-  function backToMeal(ctx) { setTimeout(() => { if (ctx?.back && !document.querySelector('dialog.ch-sheet[open]')) ctx.back(); }, 0); }
+  function backToMeal(ctx, epoch = U().session()) { setTimeout(() => { if (epoch === U().session() && !document.hidden && ctx?.back && !document.querySelector('dialog.ch-sheet[open]')) ctx.back(); }, 0); }
   // A sheet of the camera's own (Saved, Describe it): closed without a choice, it goes back to the meal too.
-  function sheetFromCamera(title, nodes) { const ctx = context; handoff = true; let chosen = false; U().detail(title, nodes); $('detail-sheet').addEventListener('close', () => { if (!chosen) backToMeal(ctx); }, { once: true }); return () => { chosen = true; }; }
+  function sheetFromCamera(title, nodes) { const ctx = context, epoch = U().session(); handoff = true; let chosen = false; U().detail(title, nodes); $('detail-sheet').addEventListener('close', () => { if (!chosen) backToMeal(ctx, epoch); }, { once: true }); return () => { chosen = true; }; }
   const TITLES = { food: 'Scan food', barcode: 'Scan barcode', label: 'Scan food label' };
   const SHUTTER = { food: 'Take food photo', barcode: 'Type the barcode digits', label: 'Take label photo' };
   function setMode(next) {
@@ -187,8 +189,9 @@
     } catch { say(mode === 'barcode' ? 'Camera unavailable. Tap the button to type the digits.' : 'Camera unavailable. Tap the shutter to take or choose a photo.'); }
   }
   async function barcode(code) {
+    const epoch = U().session();
     stop(); M()?.haptic('success'); $('camera12-status').textContent = 'Finding food…';
-    try { const item = await CHADFood.lookup(code); handoff = true; openResult(item, 'barcode', { add: context?.add }); }
+    try { const item = await CHADFood.lookup(code); if (epoch !== U().session()) return; handoff = true; openResult(item, 'barcode', { add: context?.add }); }
     catch (e) { $('camera12-status').textContent = e.message + ' '; $('camera12-status').append(button('Type the digits', () => { handoff = true; U().openFood('barcode', context); }, 'ch-cam__inline')); }
   }
   // The live frame, at most 1024 px on the long edge (JPEG 0.8), and a 360 px thumbnail for the lists.
@@ -210,15 +213,16 @@
     } catch (e) { $('camera12-status').textContent = e.message; } finally { busyCapture = false; }
   }
   // A photo is a draft at once: stored on the device first (a failed write never loses it), then analysed.
-  async function accept(photo) {
+  async function accept(photo, epoch = U().session()) {
     const label = mode === 'label';
     const d = { id: uid(), day: U().dateKey(), at: Date.now(), source: label ? 'label' : 'photo', photoId: uid(), base: label ? LABEL_HINT : '', desc: '', note: '', status: 'pending', image: photo.image, thumbnail: photo.thumbnail };
     d.add = context?.add || null; handoff = true; stop();                 // the photo is taken: the camera goes off at once
     photoCache.set(d.photoId, photo.thumbnail);
     drafts.push(d);
     try { await storage('photos', 'put', { image: photo.image, thumbnail: photo.thumbnail }, d.photoId); await keep(d); }
-    catch (e) { d.status = 'error'; d.errorKind = 'storage'; setError(d); U().closeSheets(); render(); review(d); return; }
-    U().closeSheets(); render(); estimate(d, true);
+    catch (e) { d.status = 'error'; d.errorKind = 'storage'; setError(d); render(); if (epoch === U().session()) { U().closeSheets(); review(d); } return; }
+    if (epoch === U().session()) U().closeSheets();
+    render(); estimate(d, epoch === U().session());
   }
 
   /* ---- estimates ---- */
@@ -255,6 +259,7 @@
   const showing = d => active === d && $('nutrition12').open;
   const canOpen = () => !document.querySelector('dialog[open]') && !document.hidden && !document.documentElement.classList.contains('is-gym');
   async function estimate(d, autoOpen = false) {
+    const epoch = U().session();
     if (running.has(d.id)) return;
     running.add(d.id); d.status = 'pending'; d.error = d.errorText = d.errorKind = ''; d.startedAt = Date.now(); d.lastAttemptAt = d.startedAt;
     if (!drafts.includes(d)) drafts.push(d);
@@ -285,7 +290,7 @@
       if (!d.discarded) {
         keep(d).catch(() => {}); render();
         if (showing(d)) drawResult();
-        else if (autoOpen && canOpen()) { U().shield(); review(d); }
+        else if (autoOpen && epoch === U().session() && canOpen()) { U().shield(); review(d); }
         else U().toast(d.status === 'ready' ? 'Your food is ready' : 'Photo not analysed', () => review(d), { action: d.status === 'ready' ? 'Review' : 'Open', icon: d.status === 'ready' ? 'sparkles' : 'refresh', life: 12000 });
       }
     }
@@ -321,7 +326,7 @@
     const nodes = [field, status, go, button('Search food instead', () => { chose(); search(field.value.trim()); }, 'ch-btn ch-btn--block')];
     const chose = d ? () => {} : sheetFromCamera('Describe it', nodes);
     if (d) U().detail('Describe this photo', nodes);
-    setTimeout(() => field.focus({ preventScroll: true }), 50);
+    U().focusSheet(field);
   }
   // Saved: your bookmarked foods, then the built-in favourites. A tap opens the card (Done logs it).
   function saved() {
@@ -343,7 +348,7 @@
     d.partsDirty = d.parts.length > 0;
     if (!(Number(d.item.grams) > 0)) { const g = item?.basis === '100g' ? 100 : Number(item?.servingGrams); if (g > 0) d.item.grams = g; }
     review(d);
-    if (source === 'manual') setTimeout(() => $(d.item.name ? 'n12-kcal' : 'n12-name')?.focus({ preventScroll: true }), 60);
+    if (source === 'manual') U().focusSheet($(d.item.name ? 'n12-kcal' : 'n12-name'), 60);
   }
   // A food already logged: the same card, with Delete and Log again. Done saves the change (Undo in the toast).
   function edit(entry) {
@@ -435,7 +440,7 @@
     hs.append(hsTop, track, how); body.append(hs);
     // Ingredients.
     const ing = el('section', 'ch-nut__ing'), ingHead = el('div', 'ch-nut__inghead');
-    ingHead.append(el('h3', '', 'Ingredients'), button('+ Add', () => { adding = !adding; drawParts(d); if (adding) setTimeout(() => $('n12-item-name')?.focus({ preventScroll: true }), 30); }, 'ch-link', 'n12-add'));
+    ingHead.append(el('h3', '', 'Ingredients'), button('+ Add', () => { adding = !adding; drawParts(d); if (adding) U().focusSheet($('n12-item-name'), 30); }, 'ch-link', 'n12-add'));
     ui.parts = el('div', 'ch-nut__parts'); ui.parts.id = 'n12-parts';
     ui.oil = button('', () => addPart(d, OIL), 'ch-chip2', 'n12-oil');
     ing.append(ingHead, ui.parts, ui.oil); body.append(ing);
@@ -545,7 +550,7 @@
       send.innerHTML = icon('sparkles', 18); send.append('Send');
       const row = el('div', 'ch-nut__actions'); row.append(button('Cancel', () => { fixing = false; drawFoot(d); }, 'ch-btn', 'n12-cancelfix'), send);
       foot.append(note, ui.error, row);
-      setTimeout(() => note.focus({ preventScroll: true }), 30);
+      U().focusSheet(note, 30);
       return;
     }
     const fix = button('', () => { fixing = true; drawFoot(d); }, 'ch-btn ch-nut__fix', 'n12-fix'); fix.innerHTML = icon('sparkles', 18); fix.append('Fix with AI');
@@ -745,6 +750,7 @@
   // navigator.onLine can be stale on iOS: the actual request determines reachability.
   addEventListener('online', () => retryDrafts());
   document.addEventListener('visibilitychange', () => { if (!document.hidden) retryDrafts(); });
-  window.CHADScan12 = { open, openResult, edit, render, health, drafts: () => drafts.slice() };
+  function suspend() { context = null; active = null; handoff = true; stop(); }
+  window.CHADScan12 = { open, openResult, edit, render, health, suspend, drafts: () => drafts.slice() };
   init();
 })();

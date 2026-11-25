@@ -90,7 +90,14 @@
   }
 
   /* ---- sheets: one at a time ---- */
-  let sheetEpoch = 0;
+  let sheetEpoch = 0, lifecycleEpoch = 0;
+  const session = () => lifecycleEpoch;
+  function focusSheet(field, delay = 50) {
+    const epoch = session();
+    setTimeout(() => {
+      if (epoch === session() && !document.hidden && field?.isConnected && field.closest('dialog[open]')) field.focus({ preventScroll: true });
+    }, delay);
+  }
   function resetSheet(d) {
     clearTimeout(d.openingTimer); clearTimeout(d.closingTimer);
     d.getAnimations?.().forEach(a => a.cancel());
@@ -118,6 +125,7 @@
     setTimeout(() => { if (epoch === sheetEpoch) document.querySelectorAll('dialog.ch-sheet').forEach(finishClose); }, 360);
   }
   function show(d) {
+    if (document.hidden) return;
     ++sheetEpoch; resetSheet(d);
     d.classList.remove('is-closing', 'is-dragging'); d.classList.add('is-opening');      // the entrance plays once per opening
     if (!d.open) d.showModal();
@@ -170,20 +178,36 @@
     document.fonts?.ready?.then(() => tab(tabShown));
     // A bottom sheet with a focused field lifts above the software keyboard (visual viewport), unless the page is zoomed.
     const vv = window.visualViewport;
-    if (vv) {
-      const lift = () => {
-        const zoomed = Math.abs(vv.scale - 1) > 0.01, keyboard = zoomed ? 0 : Math.round(innerHeight - vv.height - vv.offsetTop), style = document.documentElement.style;
-        style.setProperty('--ch-kb', (keyboard > 80 ? keyboard : 0) + 'px');
-        style.setProperty('--ch-vv-top', (zoomed ? 0 : Math.floor(vv.offsetTop)) + 'px');
-        if (zoomed) style.removeProperty('--ch-vvh'); else style.setProperty('--ch-vvh', Math.floor(vv.height) + 'px');
-      };
-      vv.addEventListener('resize', lift); vv.addEventListener('scroll', lift); lift();
-    }
+    const lift = () => {
+      const style = document.documentElement.style, field = document.activeElement;
+      const editing = field?.matches('input:not([type=button]):not([type=checkbox]):not([type=radio]),textarea,[contenteditable=true]') && field.closest('dialog[open]');
+      // Standalone Safari can retain keyboard geometry across launch/resume. Only an active sheet
+      // field may reduce the layout viewport; reject geometry too small to use the sheet.
+      const valid = vv && Math.abs(vv.scale - 1) <= 0.01 && editing && vv.height >= Math.max(240, innerHeight * .35);
+      const top = valid ? Math.max(0, Math.min(vv.offsetTop, innerHeight - vv.height)) : 0;
+      const height = valid ? Math.min(innerHeight - top, vv.height) : innerHeight;
+      style.setProperty('--ch-kb', (valid ? Math.max(0, innerHeight - height - top) : 0) + 'px');
+      style.setProperty('--ch-vv-top', top + 'px');
+      style.setProperty('--ch-vvh', Math.floor(height) + 'px');
+    };
+    vv?.addEventListener('resize', lift); vv?.addEventListener('scroll', lift);
+    addEventListener('resize', lift); addEventListener('orientationchange', lift);
+    document.addEventListener('focusin', lift); document.addEventListener('focusout', () => setTimeout(lift, 0));
+    lift();
     // Home-screen Safari may freeze an entrance, exit or drag while backgrounded or restore it from bfcache.
     // Close on both edges; never resume an obsolete transform or leave a modal backdrop over Today.
-    closeSheets();
-    document.addEventListener('visibilitychange', closeSheets);
-    addEventListener('pagehide', closeSheets); addEventListener('pageshow', closeSheets);
+    const resetLifecycle = () => {
+      ++lifecycleEpoch; ++sheetEpoch;
+      foodCtx = null; window.CHADScan12?.suspend();
+      document.activeElement?.blur?.();
+      document.querySelectorAll('dialog').forEach(finishClose); stopScanner();
+      clearTimeout(shieldTimer);
+      document.querySelectorAll('[data-shield]').forEach(n => n.removeAttribute('data-shield'));
+      lift();
+    };
+    resetLifecycle();
+    document.addEventListener('visibilitychange', resetLifecycle);
+    addEventListener('pagehide', resetLifecycle); addEventListener('pageshow', resetLifecycle);
     window.CHADIcons?.mount(document);
     document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => closeSheet($(b.dataset.close)));
     document.querySelectorAll('dialog.ch-sheet').forEach(d => {
@@ -253,5 +277,5 @@
     week(state);
     tab(tabShown);
   }
-  window.CHADUX = { setup, render, tab, currentSlot, timeBlock, minutesNow, hourNow, dateKey, navigate, goTo, dayLabel, toast, hideToast, detail, closeSheets, closeSheet, showSheet: show, shield, openFood, wireSheet, journeyDay, validDate, defaultJourneyStart, foodMeal: () => foodMeal, foodCtx: () => foodCtx, clearFoodCtx: () => { foodCtx = null; }, pcf, macroTiles };
+  window.CHADUX = { session, focusSheet, setup, render, tab, currentSlot, timeBlock, minutesNow, hourNow, dateKey, navigate, goTo, dayLabel, toast, hideToast, detail, closeSheets, closeSheet, showSheet: show, shield, openFood, wireSheet, journeyDay, validDate, defaultJourneyStart, foodMeal: () => foodMeal, foodCtx: () => foodCtx, clearFoodCtx: () => { foodCtx = null; }, pcf, macroTiles };
 })();

@@ -23,7 +23,7 @@ function boot(saved = null, quota = false, extra = {}) {
   const elements = new Map(), storage = new Map(Object.entries(extra)), sheets = [];
   if (saved !== null) storage.set('rec-calories-v1', saved);
   const get = id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
-  const document = { getElementById: get, createElement: () => new Element(), querySelectorAll: () => [], querySelector: () => null, addEventListener() {} };
+  const document = { documentElement: new Element(), getElementById: get, createElement: () => new Element(), querySelectorAll: () => [], querySelector: () => null, addEventListener() {} };
   const localStorage = { getItem: key => storage.has(key) ? storage.get(key) : null, removeItem: key => storage.delete(key), setItem: (key, value) => { if (quota) throw Error('quota'); storage.set(key, String(value)); } };
   const noop = () => {};
   const uxContext = { window: {}, document, Intl, Date, Math, setTimeout() {}, clearTimeout() {}, addEventListener: noop, scrollY: 0, innerHeight: 852, CHADIcons: { icon: () => '', mount() {} } };

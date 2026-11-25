@@ -749,6 +749,7 @@ input[type="range"].ch-input::-moz-range-thumb{ width:28px; height:28px; border-
   touch-action:pan-y; overscroll-behavior:contain;
 }
 dialog.ch-sheet:not([open]){ display:none }
+dialog.ch-sheet:not([open])::backdrop{ display:none }
 dialog.ch-sheet[open]{ display:flex }
 dialog.ch-sheet.is-opening{ animation:ch-sheet-in .5s var(--ch-spring-soft) }          /* one-shot: ux9.js removes it when it ends */
 dialog.ch-sheet.is-closing{ animation:ch-sheet-out .26s cubic-bezier(.4,0,1,1) forwards }

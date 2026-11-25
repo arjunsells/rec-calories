@@ -476,7 +476,10 @@
     try { url = RECScan.checkProxy(link.url); } catch (error) { message(error.message, true); return null; }
     const builtIn = RECScan.isDefault(url);
     if (builtIn && !link.token) { message('That setup link has no access token. Copy the whole link.', true); return null; }
-    if (from === 'hash' && !builtIn) { offerSetup(url, link.token); return null; }
+    if (from === 'hash' && !builtIn) {
+      CHADUX.toast('Review photo connection', () => offerSetup(url, link.token), { action: 'Review', life: 12000 });
+      return null;
+    }
     const checked = deviceChange('AI connected', { [RECScan.PROXY_KEY]: url, [RECScan.TOKEN_KEY]: link.token });
     checked?.then(result => { if (result === 'rejected') message('The proxy didn’t take that link’s token. Ask for a fresh setup link.', true); });
     return checked;
@@ -534,8 +537,9 @@
   }
   async function findBarcode(code) {
     if (barcodeBusy) return;
+    const epoch = CHADUX.session();
     barcodeBusy = true; $('food-state').hidden = true; $('scan-status').textContent = 'Looking up the barcode…';
-    try { const item = await CHADFood.lookup(code); $('scan-status').textContent = ''; openResult(item, 'barcode', { add: CHADUX.foodCtx()?.add }); }
+    try { const item = await CHADFood.lookup(code); if (epoch !== CHADUX.session()) return; $('scan-status').textContent = ''; openResult(item, 'barcode', { add: CHADUX.foodCtx()?.add }); }
     catch (e) {
       M()?.haptic('warn');
       if (e.kind === 'offline') foodState('offline', 'You are offline', 'Barcodes need a connection. Type it in from the label instead.', () => findBarcode(code));
