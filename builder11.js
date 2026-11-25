@@ -162,7 +162,8 @@
     const actions = el('div', 'ch-bld__actions');
     const save = button('ch-btn ch-bld__save', () => saveMeal()); save.id = 'builder-save';
     const log = button('ch-btn ch-btn--gold ch-bld__log', () => logMeal()); log.id = 'builder-log';
-    actions.append(save, log);
+    const later = button('ch-btn ch-bld__later', () => logMeal(true), 'Plan for later'); later.id = 'builder-later';
+    actions.append(save, log, later);
     const foot = el('div', 'ch-bld__foot'); foot.append(undoBar, actions);
     body.replaceChildren(totalBar, list, recentHead, recent, el('h3', 'ch-list-h', 'Favourites'), chips, el('h3', 'ch-list-h', 'Search'), search, results, el('h3', 'ch-list-h', 'More ways'), ways, foot);
     root.CHADIcons?.mount(body);
@@ -220,6 +221,7 @@
   function paintFoot() {
     const t = total(items), s = slot(), log = $('builder-log'), save = $('builder-save');
     log.disabled = !items.length;
+    $('builder-later').disabled = !items.length;
     log.replaceChildren(el('span', '', s ? 'Log ' + s.name.toLowerCase() : 'Log'), el('small', '', whole(t[0]) + ' kcal'));
     save.hidden = !s;
     save.disabled = !items.length || !!savedAs;
@@ -267,11 +269,11 @@
     const shown = (text, action, options = {}) => { savedAs = /^Undone/.test(text) ? null : true; paintFoot(); toast(text === 'Saved as my meal' ? 'Saved as my meal · on ' + where : text, action, options); };
     if (root.CHADQuest.saveMyMeal(meal, shown)) M()?.pulse($('builder-save'), 'just-on', 500);
   }
-  function logMeal() {
+  function logMeal(later = false) {
     if (!items.length) return;
     const t = total(items), meal = { name: autoOr(), macros: t, parts: partsOf(items) }, target = slotId;
     root.CHADUX.closeSheets();
-    const ok = target ? root.CHADQuest.logCustom(target, meal) : logOther(meal);
+    const ok = later ? root.CHADUX.planFood({ name: meal.name, kcal: tenth(t[0]), protein: tenth(t[1]), carbs: tenth(t[2]), fat: tenth(t[3]) }) : target ? root.CHADQuest.logCustom(target, meal) : logOther(meal);
     if (ok) { items = []; name = ''; savedAs = null; keep(); }
   }
   // Other food: one entry with what is in it (a single food is simply that food), filed under the meal of the moment.

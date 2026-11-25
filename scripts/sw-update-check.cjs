@@ -9,10 +9,10 @@ const text = buffer => buffer.toString('utf8').split('\r\n').join('\n');
 const newWorker = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
 let phase = 'v11';        // v11 -> v12 (deploy) -> v13 -> v14 (pretend future releases)
 
-// Unchanged shared modules remain byte-identical to v11. v12d deliberately updates scan9.js
-// in place; cache generations keep the old page/module together until the new worker takes
-// over. Verify both cached bytes and routing behavior across that transition below.
-const changedShared = new Set(['./scan9.js']);
+// Unchanged shared modules remain byte-identical to v11. scan9.js (v12d) and builder11.js
+// (v12g planning) are updated in place. Cache generations keep the old page/module together
+// until takeover. Verify both versions' cached bytes across that transition below.
+const changedShared = new Set(['./scan9.js', './builder11.js']);
 const oldShell = [...text(oldFile('sw.js')).match(/^const SHELL = (.+);$/m)[1].matchAll(/'([^']+)'/g)].map(m => m[1]), newShell = shellFiles();
 const page12 = [...fs.readFileSync(path.join(root, 'index.html'), 'utf8').matchAll(/<(?:script|link)[^>]+(?:src|href)="([^"]+)"/g)].map(m => m[1]);
 for (const url of page12.filter(u => oldShell.includes(u) && !changedShared.has(u) && /\.(js|css)$/.test(u))) assert.equal(text(fs.readFileSync(path.join(root, url))), text(oldFile(url.slice(2))), url + ' is cached by the v11 worker, so it must not change without a new name');
@@ -40,6 +40,7 @@ const handler = (pathname, res) => {
     await page.goto('http://127.0.0.1:8089/'); await page.evaluate(() => navigator.serviceWorker.ready); await page.waitForFunction(() => navigator.serviceWorker.controller);
     assert.equal(await page.evaluate(() => caches.has('rec-calories-shell-v11')), true);
     assert.equal(text(Buffer.from(await page.evaluate(async () => (await fetch('./scan9.js')).text()))), text(oldFile('scan9.js')), 'v11 serves its original cached estimator');
+    assert.equal(text(Buffer.from(await page.evaluate(async () => (await fetch('./builder11.js')).text()))), text(oldFile('builder11.js')), 'v11 serves its original builder until takeover');
     assert.equal(await page.evaluate(() => RECScan.settings({ getItem: () => null }).mode), 'none', 'v11 still requires setup');
     assert.deepEqual(await page.evaluate(() => [typeof window.CHADFavourites, typeof window.CHADScan12, !!document.getElementById('left-more')]), ['object', 'undefined', true], 'this really is the v11 app');
     // Use v11 the way it was used: lunch from the card on top, water, a habit in Later today; then a workout set, a saved
@@ -65,6 +66,7 @@ const handler = (pathname, res) => {
     await page.waitForFunction(async cache => (await caches.has(cache)) && !(await caches.has('rec-calories-shell-v11')), CACHE);
     assert.deepEqual(errors, [], 'no script errors through the upgrade');
     assert.equal(text(Buffer.from(await page.evaluate(async () => (await fetch('./scan9.js')).text()))), text(fs.readFileSync(path.join(root, 'scan9.js'))), 'v12d serves its updated estimator from the new cache');
+    assert.equal(text(Buffer.from(await page.evaluate(async () => (await fetch('./builder11.js')).text()))), text(fs.readFileSync(path.join(root, 'builder11.js'))), 'v12g serves its planned-food builder from the new cache');
     assert.equal(await page.evaluate(() => RECScan.settings({ getItem: () => null }).mode), 'proxy', 'v12d defaults to the built-in proxy without setup');
     assert.deepEqual(await saved(page), { ...before, appVersion: 12 }, 'v12 keeps the v11 journal as it was (appVersion 12)');
     assert.equal(await page.evaluate(() => localStorage.getItem('rec-calories-v11-backup')), raw, 'and keeps the v11 journal byte for byte');

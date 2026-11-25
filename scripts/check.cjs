@@ -179,7 +179,7 @@ for (const [text, grams, expected] of [['1 cup (240 ml)', 240, '240 mL'], ['2 oz
 console.log('PASS: OFF serving/100g normalization, metric portions, brand, kJ conversion, scaling.');
 
 const html = fs.readFileSync('index.html', 'utf8'), sw = fs.readFileSync('sw.js', 'utf8'), css = fs.readFileSync('theme12.css', 'utf8');
-assert.match(html, /<title>\s*CHAD/); assert.match(html, /apple-mobile-web-app-title[^>]+CHAD/); assert.match(sw, /const CACHE = 'rec-calories-shell-v12f';/);
+assert.match(html, /<title>\s*CHAD/); assert.match(html, /apple-mobile-web-app-title[^>]+CHAD/); assert.match(sw, /const CACHE = 'rec-calories-shell-v12g';/);
 const shell = [...sw.match(/^const SHELL = (.+);$/m)[1].matchAll(/'([^']+)'/g)].map(m => m[1]);
 const runtime = ['index.html', 'theme12.css', 'icons8.js', 'motion8.js', 'charts8.js', 'game10.js', 'scan9.js', 'scan12.js', 'food9.js', 'plan11.js', 'train10.js', 'quest12.js', 'gym11.js', 'builder11.js', 'ux12.js', 'app12.js', 'fonts/press-start-2p.ttf', 'fonts/OFL.txt', 'vendor/zxing-browser.min.js', 'vendor/ZXING-LICENSE', 'vendor/README.md', 'manifest.webmanifest', 'icons/icon.svg', 'icons/apple-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/mark.svg'];
 for (const file of runtime) { assert.ok(fs.existsSync(file), `${file} exists`); assert.ok(shell.includes(`./${file}`), `${file} cached`); }

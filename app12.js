@@ -4,7 +4,7 @@
 // Screens are drawn by quest12.js, Gym mode by gym11.js, the add-food sheet by builder11.js; navigation, sheets and
 // toasts live in ux12.js.
 (() => {
-  const KEY = 'rec-calories-v1', SHELL = 'rec-calories-shell-v12c', BACKUP = 'rec-calories-v11-backup', APP_VERSION = 12;
+  const KEY = 'rec-calories-v1', SHELL = 'rec-calories-shell-v12g', BACKUP = 'rec-calories-v11-backup', APP_VERSION = 12;
   const $ = id => document.getElementById(id);
   const M = () => window.CHADMotion;
   const oneDecimal = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }), integer = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
@@ -61,6 +61,7 @@
       const ids = new Set();
       const entries = parsed.entries.filter(e => e && typeof e.id === 'string' && !ids.has(e.id) && ids.add(e.id) && typeof e.name === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.day) && valid(e.kcal, 1, 50000) && valid(e.protein, 0, 5000) && ['carbs', 'fat'].every(k => e[k] === undefined || valid(e[k], 0, 5000)));
       if (entries.length !== parsed.entries.length || (parsed.proteinGoal !== undefined && !valid(parsed.proteinGoal, 1, 5000))) throw new Error();
+      if (parsed.planned12 !== undefined && (!parsed.planned12 || typeof parsed.planned12 !== 'object' || Array.isArray(parsed.planned12) || Object.entries(parsed.planned12).some(([key, items]) => !CHADUX.validDate(key) || !Array.isArray(items) || items.some(p => !validPlanned(p))))) throw new Error();
       migrate(raw, parsed);
       // Journals from before schema 5 (v4) keep the XP and goals they had, as v5-v10 did.
       const prior = parsed.legacyRewards || (parsed.schemaVersion !== 5 ? { xp: RECGame.derive(parsed, dayKey()).xp } : null);
@@ -112,6 +113,60 @@
     return change({ label, positive: true, day: list[0].day, haptic: false,
       forward: s => ({ ...s, entries: [...s.entries.filter(e => !ids.has(e.id)), ...list] }),
       backward: s => ({ ...s, entries: s.entries.filter(e => !ids.has(e.id)) }) });
+  }
+  // Optional, additive day map. Missing means an older journal with no planned foods.
+  const planned = (s, key) => s.planned12?.[key] || [];
+  function withPlanned(s, key, items) {
+    const days = { ...s.planned12 };
+    if (items.length) days[key] = items; else delete days[key];
+    const next = { ...s };
+    if (Object.keys(days).length) next.planned12 = days; else delete next.planned12;
+    return next;
+  }
+  const validPlanned = p => p && typeof p.id === 'string' && typeof p.name === 'string' && p.name.trim() && valid(p.kcal, 1, 50000) && valid(p.p, 0, 5000) && ['c', 'f'].every(k => p[k] === undefined || valid(p[k], 0, 5000)) && typeof p.at === 'string' && Number.isFinite(Date.parse(p.at));
+  function planFood(food, key = selectedKey()) {
+    const item = { id: newId(), name: String(food.name || '').trim().slice(0, 80), kcal: food.kcal, p: food.protein, c: food.carbs ?? 0, f: food.fat ?? 0, at: new Date().toISOString() };
+    if (!CHADUX.validDate(key) || !validPlanned(item)) return false;
+    return change({ label: 'Planned for later', day: key,
+      forward: s => withPlanned(s, key, [...planned(s, key).filter(p => p.id !== item.id), item]),
+      backward: s => withPlanned(s, key, planned(s, key).filter(p => p.id !== item.id)) });
+  }
+  function takePlanned(item, key, log) {
+    const index = planned(state, key).findIndex(p => p.id === item.id);
+    if (index < 0) return false;
+    const entry = { id: 'food-' + newId(), day: key, name: item.name, kcal: item.kcal, protein: item.p, carbs: item.c ?? 0, fat: item.f ?? 0, at: new Date().toISOString(), meal: defaultMeal(), source: 'manual' };
+    return change({ label: log ? item.name + ' · ' + whole(item.kcal) + ' kcal' : 'Planned food removed', day: key, kind: log ? 'on' : 'off',
+      forward: s => ({ ...withPlanned(s, key, planned(s, key).filter(p => p.id !== item.id)), entries: log ? [...s.entries.filter(e => e.id !== entry.id), entry] : s.entries }),
+      backward: s => { const items = planned(s, key).filter(p => p.id !== item.id); items.splice(Math.min(index, items.length), 0, item); return { ...withPlanned(s, key, items), entries: log ? s.entries.filter(e => e.id !== entry.id) : s.entries }; } });
+  }
+  function renderPlanned() {
+    const section = $('planned12'), list = $('planned12-list'), key = currentDay, items = planned(state, key);
+    section.hidden = !items.length;
+    $('planned12-title').textContent = key === dayKey() ? 'Planned today' : 'Planned food';
+    list.replaceChildren();
+    for (const item of items) {
+      const row = node('li', 'ch-planned__row'), text = node('span', 'ch-planned__text'), tick = node('button', 'ch-planned__tick');
+      row.dataset.planned = item.id; row.tabIndex = 0; row.setAttribute('aria-label', item.name + '. Hold or press Enter to manage');
+      text.append(node('b', '', item.name), node('small', '', whole(item.kcal) + ' kcal · ' + fmt(item.p) + ' g P'));
+      tick.type = 'button'; tick.innerHTML = glyph('check', 20); tick.setAttribute('aria-label', 'Log ' + item.name); tick.onclick = () => takePlanned(item, key, true);
+      const manage = () => { const remove = node('button', 'ch-btn ch-btn--block ch-link--danger', 'Remove planned food'); remove.type = 'button'; remove.id = 'planned12-remove'; remove.onclick = () => { if (takePlanned(item, key, false)) CHADUX.closeSheets(); }; CHADUX.detail(item.name, [node('p', 'ch-hint', whole(item.kcal) + ' kcal · ' + fmt(item.p) + ' g protein'), remove]); };
+      CHADQuest.longPress(row, manage);
+      row.onkeydown = e => { if (e.target === row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); manage(); } };
+      row.append(text, tick); list.append(row);
+    }
+  }
+  // Merge backups, keeping existing values and IDs on conflicts. Device settings never enter this path.
+  function importBackup(raw) {
+    const incoming = raw?.journal;
+    const safeObject = v => v && typeof v === 'object' && !Array.isArray(v) && Object.entries(v).every(([k, x]) => !['__proto__', 'constructor', 'prototype'].includes(k) && (x === null || typeof x !== 'object' || (Array.isArray(x) ? x.every(y => y === null || typeof y !== 'object' || safeObject(y)) : safeObject(x))));
+    if (!safeObject(incoming) || !valid(incoming.target, 1, 50000) || !Array.isArray(incoming.entries) || incoming.entries.some(e => !e || typeof e.id !== 'string' || typeof e.name !== 'string' || !CHADUX.validDate(e.day) || !valid(e.kcal, 1, 50000) || !valid(e.protein, 0, 5000) || ['carbs', 'fat'].some(k => e[k] !== undefined && !valid(e[k], 0, 5000))) || (incoming.planned12 !== undefined && (!safeObject(incoming.planned12) || Object.entries(incoming.planned12).some(([key, items]) => !CHADUX.validDate(key) || !Array.isArray(items) || items.some(p => !validPlanned(p)))))) throw Error('Invalid journal backup. Nothing was changed.');
+    const merge = (a, b) => {
+      if (Array.isArray(a) && Array.isArray(b)) { const out = a.slice(); for (const v of b) if (!out.some(x => v?.id ? x?.id === v.id : JSON.stringify(x) === JSON.stringify(v))) out.push(v); return out; }
+      if (a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b)) { const out = { ...a }; for (const k of Object.keys(b)) out[k] = k in a ? merge(a[k], b[k]) : b[k]; return out; }
+      return a;
+    };
+    const before = state, after = merge(state, incoming);
+    return change({ label: 'Backup imported', kind: 'save', forward: () => after, backward: () => before });
   }
   function add(name, kcal, protein, extras = {}) {
     const entry = { id: newId(), day: selectedKey(), name: String(name || '').trim().slice(0, 80), kcal, protein, carbs: 0, fat: 0, meal: defaultMeal(), ...extras };
@@ -196,6 +251,7 @@
     renderLeft(goals, totals(entries));
     CHADQuest.render(state, { save, change, showView, message, celebrate, refresh: render, patchDay, restoreAt, assign, shape, key: currentDay, logFavourite, defaultMeal });
     CHADUX?.render(state);
+    renderPlanned();
     window.CHADScan12?.render();
     for (const selector of restore) { const target = document.querySelector(selector); if (target) { target.focus({ preventScroll: true }); break; } }
   }
@@ -561,7 +617,7 @@
   setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]') && (dayKey() !== observedToday || CHADUX?.timeBlock() !== currentBlock)) render(); }, 60000);
   function fillGoals() { $('journey-start-date').value = CHADUX.validDate(state.journeyStartDate) ? state.journeyStartDate : CHADUX.defaultJourneyStart; $('phase').value = state.phaseMode || 'auto'; const g = { ...state, ...CHADQuest.goals(state, dayKey()) }; [g.target, g.proteinGoal, g.carbsGoal, g.fatGoal].forEach((v, i) => $(goalIds[i]).value = v); }
   if (CHADUX) {
-    Object.assign(CHADUX, { save, change, removeEntry, logAgain, openResult, aiRoute, goSetup, message, logFavourite, showView, defaultMeal, journal: () => state, aiRejected: () => { aiRejected = true; aiStatus(); } });
+    Object.assign(CHADUX, { save, change, removeEntry, logAgain, openResult, aiRoute, goSetup, message, logFavourite, showView, defaultMeal, planFood, importBackup, journal: () => state, aiRejected: () => { aiRejected = true; aiStatus(); } });
     CHADUX.onFoodOpen = kind => {
       $('food-state').hidden = true; $('scan-status').textContent = '';
       if (kind === 'camera' && !scan) { clearPhoto(); snapState(); }             // an estimate in flight keeps its card

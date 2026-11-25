@@ -556,6 +556,7 @@
     const fix = button('', () => { fixing = true; drawFoot(d); }, 'ch-btn ch-nut__fix', 'n12-fix'); fix.innerHTML = icon('sparkles', 18); fix.append('Fix with AI');
     const doneB = button(d.add ? 'Add to meal' : 'Done', () => done(d), 'ch-btn ch-btn--primary ch-nut__done', 'n12-done');
     const row = el('div', 'ch-nut__actions'); row.append(fix, doneB);
+    if (!d.entryId) row.append(button('Plan for later', () => done(d, true), 'ch-btn ch-nut__later', 'n12-later'));
     foot.append(ui.error, row);
   }
   const validValues = v => KEYS.every(k => Number.isFinite(v[k]) && v[k] >= 0 && v[k] <= (k === 'kcal' ? 50000 : 5000));
@@ -585,7 +586,7 @@
     }
     return true;
   }
-  async function done(d) {
+  async function done(d, later = false) {
     if (d.saving) return;
     if (!fieldsOk(d)) return;
     const t = total(d), n = d.servings || 1, name = String(d.item.name || '').trim().replace(/\s+/g, ' ').slice(0, 80);
@@ -612,7 +613,11 @@
     delete entry.image; delete entry.thumbnail; delete entry.hint;
     // The draft leaves the list in the same render that adds the logged food (never both at once).
     const list = drafts; drafts = drafts.filter(x => x.id !== d.id);
-    if (d.add) { const back = d.add; d.add = null; U().closeSheets(); back(entry); render(); if (d.photoId && !d.entryId) storage('photos', 'delete', d.photoId).catch(() => {}); }
+    if (later) {
+      if (!U().planFood(entry, d.day)) { drafts = list; d.saving = false; ui.error.textContent = 'Could not save planned food.'; render(); return; }
+      d.add = null; U().closeSheets();
+    }
+    else if (d.add) { const back = d.add; d.add = null; U().closeSheets(); back(entry); render(); if (d.photoId && !d.entryId) storage('photos', 'delete', d.photoId).catch(() => {}); }
     else {
       const before = U().journal().entries.find(e => e.id === entry.id);
       // Nothing changed: nothing is saved, no toast, no Undo to replace the one waiting.

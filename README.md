@@ -17,6 +17,8 @@ Top to bottom, on Darwin time:
 7. **Custom, Later today and Quick log**: Same as yesterday and saved meals under the meal, **Later today** (the rest of the day in place), **Quick log**: **YoPRO Perform pouch** 120 kcal / 20.1 P / 6.8 C / 1.2 F and **Gochi noodle meal** 225 / 31.8 / 25.2 / 2.6, one tap each (a second tap is a second one), and **+ Food** (the add-food sheet).
 8. **Recently eaten**: the day's food, newest first: photo thumbnail (or an icon), name, time, kcal and P/C/F. A photo being analysed shows here at once ("Analysing…" with its photo and a ring); a finished one says "Ready"; one the AI could not answer says why. Tap any row to open its nutrition card and change it.
 
+**Planned today** appears above the meal area when that day has planned foods. Use **Plan for later** on a nutrition card or in the add-food sheet (including **Type it** for a manual name, kcal, protein, carbs and fat). Planning leaves totals unchanged. One round tick logs the food and removes the plan; **Undo** restores both. Hold a planned row, or focus it and press Enter, to remove it. Plans stay on this device across reloads and are included in **Export local backup**. **Import local backup** merges journal data, keeps existing values on conflicts, avoids duplicate IDs, and offers Undo.
+
 Targets: **1,900 kcal / 220 g protein / 150 g carbs / 45 g fat** (Cut; Reset and Bulk goals follow the phase dates in Settings).
 
 ## Photos: the camera

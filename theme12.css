@@ -1966,3 +1966,13 @@ dialog.ch-cam::backdrop{ background:#000 }
   .ch-food.is-pending .ch-food__skel i,.ch-nut__sweep{ animation:none }
   .ch-dial__fill,.ch-pend__fill,.ch-nut__hbar,.ch-avg__bar::after{ transition:none }
 }
+
+/* Planned foods share the journal, but only a tick contributes to today's totals. */
+.ch-planned{ margin:16px 0; padding:16px; border-radius:20px; background:var(--ch-surface) }
+.ch-planned__list{ list-style:none; margin:8px 0 0; padding:0 }
+.ch-planned__row{ display:flex; align-items:center; gap:12px; min-height:64px; touch-action:pan-y }
+.ch-planned__text{ display:grid; gap:4px; min-width:0; flex:1 }
+.ch-planned__text b{ font-size:15px; overflow-wrap:anywhere }
+.ch-planned__text small{ color:var(--ch-muted); font-size:13px }
+.ch-planned__tick{ flex:0 0 48px; width:48px; height:48px; border:1px solid var(--ch-line); border-radius:50%; background:var(--ch-surface); color:var(--ch-text); display:grid; place-items:center }
+.ch-nut__later,.ch-bld__later{ grid-column:1/-1; min-height:48px }

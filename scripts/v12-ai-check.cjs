@@ -311,7 +311,7 @@ function jpegSize(dataURL) {
     // Fix with AI asks what to fix before anything is sent (the correction itself: v12-scan-check), and Cancel goes back.
     const callsNow = proxyCalls.length; await tap(page.locator('#n12-fix')); await tap(page.locator('#n12-send'));
     assert.match(await page.locator('#nutrition12-foot .ch-nut__error').innerText(), /Say what to fix first/); assert.equal(proxyCalls.length, callsNow, 'nothing sent without a note');
-    await tap(page.locator('#n12-cancelfix')); assert.deepEqual(await page.locator('#nutrition12-foot button').allInnerTexts(), ['Fix with AI', 'Done']);
+    await tap(page.locator('#n12-cancelfix')); assert.deepEqual(await page.locator('#nutrition12-foot button').allInnerTexts(), ['Fix with AI', 'Done', 'Plan for later']);
     // Servings (v12's stand-in for v11's weight field) scale every number from the answer; a typed number overrides and
     // scales from there.
     await tap(page.locator('#n12-less')); assert.equal(await page.locator('#n12-servings').innerText(), '0.5');

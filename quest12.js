@@ -798,6 +798,10 @@
       const exportButton = button('ch-cell', () => { const blob = new Blob([JSON.stringify({ journal: current }, null, 2)], { type: 'application/json' }), a = el('a'); a.href = URL.createObjectURL(blob); a.download = 'chad-local-backup.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); });
       exportButton.id = 'export-backup'; exportButton.append(el('span', 'ch-cell__title ch-grow', 'Export local backup')); exportButton.insertAdjacentHTML('beforeend', icon('share', 20));
       $('data-settings').append(exportButton);
+      const file = el('input'); file.type = 'file'; file.accept = 'application/json,.json'; file.id = 'import-backup-file'; file.hidden = true;
+      const importButton = button('ch-cell', () => file.click()); importButton.id = 'import-backup'; importButton.append(el('span', 'ch-cell__title ch-grow', 'Import local backup'));
+      file.onchange = async () => { try { if (file.files[0]) window.CHADUX.importBackup(JSON.parse(await file.files[0].text())); } catch { api.message('Could not import this backup. Nothing was changed.', true); } finally { file.value = ''; } };
+      $('data-settings').append(importButton, file);
     }
     const seg = $('theme-mode'); seg.style.setProperty('--i', ['system', 'light', 'dark'].indexOf(theme)); [...seg.children].forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themeOption === theme)));
     $('sound-toggle').checked = !!state.arcadeSound; $('haptics-toggle').checked = state.haptics !== false;
@@ -810,5 +814,5 @@
   matchMedia('(prefers-color-scheme:dark)').addEventListener('change', () => applyTheme(current?.arcadeTheme || 'system'));
   // The builder logs into a slot through the same reversible path as a card (tier C), and saves meals to the journal.
   const logCustom = (slotId, item) => { const slot = slotById(slotId); return !!slot && choose(slot, { tier: 'C', title: item.name, macros: item.macros, source: 'custom', parts: item.parts }, null, true); };   // Log never removes
-  window.CHADQuest = { dayKey, shift, weekday, monday, waterGoal, phase, goals, phaseHint, deload, daily, week, stats, waterStreak, training, sessionLength, sessionProgress, render, paintCharts, THREE_MEALS, SNACK_GAP, remaining, bestFit, yesterdayMeal, myMeals, logCustom, saveMyMeal, forgetMyMeal, nowFor: (state, key) => nowFor(state, daily(state, key), key, CHADTrain.plan(key)) };
+  window.CHADQuest = { longPress, dayKey, shift, weekday, monday, waterGoal, phase, goals, phaseHint, deload, daily, week, stats, waterStreak, training, sessionLength, sessionProgress, render, paintCharts, THREE_MEALS, SNACK_GAP, remaining, bestFit, yesterdayMeal, myMeals, logCustom, saveMyMeal, forgetMyMeal, nowFor: (state, key) => nowFor(state, daily(state, key), key, CHADTrain.plan(key)) };
 })();
