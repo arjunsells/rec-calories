@@ -179,7 +179,7 @@ for (const [text, grams, expected] of [['1 cup (240 ml)', 240, '240 mL'], ['2 oz
 console.log('PASS: OFF serving/100g normalization, metric portions, brand, kJ conversion, scaling.');
 
 const html = fs.readFileSync('index.html', 'utf8'), sw = fs.readFileSync('sw.js', 'utf8'), css = fs.readFileSync('theme12.css', 'utf8');
-assert.match(html, /<title>\s*CHAD/); assert.match(html, /apple-mobile-web-app-title[^>]+CHAD/); assert.match(sw, /const CACHE = 'rec-calories-shell-v12';/);
+assert.match(html, /<title>\s*CHAD/); assert.match(html, /apple-mobile-web-app-title[^>]+CHAD/); assert.match(sw, /const CACHE = 'rec-calories-shell-v12b';/);
 const shell = [...sw.match(/^const SHELL = (.+);$/m)[1].matchAll(/'([^']+)'/g)].map(m => m[1]);
 const runtime = ['index.html', 'theme12.css', 'icons8.js', 'motion8.js', 'charts8.js', 'game10.js', 'scan9.js', 'scan12.js', 'food9.js', 'plan11.js', 'train10.js', 'quest12.js', 'gym11.js', 'builder11.js', 'ux12.js', 'app12.js', 'fonts/press-start-2p.ttf', 'fonts/OFL.txt', 'vendor/zxing-browser.min.js', 'vendor/ZXING-LICENSE', 'vendor/README.md', 'manifest.webmanifest', 'icons/icon.svg', 'icons/apple-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/mark.svg'];
 for (const file of runtime) { assert.ok(fs.existsSync(file), `${file} exists`); assert.ok(shell.includes(`./${file}`), `${file} cached`); }
@@ -231,7 +231,7 @@ for (const file of shipped) {
   const text = fs.readFileSync(file, 'utf8');
   assert.equal(/sk-[A-Za-z0-9_-]{20,}/.test(text), false, `${file} has no API key`);
   assert.equal(/\b[a-f0-9]{64}\b/i.test(text), false, `${file} has no 64-hex token`);
-  assert.equal(/\.ts\.net\b|tailscale|ngrok/i.test(file === 'scan9.js' ? text.replace(builtIn, '') : text) && !file.startsWith('scripts/'), false, `${file} names no personal tunnel host`);
+  assert.equal(/\.ts\.net\b|\b[a-z0-9.-]+\.tailscale\.(?:com|net)\b|ngrok/i.test(file === 'scan9.js' ? text.replace(builtIn, '') : text) && !file.startsWith('scripts/'), false, `${file} names no personal tunnel host`);
   assert.equal(/[#&]k=[A-Za-z0-9]{16,}/.test(text), false, `${file} holds no setup link with a token`);
   assert.equal(/Bearer (?!synthetic-)[A-Za-z0-9_-]{12,}/.test(text), false, `${file} has no literal bearer token`);
 }
@@ -242,4 +242,4 @@ assert.equal(/OPENAI_API_KEY\s*=\s*['"]/.test(worker), false, 'the worker reads 
 // The mascot mark in the Progress header: a small, self-contained vector (no scripts, no outside references).
 const mark = fs.readFileSync('icons/mark.svg', 'utf8');
 assert.match(html, /<img class="ch-mark" src="\.\/icons\/mark\.svg"/); assert.equal(/<script|\son[a-z]+=|<image|foreignObject|(?:href|src)="(?!#)/i.test(mark), false, 'mark.svg is plain vector art'); assert.ok(mark.length < 40000);
-console.log('PASS: CHAD manifest identity, opaque PNG icons, complete local shell-v12 (exact list), removed v10 and older files, three tabs + the gear, no XP/rank/level/score UI, motion/dark/dock CSS guards, metric-only text, no keys/tokens/setup links, one built-in proxy address (scan9.js only), plain-vector header mark, one prompt for app and proxy example.');
+console.log('PASS: CHAD manifest identity, opaque PNG icons, complete local shell-v12b (exact list), removed v10 and older files, three tabs + the gear, no XP/rank/level/score UI, motion/dark/dock CSS guards, metric-only text, no keys/tokens/setup links, one built-in proxy address (scan9.js only), plain-vector header mark, one prompt for app and proxy example.');

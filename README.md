@@ -40,7 +40,7 @@ The protein term is the share of calories from protein times 8 (half the calorie
 
 ## When the AI cannot answer
 
-Offline, the PC off, no access token on this phone, or no answer in time: the card says **"Photo AI is offline - your PC needs to be on. Search or describe it instead"** with one-tap **Search food** and **Describe it**, and **Retry**. A rejected token says so and offers **AI settings**. The photo and the draft are never lost: they stay in Recently eaten, survive a reload or a closed app ("Scan interrupted": Retry), and wait until you retry, describe, search or discard them.
+Without pairing on this phone, the card says **“Pair this phone first”** and directs you to Settings › AI estimates to paste your CHAD setup link. On iPhone, paste it inside the installed CHAD app (not Safari). The draft says **“Pair this phone · tap”**. For network failures or timeouts, the card says **“Can’t reach your PC — check it’s on and Tailscale is on on this phone. Search or describe it instead”** with one-tap **Search food** and **Describe it**, and **Retry**. A rejected token says so and offers **AI settings**. The photo and the draft are never lost: they stay in Recently eaten, survive a reload or a closed app ("Scan interrupted": Retry), and wait until you retry, describe, search or discard them.
 
 ## AI setup (unchanged)
 
@@ -60,7 +60,7 @@ The journal stays at `rec-calories-v1`, schema 5, with every v11 field and devic
 
 Photos and recoverable drafts live only in this device's IndexedDB **`chad-photos-v12`** (`photos`, `drafts`); the journal holds a photo id, never a photo. The journal export (Settings › Data) is a journal backup: no photos, no drafts, no credentials. Clearing the site's data removes the photos. A deleted food keeps its photo while Undo can bring it back; on each start, photos that no logged food or draft points to and that are more than a day old are deleted from the device (a discarded draft's photo goes once its Undo has passed; a photo added to a custom meal is not kept, because the meal keeps no photo).
 
-The service worker caches **`rec-calories-shell-v12`** (every runtime file, listed in `sw.js`); an installed v11 updates itself once and drops its old cache. Offline: the app, logging, Gym, Progress, saved photos and drafts all work; new AI estimates and uncached food lookups need the internet (and the PC for the proxy).
+The service worker caches **`rec-calories-shell-v12b`** (every runtime file, listed in `sw.js`); an installed app updates itself once and drops its old cache. Offline: the app, logging, Gym, Progress, saved photos and drafts all work; new AI estimates and uncached food lookups need the internet (and the PC for the proxy).
 
 Runtime files: `index.html`, `theme12.css`, `app12.js` (journal, the hero, settings), `quest12.js` (Today, Gym tab, Progress), `ux12.js` (navigation, sheets, the week strip, toasts), `scan12.js` (the camera, the nutrition card, Recently eaten), plus the unchanged `plan11.js`, `builder11.js`, `gym11.js`, `train10.js`, `game10.js`, `scan9.js`, `food9.js`, `icons8.js`, `motion8.js`, `charts8.js`. v11's `app11.js`, `quest11.js`, `ux11.js` and `theme11.css` are gone.
 

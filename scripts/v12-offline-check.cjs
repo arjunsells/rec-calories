@@ -7,7 +7,7 @@
 const assert = require('node:assert/strict');
 const { serve, launch, watch, saved, shellFiles, CACHE, IPHONE } = require('./harness.cjs');
 const PORT = 8108, ORIGIN = 'http://127.0.0.1:' + PORT;
-const OFFLINE = 'Photo AI is offline - your PC needs to be on. Search or describe it instead';
+const OFFLINE = 'Can’t reach your PC — check it’s on and Tailscale is on on this phone. Search or describe it instead';
 (async () => {
   const server = await serve(PORT), browser = await launch();
   try {

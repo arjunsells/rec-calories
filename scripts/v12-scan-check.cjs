@@ -9,7 +9,7 @@
 const assert = require('node:assert/strict');
 const { serve, launch, watch, saved, IPHONE } = require('./harness.cjs');
 const PORT = 8107, ORIGIN = 'http://127.0.0.1:' + PORT, TOKEN = 'synthetic-device-token';
-const OFFLINE = 'Photo AI is offline - your PC needs to be on. Search or describe it instead';
+const OFFLINE = 'Can’t reach your PC — check it’s on and Tailscale is on on this phone. Search or describe it instead';
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const again = () => wait(460);                                  // past the 400 ms slip guard and the touch shield
 
@@ -211,7 +211,7 @@ const WORDS = { name: 'Described chicken salad', kcal: 380, protein_g: 42, carbs
     await page.evaluate(() => { localStorage.removeItem('chad.aiProxyUrl'); localStorage.removeItem('chad.aiProxyToken'); RECScan.TIMEOUT.proxy = 100000; });
     const sent = calls.length; mode = 'ok'; await snap(); await trouble();
     assert.equal(calls.length, sent, 'nothing is sent without a token');
-    assert.match(await page.locator('#nutrition12-body').textContent(), /isn’t set up on this phone/); assert(await page.locator('#n12-setup').isVisible());
+    assert.match(await page.locator('#nutrition12-body').textContent(), /Pair this phone first[\s\S]*Photo AI isn’t set up on this phone/); assert(await page.locator('#n12-setup').isVisible());
     // The same from the meal being built (+ Food > Ask AI): AI settings opens Settings and the meal does not pop back over it.
     const noAiCard = page.locator('#nutrition12[data-state="error"]');
     await page.locator('#nutrition12-close').click(); await closed(page); await again();

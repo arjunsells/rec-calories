@@ -166,7 +166,7 @@ async function logAndUndo(page, values, source) {
     await describe(page, 'a banana');
     await page.waitForFunction(() => document.getElementById('nutrition12').open && document.getElementById('nutrition12').dataset.state === 'error', null, { timeout: 30000 });
     results.unreachable = await page.locator('#nutrition12 .ch-nut__trouble strong').innerText();
-    assert.match(results.unreachable, /Photo AI is offline - your PC needs to be on/);
+    assert.match(results.unreachable, /Can’t reach your PC — check it’s on and Tailscale is on on this phone/);
     await tap(page.locator('#n12-search')); await page.locator('#builder-sheet').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#builder-search').inputValue(), 'a banana', 'Search food takes the words');
     await page.keyboard.press('Escape');
@@ -200,5 +200,5 @@ async function logAndUndo(page, values, source) {
   const shots = fs.readdirSync(SHOTS).filter(f => { try { return fs.readFileSync(path.join(SHOTS, f)).includes(TOKEN); } catch { return false; } });
   assert.deepEqual(dirty.filter(f => !(STUB && f === 'scripts/v12-ai-live-check.cjs')), [], 'no repository file holds the token'); assert.deepEqual(shots, [], 'no screenshot file holds the token');
   console.log('Live results (no token):\n' + JSON.stringify(results, null, 2));
-  console.log(`PASS ${STUB ? 'STUB (the script, not the proxy)' : 'live'} v12 photo AI through ${STUB ? 'an in-browser stand-in' : 'the real proxy'}: setup link stored and wiped, Connected (health + token check), a described and a photo estimate (camera file fallback, Analysing… row, the card by itself), half a serving and back, Done and Undo, 375 × 667 described estimate, made-up token → 401 → AI settings, unreachable proxy → "Photo AI is offline" → Search food with the words, Disconnect with Undo, backup and journal clean, token never in a URL, on screen, in ${files.length} repository files or the shots. Screenshots: ${path.join(SHOTS, 'v12-ai-analysing.png')}, v12-ai-card.png.`);
+  console.log(`PASS ${STUB ? 'STUB (the script, not the proxy)' : 'live'} v12 photo AI through ${STUB ? 'an in-browser stand-in' : 'the real proxy'}: setup link stored and wiped, Connected (health + token check), a described and a photo estimate (camera file fallback, Analysing… row, the card by itself), half a serving and back, Done and Undo, 375 × 667 described estimate, made-up token → 401 → AI settings, unreachable proxy → "Can’t reach your PC" → Search food with the words, Disconnect with Undo, backup and journal clean, token never in a URL, on screen, in ${files.length} repository files or the shots. Screenshots: ${path.join(SHOTS, 'v12-ai-analysing.png')}, v12-ai-card.png.`);
 })().catch(e => { console.error(e); process.exitCode = 1; });

@@ -57,7 +57,7 @@ const product = { code: '9300652010794', product_name: 'Weet-Bix synthetic QA', 
     await tap(page.locator('#builder-ask-go')); await cameraOpen();
     await page.locator('#camera12-describe').click(); await page.locator('#describe12').fill('Synthetic soup'); await page.locator('#describe12-go').click();
     await trouble();
-    assert.match(await page.locator('#nutrition12-body').innerText(), /isn’t set up on this phone[\s\S]*Settings/); assert.doesNotMatch(await page.locator('#nutrition12').innerText(), /OpenAI|API key/);
+    assert.match(await page.locator('#nutrition12-body').innerText(), /Pair this phone first[\s\S]*Photo AI isn’t set up on this phone[\s\S]*Settings/); assert.doesNotMatch(await page.locator('#nutrition12').innerText(), /OpenAI|API key/);
     for (const id of ['n12-search', 'n12-describe', 'n12-setup', 'n12-retry']) assert.equal(await page.locator('#' + id).isVisible(), true, id);
     assert.deepEqual(away, [], 'no request without AI set up');
     await page.locator('#n12-discard').click(); await closed(); await page.locator('#builder-sheet').waitFor({ state: 'visible' });

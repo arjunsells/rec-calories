@@ -10,7 +10,7 @@ const { serve, launch, watch, saved, IPHONE, NOON, root } = require('./harness.c
 const scan = require('../scan9.js');
 const TOKEN = 'synthetic-token-qa', APP = 'http://127.0.0.1:8096', PROXY = 'http://127.0.0.1:8095';
 const MEAL = { name: 'Synthetic burrito bowl', kcal: 640, protein: 42, carbs: 70, fat: 18, items: [{ name: 'Rice', portion: '200 g', kcal: 260, protein: 5, carbs: 57, fat: 1 }, { name: 'Chicken', portion: '150 g', kcal: 380, protein: 37, carbs: 13, fat: 17 }], confidence: 0.7 };
-const OFFLINE = 'Photo AI is offline - your PC needs to be on. Search or describe it instead';
+const OFFLINE = 'Can’t reach your PC — check it’s on and Tailscale is on on this phone. Search or describe it instead';
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const until = async (test, what, ms = 30000) => { const end = Date.now() + ms; while (!test()) { if (Date.now() > end) throw Error('timed out waiting for ' + what); await wait(20); } };
@@ -166,7 +166,9 @@ function jpegSize(dataURL) {
     await page.waitForFunction(() => document.getElementById('camera12-video').videoWidth > 0);
     await tap(page.locator('#camera12-shutter')); await trouble();
     let words = await gentle();
-    assert.match(words, new RegExp(esc(OFFLINE))); assert.match(words, /AI isn’t set up on this phone yet\. Settings › AI estimates connects it\./);
+    assert.match(words, /Pair this phone first/); assert.match(words, /Photo AI isn’t set up on this phone yet\. Open Settings › AI estimates and paste your CHAD setup link\./);
+    assert.doesNotMatch(words, /Photo AI offline|Can’t reach your PC/);
+    assert.equal(await page.locator('#nutrition12 .ch-nut__trouble svg').getAttribute('data-name'), 'info', 'pairing uses the info icon');
     for (const id of ['n12-search', 'n12-describe', 'n12-setup', 'n12-retry', 'n12-discard']) assert.equal(await page.locator('#' + id).isVisible(), true, id);
     assert.match(await page.locator('#nutrition12 .ch-nut__photo img').getAttribute('src'), /^data:image\/jpeg;base64,/, 'the photo stays, as a JPEG');
     // Describe this photo: the words go with it (and still nothing is sent).
@@ -189,7 +191,7 @@ function jpegSize(dataURL) {
     await tap(page.locator('#builder-sheet [data-close=builder-sheet]')); await page.locator('#builder-sheet').waitFor({ state: 'hidden' });
     // v11 never kept a photo; v12 keeps it on this device (never in the journal) until it is logged or discarded.
     const kept = page.locator('#recent12 .ch-food.is-draft.is-error');
-    assert.equal(await kept.count(), 1); assert.match(await kept.innerText(), /Photo AI offline · tap to retry/); assert.equal(await kept.locator('img').count(), 1, 'with its photo');
+    assert.equal(await kept.count(), 1); assert.match(await kept.innerText(), /Pair this phone · tap/); assert.doesNotMatch(await kept.innerText(), /Photo AI offline/); assert.equal(await kept.locator('img').count(), 1, 'with its photo');
     // A barcode from the camera: the shutter types the digits.
     await camera(); await tap(page.locator('[data-mode12=barcode]'));
     assert.equal(await page.locator('#camera12-title').textContent(), 'Scan barcode'); assert.equal(await page.locator('#camera12-shutter').getAttribute('aria-label'), 'Type the barcode digits');
@@ -258,6 +260,7 @@ function jpegSize(dataURL) {
     await page.waitForFunction(() => document.getElementById('ai-status-title').textContent === 'Set up again'); assert.match(await page.locator('#ai-dot').getAttribute('class'), /is-bad/);
     // Paste the setup link (the installed app has its own storage): saved, and the field is emptied at once.
     await page.evaluate(() => { localStorage.removeItem('chad.aiProxyUrl'); localStorage.removeItem('chad.aiProxyToken'); }); await page.goto(APP + '/'); await advanced();
+    assert.equal(await page.locator('#ai-status-text').innerText(), 'Paste your setup link here. On iPhone, paste it inside the CHAD app (not Safari).');
     assert.equal(await page.locator('#ai-link').evaluate(e => getComputedStyle(e).webkitTextSecurity), 'disc', 'the pasted link is masked');
     await page.locator('#ai-link').fill(link); await page.locator('#ai-link').press('Enter');
     assert.deepEqual(await keys(), [PROXY + '/', TOKEN]); assert.equal(await page.locator('#ai-link').inputValue(), '', 'the field never keeps the token'); assert.match(await toastText(), /AI connected/);

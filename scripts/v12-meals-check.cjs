@@ -235,7 +235,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     await tap(page.locator('#add-food')); await camera();
     await tap(page.locator('#camera12-describe')); await page.locator('#describe12').fill('Synthetic lasagne'); await tap(page.locator('#describe12-go'));
     await card('error');
-    assert.match(await page.locator('#nutrition12-body').textContent(), /Photo AI is offline[\s\S]*isn’t set up on this phone[\s\S]*Settings/);
+    assert.match(await page.locator('#nutrition12-body').textContent(), /Pair this phone first[\s\S]*Photo AI isn’t set up on this phone[\s\S]*Settings › AI estimates/);
     assert.equal(await page.locator('#n12-setup').isVisible(), true, 'AI settings, one tap away'); assert.equal(asked.length, sent, 'nothing sent without a token');
     await tap(page.locator('#n12-search')); await page.locator('#builder-sheet').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#builder-title').innerText(), 'Add food'); assert.equal(await page.locator('#builder-search').inputValue(), 'Synthetic lasagne', 'the words go along');

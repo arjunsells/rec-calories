@@ -17,7 +17,7 @@
   const show = (k, v) => k === 'kcal' ? String(Math.round(v)) : String(round(v));
   // The proxy contract has one text field: a label photo says so there, and so do a description and a correction.
   const LABEL_HINT = 'This photo is a nutrition label. Read the nutrition label: use its serving size and the per-serving values printed on it.';
-  const OFFLINE = 'Photo AI is offline - your PC needs to be on. Search or describe it instead';
+  const OFFLINE = 'Can’t reach your PC — check it’s on and Tailscale is on on this phone. Search or describe it instead';
   const OIL = { name: 'Oil or sauce, 15 mL', grams: 13.6, kcal: 120, protein: 0, carbs: 0, fat: 13.6 };
   const SOURCE = { photo: 'Photo', label: 'Food label', text: 'Described', barcode: 'Barcode', manual: 'Typed in', favourite: 'Saved food', search: 'Food search', plan: 'Meal plan', custom: 'Custom meal', repeat: 'Logged again', addon: 'Add-on' };
   const uid = () => 'scan-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
@@ -220,7 +220,7 @@
 
   /* ---- estimates ---- */
   const TROUBLE = {
-    off: [OFFLINE, 'AI isn’t set up on this phone yet. Settings › AI estimates connects it.', 'setup'],
+    off: ['Pair this phone first', 'Photo AI isn’t set up on this phone yet. Open Settings › AI estimates and paste your CHAD setup link.', 'setup'],
     network: [OFFLINE, 'Your photo is safe here. Retry when the PC is on.', 'retry'],
     timeout: [OFFLINE, 'It took too long to answer. Your photo is safe here.', 'retry'],
     auth: ['Photo AI didn’t accept this phone', 'Paste a fresh setup link in Settings, or search or describe it instead.', 'setup'],
@@ -383,7 +383,7 @@
     }
     if (d.status === 'error') {
       const box = el('div', 'ch-nut__trouble'); box.setAttribute('role', 'alert');
-      box.innerHTML = icon(d.errorKind === 'off' || d.errorKind === 'network' || d.errorKind === 'timeout' ? 'wifi-off' : 'info', 28);
+      box.innerHTML = icon(d.errorKind === 'network' || d.errorKind === 'timeout' ? 'wifi-off' : 'info', 28);
       box.append(el('strong', '', d.error), el('p', '', d.errorText || ''));
       body.append(box);
       const fix = (TROUBLE[d.errorKind] || [])[2];
@@ -663,7 +663,7 @@
         b.setAttribute('aria-label', 'Analysing a ' + (d.source === 'text' ? 'description' : 'photo') + '. Open');
       } else if (d.status === 'error') {
         top.append(el('b', 'ch-food__name', d.item?.name || 'Not analysed'), el('small', 'ch-food__time', timeOf(d.at)));
-        words.append(top, el('small', 'ch-food__note is-alert', d.errorKind === 'off' || d.errorKind === 'network' || d.errorKind === 'timeout' ? 'Photo AI offline · tap to retry' : (d.error || 'Needs a retry') + ' · tap'));
+        words.append(top, el('small', 'ch-food__note is-alert', d.errorKind === 'off' ? 'Pair this phone · tap' : d.errorKind === 'network' || d.errorKind === 'timeout' ? 'Photo AI offline · tap to retry' : (d.error || 'Needs a retry') + ' · tap'));
         b.setAttribute('aria-label', (d.error || 'Not analysed') + '. Open to retry, search or describe it');
       } else {
         const t = total(d);

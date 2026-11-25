@@ -4,7 +4,7 @@
 // Screens are drawn by quest12.js, Gym mode by gym11.js, the add-food sheet by builder11.js; navigation, sheets and
 // toasts live in ux12.js.
 (() => {
-  const KEY = 'rec-calories-v1', SHELL = 'rec-calories-shell-v12', BACKUP = 'rec-calories-v11-backup', APP_VERSION = 12;
+  const KEY = 'rec-calories-v1', SHELL = 'rec-calories-shell-v12b', BACKUP = 'rec-calories-v11-backup', APP_VERSION = 12;
   const $ = id => document.getElementById(id);
   const M = () => window.CHADMotion;
   const oneDecimal = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }), integer = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
@@ -430,7 +430,7 @@
     const r = aiRoute(), where = r.custom ? new URL(r.proxy).host : 'your CHAD proxy';
     const status = r.mode !== 'proxy' ? r.mode : aiCheck === 'checking' ? 'checking' : aiRejected ? 'rejected' : aiCheck || 'set';
     const [title, text, dot] = {
-      none: ['Not set up', 'Paste the setup link from your CHAD proxy to turn on photo estimates.', ''],
+      none: ['Not set up', 'Paste your setup link here. On iPhone, paste it inside the CHAD app (not Safari).', ''],
       key: ['Own key', 'Photo estimates go straight to OpenAI with your key.', 'set'],
       set: ['Set up', `Photo estimates go through ${where}.`, 'set'],
       checking: ['Checking…', `Looking for ${where}.`, 'checking'],
