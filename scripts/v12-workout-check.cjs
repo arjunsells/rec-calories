@@ -1,7 +1,9 @@
-// Gym mode end to end, on a Monday at 16:20 in Darwin (Push): Start from Today's one big button -> every set of every
-// exercise -> the rest timer (+15 s, Skip, and true time through a locked screen) -> Finish -> workout history and records -> Undo and
-// Redo of a set, the finish and the start. Also: the wake lock is held while Gym mode is open and taken again when the
-// page comes back; a haptic tick on each set; a closed app resumes mid-workout (offline, from the shell); 56 px targets
+// Gym mode end to end in v12, on a Monday at 16:20 in Darwin (Push): Start from the session card on Today (the thing to
+// do now, under the water card) -> every set of every exercise -> the rest timer (+15 s, Skip, and true time through a
+// locked screen) -> Finish (no XP) -> dinner on top of Today -> Progress (v12 lists five workouts, then "Show N more",
+// and the six most recent records, then "Show all N": the new workout and its records come first) -> Undo and Redo of
+// a set, the finish and the start. Also: the wake lock is held while Gym mode is open and taken again when the page
+// comes back; a haptic tick on each set; a closed app resumes mid-workout (offline, from the shell); 56 px targets
 // (72 px for the main ones) within thumb reach. Synthetic data in a disposable profile only.
 const assert = require('node:assert/strict');
 const { serve, launch, watch, saved, IPHONE } = require('./harness.cjs');
@@ -28,12 +30,17 @@ const MONDAY = '2026-11-23', START = '2026-11-23T16:20:00+09:30';
     });
     await page.clock.install({ time: new Date(START) });
     await page.goto('http://127.0.0.1:8103/');
-    // Last Monday's Push (finished) and an older v9 top set: what "last time" and the records come from.
+    // Last Monday's Push (finished) and an older v9 top set: what "last time" and the records come from. The rest of last
+    // week (no exercise in common with Push): Tuesday's Pull with its sets (seven more records), and Thursday to Saturday
+    // marked done; so Progress has more than v12 shows at first (five workouts, six records).
     await page.evaluate(() => {
       const s = { schemaVersion: 5, journeyStartDate: '2026-10-08', target: 1900, proteinGoal: 220, carbsGoal: 150, fatGoal: 45, entries: [], questsV5: {} };
-      const t = (x, kg, reps, n) => Array.from({ length: n }, (_, i) => ({ x, kg, reps, at: Date.parse('2026-11-16T16:10:00+09:30') + (i + x.length) * 60000 }));
+      const t = (x, kg, reps, n, day = '2026-11-16') => Array.from({ length: n }, (_, i) => ({ x, kg, reps, at: Date.parse(day + 'T16:10:00+09:30') + (i + x.length) * 60000 }));
       s.questsV5['2026-11-09'] = { topSets: { 'Incline DB press': { kg: 20, reps: 10 } } };
       s.questsV5['2026-11-16'] = { training: true, workout: { id: 'push', start: Date.parse('2026-11-16T16:02:00+09:30'), end: Date.parse('2026-11-16T16:58:00+09:30'), sets: [...t('Incline DB press', 22.5, 8, 3), ...t('Machine chest press', 50, 10, 3), ...t('Low-to-high cable fly', 12.5, 12, 3), ...t('Seated DB shoulder press', 20, 8, 2), ...t('Cable side raise', 7.5, 15, 4), ...t('Overhead cable triceps ext', 20, 12, 3)] } };
+      const tue = '2026-11-17';
+      s.questsV5[tue] = { training: true, workout: { id: 'pull', start: Date.parse(tue + 'T16:02:00+09:30'), end: Date.parse(tue + 'T16:57:00+09:30'), sets: [...t('Pull-ups', 0, 8, 3, tue), ...t('Chest-supported row', 50, 10, 3, tue), ...t('Single-arm pulldown', 30, 12, 2, tue), ...t('Rear delt fly', 8, 15, 3, tue), ...t('DB shrugs', 32.5, 12, 3, tue), ...t('Incline DB curl', 12.5, 10, 3, tue), ...t('Hanging leg raise', 0, 12, 3, tue)] } };
+      for (const key of ['2026-11-19', '2026-11-20', '2026-11-21']) s.questsV5[key] = { training: true };
       localStorage.setItem('rec-calories-v1', JSON.stringify(s));
     });
     await page.reload(); await page.evaluate(() => navigator.serviceWorker.ready);
@@ -47,9 +54,11 @@ const MONDAY = '2026-11-23', START = '2026-11-23T16:20:00+09:30';
     const toast = () => page.locator('#undo-toast button');
     const restText = () => page.locator('#gym-rest-time').innerText();
 
-    // 1. Today at 16:20 is the gym window: the session is the one thing to do, with one big Start.
+    // 1. Today at 16:20 is the gym window: the session is the one thing to do, with one big Start (water, not yet drunk,
+    // has its own card above it and is never the thing to do now in v12).
     const hero = page.locator('#now');
     assert.equal(await hero.getAttribute('data-now'), 'session'); assert.match(await hero.innerText(), /Push[\s\S]*6 exercises · 60 min · then 2 km Zone 2/); assert.match(await hero.innerText(), /Now · 4–6 pm/i);
+    assert.equal(await page.locator('#water-slot #water12').count(), 1, 'the water card'); assert.equal(await page.locator('#now .water-row').count(), 0);
     const startBox = await page.locator('#now [data-gym-start]').boundingBox(); assert.ok(startBox.height >= 72, 'Start is a big button: ' + startBox.height);
     assert.equal(await page.locator('#now .meal-pick').count(), 0, 'no meal competes with the session at 4 pm');
     // Start, Undo (gone again), Redo (in progress: Resume), Resume.
@@ -142,12 +151,23 @@ const MONDAY = '2026-11-23', START = '2026-11-23T16:20:00+09:30';
     assert.equal(await page.locator('#now').getAttribute('data-meal-slot'), 'D', 'the session done: dinner is the thing to do'); assert.equal(await page.locator('[data-gym-start]').count(), 0, 'no Start left anywhere');
     await tap(page.locator('#later-toggle')); assert.match(await page.locator('#later-more .ch-later__session').innerText(), new RegExp('Push[\\s\\S]*Done · ' + expected.minutes + ' min'));
 
-    // 8. History and records.
+    // 8. History and records. v12 lists five workouts (newest first), then "Show N more"; and the six most recent records,
+    // then "Show all N". This workout and its records are on top.
     await tap(page.locator('[data-view=history]'));
     const row = page.locator(`#workouts [data-workout="${MONDAY}"]`);
     assert.match(await row.innerText(), /Mon 23 Nov[\s\S]*Push/); assert.match(await row.innerText(), new RegExp(Math.round(expected.volume).toLocaleString('en-AU') + ' kg · ' + expected.minutes + ' min'));
-    assert.match(await row.innerText(), /PR/); assert.equal(await page.locator('#workouts .workout-row').count(), 2, 'this week and last week');
+    assert.match(await row.innerText(), /PR/); assert.match(await page.locator('#workout-count').innerText(), /^6 sessions$/i);
+    const shownWorkouts = () => page.locator('#workouts [data-workout]').evaluateAll(n => n.map(b => b.dataset.workout));
+    assert.deepEqual(await shownWorkouts(), [MONDAY, '2026-11-21', '2026-11-20', '2026-11-19', '2026-11-17'], 'five, newest first');
+    assert.equal(await page.locator('#workouts .entry--more button').innerText(), 'Show 1 more'); await tap(page.locator('#workouts .entry--more button'));
+    assert.deepEqual((await shownWorkouts()).filter(k => k === MONDAY || k === '2026-11-16'), [MONDAY, '2026-11-16'], 'this week and last week');
+    assert.equal(await page.locator('#workouts .workout-row').count(), 6); assert.equal(await page.locator('#workouts .entry--more').count(), 0);
+    const shownRecords = () => page.locator('#records [data-record]').evaluateAll(n => n.map(r => r.dataset.record));
+    assert.deepEqual(await shownRecords(), ['Incline DB press', 'Machine chest press', 'Low-to-high cable fly', 'Seated DB shoulder press', 'Cable side raise', 'Overhead cable triceps ext'], 'the six most recent records: today\'s');
     assert.match(await page.locator('#records [data-record="Incline DB press"]').innerText(), /22\.5 kg × 9[\s\S]*e1RM 29\.3/);
+    assert.match(await page.locator('#pr-count').innerText(), /^13 exercises$/i); assert.equal(await page.locator('#records-toggle').innerText(), 'Show all 13');
+    await tap(page.locator('#records-toggle')); assert.equal((await shownRecords()).length, 13); assert.match(await page.locator('#records [data-record="Pull-ups"]').innerText(), /8 reps[\s\S]*bodyweight/i);
+    assert.equal(await page.locator('#records-toggle').getAttribute('aria-expanded'), 'true'); assert.equal(await page.locator('#records-toggle').innerText(), 'Show fewer');
     await tap(row); assert.match(await page.locator('#detail-sheet').innerText(), /Incline DB press[\s\S]*22\.5×9/); await page.keyboard.press('Escape');
 
     // 9. Undo the finish (the toast is still up): the workout is open again, history and records follow. Redo.
@@ -158,7 +178,7 @@ const MONDAY = '2026-11-23', START = '2026-11-23T16:20:00+09:30';
     await tap(toast()); assert.ok((await workout()).end, 'Redo'); assert.equal((await saved(page)).questsV5[MONDAY].training, true);
     await tap(page.locator('[data-view=history]')); assert.equal(await page.locator(`#workouts [data-workout="${MONDAY}"]`).count(), 1);
     assert.deepEqual(errors, []);
-    console.log('PASS Gym mode: Start from the 4 pm card on Today in 1 tap (Undo/Redo/Resume), one exercise at a time with prescription, "Last 22.5 kg × 8 → try 9 reps, then 25 kg" and pre-filled kg/reps, ±2.5 kg; a set = 1 tap with haptic, dot and toast; rest 2:00 with +15 s, Skip, true time through a locked screen and a success buzz; dot tap removes a set, Undo restores it in place; wake lock held, dropped when hidden, taken again, released on minimise/finish; resumed after a reload offline with the rest timer running; all 18 sets, auto-advance, gold Finish; finish screen (no XP) with volume, minutes, sets, PRs, next cardio, then dinner on top; history row (date, session, volume, duration, PR) and records with est 1RM; Undo/Redo of the finish; 56 px targets, 72 px main buttons in thumb reach; zero errors.');
+    console.log('PASS v12 Gym mode: Start from the 4 pm session card on Today (the thing to do now, water on its own card) in 1 tap (Undo/Redo/Resume), one exercise at a time with prescription, "Last 22.5 kg × 8 → try 9 reps, then 25 kg" and pre-filled kg/reps, ±2.5 kg; a set = 1 tap with haptic, dot and toast; rest 2:00 with +15 s, Skip, true time through a locked screen and a success buzz; dot tap removes a set, Undo restores it in place; wake lock held, dropped when hidden, taken again, released on minimise/finish; resumed after a reload offline with the rest timer running; all 18 sets, auto-advance, gold Finish; finish screen (no XP) with volume, minutes, sets, PRs, next cardio, then dinner on top; Progress: the new workout first of five (date, session, volume, duration, PR) then "Show 1 more" with last week\'s, its six records first (est 1RM) then "Show all 13"; Undo/Redo of the finish; 56 px targets, 72 px main buttons in thumb reach; zero errors.');
     await context.close();
   } finally { await browser.close(); server.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

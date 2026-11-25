@@ -1,5 +1,5 @@
 'use strict';
-// CHAD v11 · scoring and calendar (the v5-v10 rules, kept for the data and never shown: no score, grade, level or XP
+// CHAD v12 · scoring and calendar (the v5-v10 rules, kept for the data and never shown: no score, grade, level or XP
 // on screen) and the screens: Today, Gym, Progress and Settings.
 (() => {
   const $ = id => document.getElementById(id);
@@ -51,7 +51,7 @@
   // 0..1: how much of a day's session is done.
   function sessionProgress(state,key) {const d=state.questsV5?.[key]||{};if(CHADTrain.finished(d))return 1;const p=CHADTrain.progress(state,key);return p.total?p.done/p.total:Object.values(d.exercises||{}).filter(Boolean).length/Math.max(1,sessionLength(key));}
 
-  /* ---- screens. Every change goes through api.change() (app11.js): the journal is written first, then the toast
+  /* ---- screens. Every change goes through api.change() (app12.js): the journal is written first, then the toast
      offers Undo, and Undo offers Redo. Each direction touches only its own fields, so newer unrelated edits survive. ---- */
   const TIER = { S: 'Strict', M: 'Medium', F: 'Free', C: 'Custom' }, TIER_CLASS = { S: 'strict', M: 'medium', F: 'free' };
   const SLOT_ICON = { L: 'fork', D: 'moon', P: 'bolt' };
@@ -60,7 +60,7 @@
   const STREAK_MARKS = new Set([3, 30, 50, 100, 150, 200, 250, 300, 365]);
   // The snack is offered as the thing to do now only while protein is this far short (it is optional).
   const SNACK_GAP = 20;
-  let api, current, settingsReady = false, chartRange = 7, themeShown, pinned = null, pinTimer, laterOpen = false, lastTap = { id: null, t: 0 }, settleUntil = 0, workoutsShown = 8, lastNow = null;
+  let api, current, settingsReady = false, chartRange = 7, themeShown, pinned = null, pinTimer, laterOpen = false, lastTap = { id: null, t: 0 }, settleUntil = 0, workoutsShown = 5, lastNow = null, recordsAll = false;
   const M = () => window.CHADMotion;
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
   const button = (cls, fn, text) => { const b = el('button', cls, text); b.type = 'button'; if (fn) b.onclick = fn; return b; };
@@ -229,19 +229,19 @@
     const key = activeKey(), today = dayKey(), d = daily(state, key), s = stats(state, today), water = waterStreak(state, today);
     $('home-streak').innerHTML = icon('flame', 18) + '<b class="ch-px">' + s.streak + '</b>'; $('home-streak').setAttribute('aria-label', s.streak + ' day streak'); $('home-streak').setAttribute('role', 'img');
     $('streak-count').textContent = s.streak;
-    $('streak').replaceChildren(el('span', '', s.streak === 1 ? 'day' : 'days'), el('span', '', s.since ? 'since ' + dayMonth(s.since) : 'Day 1 ' + dayMonth(RECGame.journey(state, today).start)));
+    $('streak').textContent = s.since ? 'Since ' + dayMonth(s.since) : 'Day 1 ' + dayMonth(RECGame.journey(state, today).start);
     $('water-streak').textContent = water;
-    $('water-streak-s').replaceChildren(el('span', '', water === 1 ? 'day on goal' : 'days on goal'), el('span', '', 'best ' + Math.max(water, s.maxW)));
+    $('water-streak-s').textContent = 'Best ' + Math.max(water, s.maxW) + (Math.max(water, s.maxW) === 1 ? ' day' : ' days');
     if (key === today) milestone(s.streak, today);
     renderToday(state, key, d);
-    // Only the tab on screen is rebuilt; app11.js renders again when the tab changes.
+    // Only the tab on screen is rebuilt; app12.js renders again when the tab changes.
     if (!$('training').hidden) renderTraining(state, key);
     if (!$('history').hidden) { renderWorkouts(state); renderRecords(state); renderCharts(state, key); }
     renderSettings(state, key, d);
     window.CHADGym?.render(state, { ...api, chime, update });
   }
 
-  /* ---- Today: the line (app11.js), then ONE thing to do now, big, filling the first screen. Darwin time: water in
+  /* ---- Today: the line (app12.js), then ONE thing to do now, big, filling the first screen. Darwin time: water in
      the morning (lunch once it is in), lunch until 4 pm, the session 4-6:30 pm, then dinner, the snack while protein is
      short, water, the wrap-up. Everything else is one scroll down: Custom, Later today (water one tap), Quick log. ---- */
   const done = d => CHADTrain.finished(d);
@@ -257,11 +257,12 @@
       session: () => sessionPending(d, s),
       wrap: () => WRAP.some(([f]) => !d[f])
     };
+    // v12: water has its own card above this one (one tap, all day), so it is never the thing to do now.
     const order = key !== dayKey() ? ['lunch', 'dinner', 'snack', 'wrap'] : {
-      morning: ['water', 'lunch', 'session', 'dinner'],
-      midday: ['lunch', 'water', 'session', 'dinner'],
-      gym: ['session', 'dinner', 'snack', 'water', 'wrap'],
-      evening: ['dinner', 'snack', 'water', 'wrap']
+      morning: ['lunch', 'session', 'dinner'],
+      midday: ['lunch', 'session', 'dinner'],
+      gym: ['session', 'dinner', 'snack', 'wrap'],
+      evening: ['dinner', 'snack', 'wrap']
     }[window.CHADUX.timeBlock()];
     const id = order.find(x => pending[x]());
     if (!id) return { id: 'done' };
@@ -274,6 +275,7 @@
     box.className = 'ch-now ch-now--' + now.id + (arriving ? ' is-arriving' : '');
     box.dataset.now = now.id; if (now.slot) box.dataset.mealSlot = now.slot.id; else delete box.dataset.mealSlot;
     box.replaceChildren(...(now.id === 'meal' ? nowMeal(state, now.slot, d, key) : now.id === 'water' ? nowWater(d, key) : now.id === 'session' ? nowSession(state, key, d, s) : now.id === 'wrap' ? nowWrap(state, key, d) : nowDone(state, key, d)));
+    $('water-slot')?.replaceChildren(waterCard(d, key));
     const after = [];
     if (now.id === 'meal') after.push(otherRow(state, now.slot, d, key));
     after.push(laterBlock(state, key, d, s, now), quickBlock(state, key));
@@ -383,6 +385,29 @@
     return add;
   }
   function nowWater(d, key) { return [head('Now', 'Water'), waterButton(d, key, true)]; }
+  // v12: the water card on Today. The whole card is one button: +500 mL a tap (Undo in the toast), a pip per bottle.
+  function waterCard(d, key) {
+    const amount = d.water || 0, target = waterGoal(key), full = amount >= target, most = target + 2, left = Math.max(0, target - amount), streak = waterStreak(current, dayKey());
+    const card = button('water-row ch-watercard' + (full ? ' is-full' : ''), e => {
+      if (slip('water-' + key, e) || settling(e)) return;
+      if (amount >= most) { M()?.haptic('warn'); api.message('That is a lot of water for one day. Set the exact amount in Settings.'); return; }
+      const next = Math.round(Math.min(most, amount + .5) * 10) / 10;
+      M()?.mark('.ch-watercard', 'just-on');
+      update({ water: next }, { key, positive: true, label: !full && next >= target ? 'Water goal hit' : '500 mL water' });
+    });
+    card.id = 'water12'; card.dataset.water = '';
+    card.setAttribute('aria-label', 'Add 500 mL water. ' + fmt(amount) + ' of ' + fmt(target) + ' L' + (full ? ', goal hit' : ', ' + fmt(left) + ' L to go') + (streak ? '. ' + streak + ' day water streak' : ''));
+    const drop = el('span', 'ch-watercard__icon'); drop.innerHTML = icon('drop', 22, { weight: 2.2 });
+    const words = el('span', 'ch-watercard__words'), value = el('b', 'ch-watercard__val'); value.id = 'water12-value';
+    value.append(fmt(amount), el('small', '', ' / ' + fmt(target) + ' L'));
+    words.append(el('span', 'ch-watercard__k', 'Water'), value);
+    const plus = el('span', 'ch-watercard__plus'); plus.innerHTML = icon('plus', 20, { weight: 2.8 });
+    const pips = el('span', 'ch-watercard__pips'); pips.setAttribute('aria-hidden', 'true');
+    for (let i = 0; i < Math.ceil(target / .5); i++) { const p = el('i', amount >= (i + 1) * .5 - 1e-9 ? 'is-on' : amount > i * .5 ? 'is-half' : ''); pips.append(p); }
+    const note = el('span', 'ch-watercard__note', full ? 'Goal hit' + (amount > target ? ' · +' + fmt(amount - target) + ' L' : '') : '+500 mL a tap · ' + fmt(left) + ' L to go');
+    card.append(drop, words, plus, pips, note);
+    return card;
+  }
   // Today's session. Gym days: what it is and one big Start (Resume mid-workout; a summary once done). Wednesday: Muay
   // Thai at 6:30 with one Done. Sunday: rest, and the walk as one Done.
   const sessionIcon = s => s.kind === 'class' ? 'glove' : s.kind === 'rest' ? 'walk' : 'dumbbell';
@@ -448,7 +473,6 @@
   function laterBlock(state, key, d, s, now) {
     const box = el('section', 'ch-later'), row = el('div', 'ch-later__row'), isToday = key === dayKey();
     box.id = 'later'; box.setAttribute('aria-label', isToday ? 'Later today' : 'Rest of the day');
-    if (now.id !== 'water') row.append(waterButton(d, key, false));
     const items = laterItems(state, key, d, s, now);
     const toggle = button('ch-later__toggle', e => { if (slip('later-' + key, e)) return; laterOpen = !laterOpen; M()?.haptic('tap'); api.refresh(); if (laterOpen) M()?.pulse($('later-more'), 'is-opening', 420); });
     toggle.id = 'later-toggle'; toggle.setAttribute('aria-expanded', String(laterOpen)); toggle.setAttribute('aria-controls', 'later-more');
@@ -655,10 +679,16 @@
     const list = $('records'), all = CHADTrain.records(state); list.replaceChildren();
     $('pr-count').textContent = all.length ? all.length + (all.length === 1 ? ' exercise' : ' exercises') : '';
     if (!all.length) return empty(list, 'trophy', 'No records yet', 'Your best set for each exercise shows here.');
-    for (const r of all) {
+    // v12: the six most recent records; the rest one tap away.
+    const shown = recordsAll ? all : all.slice().sort((a, b) => String(b.key || '').localeCompare(String(a.key || ''))).slice(0, 6);
+    for (const r of shown) {
       const li = el('li', 'ch-cell record-row'), value = el('span', 'ch-cell__status');
       value.append(el('b', '', (r.kg > 0 ? CHADTrain.kgText(r.kg) + ' kg × ' : '') + r.reps + (r.kg > 0 ? '' : ' reps')), el('small', '', r.kg > 0 ? 'e1RM ' + CHADTrain.kgText(r.e1rm) : 'bodyweight'));
       li.dataset.record = r.name; li.append(el('span', 'ch-cell__title', r.name), value); list.append(li);
+    }
+    if (all.length > 6) {
+      const li = el('li', 'entry entry--more'), more = button('ch-link ch-link--center', () => { recordsAll = !recordsAll; M()?.haptic('tap'); renderRecords(current); }, recordsAll ? 'Show fewer' : 'Show all ' + all.length);
+      more.id = 'records-toggle'; more.setAttribute('aria-expanded', String(recordsAll)); li.append(more); list.append(li);
     }
   }
   function chartCard(title, kpi, points, color, kind) {
@@ -677,8 +707,27 @@
     return card;
   }
   const mean = (values, digits = 0) => { const v = values.filter(x => typeof x === 'number' && x > 0); return v.length ? fmt(Math.round(v.reduce((s, x) => s + x, 0) / v.length * 10 ** digits) / 10 ** digits) : null; };
+  // v12: daily macro averages over the days with food logged in the range (an empty day is not a 0 g day), against
+  // the goals of the day in view.
+  function macroAverages(state, data, key) {
+    const logged = data.filter(x => x.d.totals[0] > 0), g = goals(state, key), card = el('section', 'ch-card ch-avg');
+    card.id = 'macro-averages12';
+    const head = el('div', 'chart-card__head'); head.append(el('h2', '', 'Daily average'), el('span', '', logged.length ? logged.length + (logged.length === 1 ? ' day logged' : ' days logged') : 'No food logged'));
+    const row = el('div', 'ch-avg__row');
+    [['protein', 'Protein', 1, g.proteinGoal], ['carbs', 'Carbs', 2, g.carbsGoal], ['fat', 'Fat', 3, g.fatGoal]].forEach(([k, name, i, goal]) => {
+      const avg = logged.length ? logged.reduce((s, x) => s + x.d.totals[i], 0) / logged.length : 0, item = el('div', 'ch-avg__item ch-avg__item--' + k);
+      const value = el('b', ''); value.append(whole(avg), el('small', '', ' g'));
+      const bar = el('i', 'ch-avg__bar'); bar.style.setProperty('--p', Math.max(0, Math.min(1, avg / goal)).toFixed(3));
+      item.append(value, el('span', '', name + ' · goal ' + whole(goal)), bar);
+      item.setAttribute('role', 'img'); item.setAttribute('aria-label', name + ': ' + whole(avg) + ' g a day on average, goal ' + whole(goal) + ' g');
+      row.append(item);
+    });
+    const kcal = logged.length ? logged.reduce((s, x) => s + x.d.totals[0], 0) / logged.length : 0;
+    card.append(head, row, el('p', 'ch-avg__kcal', logged.length ? whole(kcal) + ' kcal a day · goal ' + whole(g.target) : 'Log food to see your averages.'));
+    return card;
+  }
   function renderCharts(state, key) {
-    const box = $('charts'); box.replaceChildren();
+    const box = $('charts'), more = $('charts-more'); box.replaceChildren(); more?.replaceChildren();
     const controls = el('div', 'chart-controls ch-seg'); controls.setAttribute('role', 'group'); controls.setAttribute('aria-label', 'Chart range'); controls.style.setProperty('--n', 2); controls.style.setProperty('--i', chartRange === 7 ? 0 : 1);
     [7, 30].forEach(n => { const b = button('', () => { if (chartRange === n) return; chartRange = n; M()?.haptic('tap'); renderCharts(current, activeKey()); }, n + ' days'); b.setAttribute('aria-pressed', String(chartRange === n)); controls.append(b); });
     box.append(controls);
@@ -687,18 +736,20 @@
     const weight = data.map(({ key: k }) => { const values = Array.from({ length: 7 }, (_, i) => daily(state, shift(k, -i)).weight).filter(v => typeof v === 'number' && v > 0); return { key: k, value: values.length ? values.reduce((s, v) => s + v, 0) / values.length : null }; });
     box.append(
       chartCard('Calories', kcal && 'avg ' + kcal + ' kcal', data.map(({ key: k, d }) => ({ key: k, value: d.totals[0], goal: goals(state, k).target })), '--ch-kcal', 'bar'),
+      macroAverages(state, data, key));
+    (more || box).append(
       chartCard('Protein', protein && 'avg ' + protein + ' g', data.map(({ key: k, d }) => ({ key: k, value: d.totals[1] })), '--ch-protein', 'line'),
-      chartCard('Weight', '7-day average, kg', weight, '--ch-weight', 'weight'),
-      chartCard('Water', litres && 'avg ' + litres + ' L', data.map(({ key: k, d }) => ({ key: k, value: d.water || 0, goal: waterGoal(k) })), '--ch-water', 'bar'));
+      chartCard('Water', litres && 'avg ' + litres + ' L', data.map(({ key: k, d }) => ({ key: k, value: d.water || 0, goal: waterGoal(k) })), '--ch-water', 'bar'),
+      ...(weight.some(p => p.value) ? [chartCard('Weight', '7-day average, kg', weight, '--ch-weight', 'weight')] : []));
     paintCharts();
   }
-  function paintCharts(animate) { if ($('history').hidden) return; document.querySelectorAll('#charts .chart-card').forEach(c => c.paint?.(animate)); CHADCharts.redraw(); }
+  function paintCharts(animate) { if ($('history').hidden) return; document.querySelectorAll('#history .chart-card').forEach(c => c.paint?.(animate)); CHADCharts.redraw(); }
 
   /* ---- Settings ---- */
   function applyTheme(value) {
     if (value === 'system') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = value;
     const dark = value === 'dark' || value === 'system' && matchMedia('(prefers-color-scheme:dark)').matches;
-    document.querySelectorAll('meta[name="theme-color"]').forEach(m => m.content = dark ? '#060A14' : '#EEF1F7');
+    document.querySelectorAll('meta[name="theme-color"]').forEach(m => m.content = dark ? '#000000' : '#FFFFFF');
     if (themeShown !== value) { themeShown = value; try { localStorage.setItem('rec-calories-theme', value); } catch { /* only a hint for a flash-free launch */ } }
   }
   function switchRow(id, title, checked, onchange) {

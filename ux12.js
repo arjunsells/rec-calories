@@ -1,7 +1,7 @@
 'use strict';
-// CHAD v11 · navigation (three tabs, Settings behind the gear, swipe and arrow keys between days), sheets (one at a
+// CHAD v12 · navigation (three tabs, Settings behind the gear, swipe and arrow keys between days), sheets (one at a
 // time, never one on top of another), toasts with Undo and Redo, the shared macro builders, and Darwin time of day.
-// The journal lives in app11.js; the screens in quest11.js.
+// The journal lives in app12.js; the screens in quest12.js.
 (() => {
   const $ = id => document.getElementById(id);
   const M = () => window.CHADMotion;
@@ -44,7 +44,7 @@
     if (page && M()) M().pageTurn(page, key > from ? 1 : -1, refresh, gesture); else refresh();
   }
   const navigate = (offset, gesture) => goTo(CHADQuest.shift(dateKey(), offset), gesture);
-  // Darwin time decides what Today puts first. v11: morning (before 11), midday (11 am-4 pm), the gym window
+  // Darwin time decides what Today puts first. v12: morning (before 11), midday (11 am-4 pm), the gym window
   // (4-6:30 pm) and the evening. The meal of the moment follows: lunch until the gym window, then dinner.
   const darwinTime = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Darwin', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' });
   const minutesNow = (date = new Date()) => { const parts = darwinTime.formatToParts(date), get = t => Number(parts.find(p => p.type === t)?.value || 0); return (get('hour') % 24) * 60 + get('minute'); };
@@ -113,6 +113,7 @@
   // The food sheet: Ask AI (a photo and/or words) or a barcode. ctx.add is set when the builder opened it: the answer
   // then goes back into the meal being built, and closing the sheet goes back to the builder (ctx.back).
   function openFood(kind, ctx = null, meal = null) {
+    if (kind !== 'barcode' && window.CHADScan12) return window.CHADScan12.open('food', ctx);
     foodMeal = meal; foodCtx = ctx;
     closeSheets();
     const camera = kind !== 'barcode';
@@ -124,10 +125,11 @@
   function detail(title, nodes) { closeSheets(); $('detail-title').textContent = title; $('detail-content').replaceChildren(...nodes); show($('detail-sheet')); }
 
   const HELP = [
-    ['Today', ['The top line is what is left today: kcal and protein. Tap it for carbs, fat and the food you logged.', 'Under it is the one thing to do now, on Darwin time: water in the morning, lunch until 4 pm, the gym 4–6:30 pm, then dinner. Scroll for Later today (water is one tap there), Custom, and Quick log.']],
-    ['Logging and Undo', ['One tap logs a meal, a bottle of water or a favourite. Tap a logged meal again to remove it. Every change shows Undo for six seconds, and Undo offers Redo.', 'Custom and + Food open one sheet: recent foods first, then favourites, search, Ask AI (photo or words), barcode, or type it in.']],
+    ['Today', ['The big card is the calories left today, with protein, carbs and fat left under it. Tap it to see what you have eaten instead.', 'Water is one tap (+500 mL). Under it is the one thing to do now, on Darwin time: lunch until 4 pm, the gym 4–6:30 pm, then dinner. Recently eaten lists the day’s food: tap one to change it.']],
+    ['Photos', ['The round + opens the camera. Take a photo: it is analysed in the background and lands in Recently eaten. Check it, change servings or ingredients, then Done. Barcode, Food label, Gallery, Search food, Saved and Describe it are on the same screen.', 'Photos stay on this device. If the AI is offline, search or describe the food instead; the photo waits for a retry.']],
+    ['Logging and Undo', ['One tap logs a meal, a bottle of water or a favourite. Tap a logged meal again to remove it. Every change shows Undo for six seconds, and Undo offers Redo.', 'Custom and + Food open the add-food sheet: recent foods first, then favourites, search, Ask AI, barcode, or type it in.']],
     ['Gym', ['Start opens Gym mode: one exercise at a time, kg and reps filled in from last time, one tap logs a set and starts the rest timer. The screen stays awake, it works offline, and a closed app comes back to the same exercise.']],
-    ['Days and streak', ['Swipe left or right to change day (or use the arrow keys); Today brings you back. The streak counts every day from Day 1. Only a day marked as missed (Settings › Selected day) restarts it.']]
+    ['Days and streak', ['Tap a day in the week strip, or swipe left or right (or use the arrow keys); Today brings you back. The streak counts every day from Day 1. Only a day marked as missed (Settings › Selected day) restarts it.']]
   ];
 
   function setup(actions) {
@@ -150,6 +152,8 @@
       collapsed = next; document.querySelectorAll('.ch-datebar').forEach(h => h.classList.toggle('is-scrolled', next));
     };
     addEventListener('scroll', () => { if (!ticking) { ticking = true; (window.requestAnimationFrame || setTimeout)(scrolled); } }, { passive: true });
+    addEventListener('resize', () => tab(tabShown));
+    document.fonts?.ready?.then(() => tab(tabShown));
     // A bottom sheet with a focused field lifts above the software keyboard (visual viewport), unless the page is zoomed.
     const vv = window.visualViewport;
     if (vv) {
@@ -175,12 +179,47 @@
     const help = $('help-settings');
     for (const [title, paragraphs] of HELP) { const d = make('details', 'ch-disclosure'); d.append(make('summary', '', title), ...paragraphs.map(text => make('p', '', text))); help.append(d); }
   }
-  // Three tabs; Settings (behind the gear) is a view of its own with no tab lit.
+  // Three tabs; Settings (behind the gear) is a view of its own with no tab lit. v12: the round + sits in the middle of
+  // the bar, so the active pill is placed under the tab itself (measured), not at a third of the bar.
+  let tabShown = 'today';
   function tab(id) {
     const tabs = [...document.querySelectorAll('.ch-tabbar .tab')], index = tabs.findIndex(b => b.dataset.view === id), bar = document.querySelector('.ch-tabbar');
     if (!bar) return;
+    tabShown = id;
     bar.classList.toggle('is-none', index < 0);
-    if (index >= 0) bar.style.setProperty('--i', index);
+    if (index < 0) return;
+    bar.style.setProperty('--i', index);
+    const b = tabs[index], w = Math.min(b.offsetWidth - 8, 92);
+    if (b.offsetWidth) { bar.style.setProperty('--pill-x', Math.round(b.offsetLeft + (b.offsetWidth - w) / 2) + 'px'); bar.style.setProperty('--pill-w', Math.round(w) + 'px'); }
+  }
+  // The week strip on Today: Monday to Sunday around the day in view. A tap opens that day; logged days have a solid
+  // ring, the others a dashed one; the day in view is filled.
+  function week(state) {
+    const box = $('week'); if (!box) return;
+    const key = dateKey(), today = CHADQuest.dayKey(), start = CHADQuest.monday(key), logged = new Set(state.entries.map(e => e.day));
+    const rows = [];
+    for (let i = 0; i < 7; i++) {
+      const k = CHADQuest.shift(start, i), b = make('button', 'ch-week__day'), picked = k === key;
+      b.type = 'button'; b.dataset.day = k;
+      b.classList.toggle('is-logged', logged.has(k)); b.classList.toggle('is-today', k === today); b.classList.toggle('is-future', k > today);
+      if (picked) b.setAttribute('aria-current', 'date');
+      b.append(make('small', 'ch-week__dow', darwin(k, { weekday: 'narrow' })), make('b', 'ch-week__num', String(Number(k.slice(8)))));
+      b.setAttribute('aria-label', darwin(k, { weekday: 'long', day: 'numeric', month: 'long' }).replace(/,/g, '') + (k === today ? ', today' : '') + (logged.has(k) ? ', food logged' : ''));
+      b.onclick = () => { if (k !== dateKey()) goTo(k); };
+      rows.push(b);
+    }
+    box.replaceChildren(...rows);
+  }
+  // A sheet made after setup (v12's camera and nutrition sheets) gets the same handling as the others: Escape and a
+  // tap outside close it with the animation, a pull on its grip or title closes it (drag: false skips that), and the
+  // scanner stops with it.
+  function wireSheet(d, options = {}) {
+    if (!d || d.dataset.wired) return; d.dataset.wired = '';
+    d.addEventListener('close', () => { d.classList.remove('is-opening', 'is-closing', 'is-dragging'); d.style.transform = ''; d.style.removeProperty('--drag'); });
+    d.addEventListener('cancel', e => { e.preventDefault(); closeSheet(d); });
+    d.addEventListener('animationend', e => { if (e.target !== d) return; if (d.classList.contains('is-closing')) finishClose(d); else d.classList.remove('is-opening'); });
+    d.addEventListener('click', e => { if (e.target === d) { const r = d.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) closeSheet(d); } });
+    if (options.drag !== false) M()?.sheet(d, closeSheet);
   }
   function render(state) {
     const key = dateKey(), today = CHADQuest.dayKey(), isToday = key === today;
@@ -191,6 +230,8 @@
     $('day-title').textContent = relative; $('date-label').textContent = label;
     $('training-day-title').textContent = relative; $('training-date-label').textContent = label;
     $('return-today').hidden = $('training-today').hidden = isToday;
+    week(state);
+    tab(tabShown);
   }
-  window.CHADUX = { setup, render, tab, currentSlot, timeBlock, minutesNow, hourNow, dateKey, navigate, goTo, dayLabel, toast, hideToast, detail, closeSheets, closeSheet, showSheet: show, shield, openFood, journeyDay, validDate, defaultJourneyStart, foodMeal: () => foodMeal, foodCtx: () => foodCtx, clearFoodCtx: () => { foodCtx = null; }, pcf, macroTiles };
+  window.CHADUX = { setup, render, tab, currentSlot, timeBlock, minutesNow, hourNow, dateKey, navigate, goTo, dayLabel, toast, hideToast, detail, closeSheets, closeSheet, showSheet: show, shield, openFood, wireSheet, journeyDay, validDate, defaultJourneyStart, foodMeal: () => foodMeal, foodCtx: () => foodCtx, clearFoodCtx: () => { foodCtx = null; }, pcf, macroTiles };
 })();
