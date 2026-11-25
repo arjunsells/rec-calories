@@ -17,7 +17,7 @@
   const show = (k, v) => k === 'kcal' ? String(Math.round(v)) : String(round(v));
   // The proxy contract has one text field: a label photo says so there, and so do a description and a correction.
   const LABEL_HINT = 'This photo is a nutrition label. Read the nutrition label: use its serving size and the per-serving values printed on it.';
-  const OFFLINE = 'Can’t reach your PC — check it’s on and Tailscale is on on this phone. Search or describe it instead';
+  const OFFLINE = 'Can’t reach your PC. Is Tailscale on and the PC awake?';
   const OIL = { name: 'Oil or sauce, 15 mL', grams: 13.6, kcal: 120, protein: 0, carbs: 0, fat: 13.6 };
   const SOURCE = { photo: 'Photo', label: 'Food label', text: 'Described', barcode: 'Barcode', manual: 'Typed in', favourite: 'Saved food', search: 'Food search', plan: 'Meal plan', custom: 'Custom meal', repeat: 'Logged again', addon: 'Add-on' };
   const uid = () => 'scan-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
@@ -220,10 +220,12 @@
 
   /* ---- estimates ---- */
   const TROUBLE = {
-    off: ['Pair this phone first', 'Photo AI isn’t set up on this phone yet. Open Settings › AI estimates and paste your CHAD setup link.', 'setup'],
+    off: [OFFLINE, 'Your photo is safe here.', 'retry'],
     network: [OFFLINE, 'Your photo is safe here. Retry when the PC is on.', 'retry'],
     timeout: [OFFLINE, 'It took too long to answer. Your photo is safe here.', 'retry'],
-    auth: ['Photo AI didn’t accept this phone', 'Paste a fresh setup link in Settings, or search or describe it instead.', 'setup'],
+    auth: [OFFLINE, 'Your photo is safe here. Advanced › paste setup link', 'setup'],
+    failed: [OFFLINE, 'Your photo is safe here.', 'retry'],
+    http: [OFFLINE, 'Your photo is safe here.', 'retry'],
     key: ['OpenAI didn’t accept your key', 'Check it in Settings, or search or describe it instead.', 'setup'],
     busy: ['The AI is busy', 'Retry in a moment, or search or describe it instead.', 'retry'],
     limit: ['The AI needs a breather', 'Lots of scans lately. Retry in a few minutes, or search or describe it instead.', 'retry'],
@@ -394,7 +396,7 @@
       ways.querySelector('#n12-search').insertAdjacentHTML('afterbegin', icon('magnifier', 20));
       ways.querySelector('#n12-describe').insertAdjacentHTML('afterbegin', icon('pencil', 20));
       body.append(ways);
-      if (fix === 'setup') body.append(button('AI settings', () => { d.add = null; U().closeSheets(); U().goSetup(); }, 'ch-btn ch-btn--block', 'n12-setup'));   // Settings wins over going back to the meal
+      if (fix === 'setup') body.append(button(d.errorKind === 'auth' ? 'Advanced › paste setup link' : 'AI settings', () => { d.add = null; U().closeSheets(); U().goSetup(); }, 'ch-btn ch-btn--block', 'n12-setup'));   // Settings wins over going back to the meal
       if (fix === 'retake' && d.photoId) body.append(button('Retake photo', () => { discard(d, true); open(d.source === 'label' ? 'label' : 'food', context); }, 'ch-btn ch-btn--block', 'n12-retake'));
       body.append(button('Discard', () => discard(d), 'ch-link ch-link--danger', 'n12-discard'));
       foot.append(button('Retry', () => estimate(d), 'ch-btn ch-btn--primary ch-btn--block', 'n12-retry'));
@@ -663,7 +665,7 @@
         b.setAttribute('aria-label', 'Analysing a ' + (d.source === 'text' ? 'description' : 'photo') + '. Open');
       } else if (d.status === 'error') {
         top.append(el('b', 'ch-food__name', d.item?.name || 'Not analysed'), el('small', 'ch-food__time', timeOf(d.at)));
-        words.append(top, el('small', 'ch-food__note is-alert', d.errorKind === 'off' ? 'Pair this phone · tap' : d.errorKind === 'network' || d.errorKind === 'timeout' ? 'Photo AI offline · tap to retry' : (d.error || 'Needs a retry') + ' · tap'));
+        words.append(top, el('small', 'ch-food__note is-alert', ['off', 'network', 'timeout', 'auth', 'failed', 'http'].includes(d.errorKind) ? 'Can’t reach PC · tap to retry' : (d.error || 'Needs a retry') + ' · tap'));
         b.setAttribute('aria-label', (d.error || 'Not analysed') + '. Open to retry, search or describe it');
       } else {
         const t = total(d);

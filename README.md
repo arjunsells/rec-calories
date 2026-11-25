@@ -40,11 +40,11 @@ The protein term is the share of calories from protein times 8 (half the calorie
 
 ## When the AI cannot answer
 
-Without pairing on this phone, the card says **“Pair this phone first”** and directs you to Settings › AI estimates to paste your CHAD setup link. On iPhone, paste it inside the installed CHAD app (not Safari). The draft says **“Pair this phone · tap”**. For network failures or timeouts, the card says **“Can’t reach your PC — check it’s on and Tailscale is on on this phone. Search or describe it instead”** with one-tap **Search food** and **Describe it**, and **Retry**. A rejected token says so and offers **AI settings**. The photo and the draft are never lost: they stay in Recently eaten, survive a reload or a closed app ("Scan interrupted": Retry), and wait until you retry, describe, search or discard them.
+The built-in proxy works through Tailscale without pairing. After a network failure, timeout or no answer, the card says **“Can’t reach your PC. Is Tailscale on and the PC awake?”** with **Search food**, **Describe it**, and **Retry**. A 401 also offers **Advanced › paste setup link**. The draft says **“Can’t reach PC · tap to retry”**. Photos and drafts stay on this device and survive a reload until logged or discarded.
 
-## AI setup (unchanged)
+## Advanced AI settings
 
-Settings › AI estimates: paste a setup link, or a proxy address and access token. The token stays in this browser only (`chad.aiProxyUrl`, `chad.aiProxyToken`, and the optional own-key fallback `rec-calories-ai-key`): never shown again, never in the journal, a draft, a backup or a log. The built-in proxy address is written once, in `scan9.js`; no other host or token is in the code.
+Settings › AI estimates › Advanced (collapsed by default): paste a setup link, enter a custom proxy and access token, or use your own key. With no saved credentials, CHAD uses the built-in proxy without a token header. The token stays in this browser only (`chad.aiProxyUrl`, `chad.aiProxyToken`, and the optional own-key fallback `rec-calories-ai-key`): never shown again, never in the journal, a draft, a backup or a log. The built-in proxy address is written once, in `scan9.js`; no other host or token is in the code.
 
 Contract: `POST <proxy>/estimate` with header `X-Chad-Token`, JSON `{ image, text, hint, units: "metric" }` (`text` carries a description, the label instruction and a correction, at most 500 characters); the answer `{ name, grams, kcal, protein_g, carbs_g, fat_g, items, confidence }` (and the older aliases), optionally `fibre_g`, `sugar_g`, `processed`. `GET <proxy>/health` needs no token. A busy proxy (503) is retried once after 3 s; the request gives up after 100 s.
 
@@ -60,7 +60,7 @@ The journal stays at `rec-calories-v1`, schema 5, with every v11 field and devic
 
 Photos and recoverable drafts live only in this device's IndexedDB **`chad-photos-v12`** (`photos`, `drafts`); the journal holds a photo id, never a photo. The journal export (Settings › Data) is a journal backup: no photos, no drafts, no credentials. Clearing the site's data removes the photos. A deleted food keeps its photo while Undo can bring it back; on each start, photos that no logged food or draft points to and that are more than a day old are deleted from the device (a discarded draft's photo goes once its Undo has passed; a photo added to a custom meal is not kept, because the meal keeps no photo).
 
-The service worker caches **`rec-calories-shell-v12b`** (every runtime file, listed in `sw.js`); an installed app updates itself once and drops its old cache. Offline: the app, logging, Gym, Progress, saved photos and drafts all work; new AI estimates and uncached food lookups need the internet (and the PC for the proxy).
+The service worker caches **`rec-calories-shell-v12c`** (every runtime file, listed in `sw.js`); an installed app updates itself once and drops its old cache. Offline: the app, logging, Gym, Progress, saved photos and drafts all work; new AI estimates and uncached food lookups need the internet (and the PC for the proxy).
 
 Runtime files: `index.html`, `theme12.css`, `app12.js` (journal, the hero, settings), `quest12.js` (Today, Gym tab, Progress), `ux12.js` (navigation, sheets, the week strip, toasts), `scan12.js` (the camera, the nutrition card, Recently eaten), plus the unchanged `plan11.js`, `builder11.js`, `gym11.js`, `train10.js`, `game10.js`, `scan9.js`, `food9.js`, `icons8.js`, `motion8.js`, `charts8.js`. v11's `app11.js`, `quest11.js`, `ux11.js` and `theme11.css` are gone.
 

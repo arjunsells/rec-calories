@@ -4,7 +4,7 @@
 // Screens are drawn by quest12.js, Gym mode by gym11.js, the add-food sheet by builder11.js; navigation, sheets and
 // toasts live in ux12.js.
 (() => {
-  const KEY = 'rec-calories-v1', SHELL = 'rec-calories-shell-v12b', BACKUP = 'rec-calories-v11-backup', APP_VERSION = 12;
+  const KEY = 'rec-calories-v1', SHELL = 'rec-calories-shell-v12c', BACKUP = 'rec-calories-v11-backup', APP_VERSION = 12;
   const $ = id => document.getElementById(id);
   const M = () => window.CHADMotion;
   const oneDecimal = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }), integer = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
@@ -318,16 +318,16 @@
   // Every way an estimate can go wrong, in plain words, with the one fix that helps (if any). The three ways to log it
   // anyway (search, barcode, type it in) are always there underneath.
   const TROUBLE = {
-    network: ['AI is offline', 'Search, scan a barcode or type it in.', 'retry'],
-    timeout: ['That took too long', 'Try again, or log it another way.', 'retry'],
+    network: ['Can’t reach your PC. Is Tailscale on and the PC awake?', 'Your photo is safe here.', 'retry'],
+    timeout: ['Can’t reach your PC. Is Tailscale on and the PC awake?', 'Your photo is safe here.', 'retry'],
     busy: ['The AI is busy', 'Try again in a moment, or log it another way.', 'retry'],
-    failed: ['The AI couldn’t finish that one', 'Try again, or type it in.', 'retry'],
-    http: ['The AI isn’t answering', 'Try again soon, or log it another way.', 'retry'],
+    failed: ['Can’t reach your PC. Is Tailscale on and the PC awake?', 'Your photo is safe here.', 'retry'],
+    http: ['Can’t reach your PC. Is Tailscale on and the PC awake?', 'Your photo is safe here.', 'retry'],
     parse: ['That answer came back garbled', 'Try again, or log it another way.', 'retry'],
     limit: ['The AI needs a breather', 'Lots of scans lately. Try again in a few minutes, or log it another way.'],
     large: ['That photo is too big', 'Try another photo, or say what it is.'],
     empty: ['No food spotted', 'Try another photo, or say what it is.'],
-    auth: ['AI needs setting up again', 'This device’s access wasn’t accepted. Paste a fresh setup link, or log it another way.', 'setup'],
+    auth: ['Can’t reach your PC. Is Tailscale on and the PC awake?', 'Advanced › paste setup link', 'retry'],
     key: ['OpenAI didn’t accept your key', 'Check it in Settings, or log it another way.', 'setup']
   };
   // The Estimate button above doubles as "Try again" when trying again can help, and steps aside when only a fresh
@@ -395,7 +395,7 @@
   function goSetup() {
     const key = aiRoute().mode === 'key';
     CHADUX.clearFoodCtx();
-    showView('settings'); if (key) $('ai-more').open = true;
+    showView('settings'); $('ai-more').open = true;
     $('advanced-settings').scrollIntoView({ block: 'start' }); $(key ? 'ai-key' : 'ai-link').focus({ preventScroll: true });
   }
   $('camera-button').onclick = () => $('photo-input').click();
@@ -430,9 +430,8 @@
     const r = aiRoute(), where = r.custom ? new URL(r.proxy).host : 'your CHAD proxy';
     const status = r.mode !== 'proxy' ? r.mode : aiCheck === 'checking' ? 'checking' : aiRejected ? 'rejected' : aiCheck || 'set';
     const [title, text, dot] = {
-      none: ['Not set up', 'Paste your setup link here. On iPhone, paste it inside the CHAD app (not Safari).', ''],
       key: ['Own key', 'Photo estimates go straight to OpenAI with your key.', 'set'],
-      set: ['Set up', `Photo estimates go through ${where}.`, 'set'],
+      set: ['Ready', `Photo estimates go through ${where}.`, 'set'],
       checking: ['Checking…', `Looking for ${where}.`, 'checking'],
       ok: ['Connected', `Photo estimates go through ${where}.`, 'ok'],
       offline: ['Offline', r.custom ? 'Couldn’t reach your proxy. Check the address, and that it allows this site.' : 'Couldn’t reach the CHAD proxy. Is the PC on? Search, barcode and typing it in still work.', 'bad'],

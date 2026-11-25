@@ -158,7 +158,7 @@ function history(today) {
     assert.equal(await page.locator('#sound-toggle').isChecked(), true); assert.equal(await page.locator('#local-weight').inputValue(), '70.1');   // synthetic weigh-in
     assert.equal(await page.locator('#theme-mode [aria-pressed=true]').getAttribute('data-theme-option'), 'dark');
     await page.evaluate(() => CHADUX.goTo('2026-10-20')); assert.equal(await page.locator('#missed-day').isChecked(), true); await page.evaluate(() => CHADUX.goTo(CHADQuest.dayKey()));
-    assert.equal(await page.evaluate(() => RECScan.settings().mode), 'key', 'the own key still works'); assert.equal(await page.locator('#ai-status-title').innerText(), 'Own key');
+    assert.equal(await page.evaluate(() => RECScan.settings().mode), 'key', 'the own key still works'); assert.equal(await page.locator('#ai-status-title').textContent(), 'Own key');
     await page.locator('#close-settings').tap();
     // The open workout resumes with its sets (Gym tab, and the card on top of Today).
     await page.locator('[data-view=training]').tap(); assert.match(await page.locator('.is-today [data-gym-start]').innerText(), /Resume/);

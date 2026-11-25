@@ -1,6 +1,6 @@
 'use strict';
 // CHAD v9 · Snap + Say estimates. The repository is public: no key or token ever ships with the app.
-//   1. Proxy (recommended). A token-protected estimator. The CHAD proxy's address is built in (an address is not a
+//   1. Proxy (recommended). A Tailscale or token-protected estimator. The CHAD proxy's address is built in (an address is not a
 //      secret); its access token arrives once in a setup link  …/#ai=<encoded URL>&k=<token>  or is pasted into
 //      Settings › Advanced, and stays in this browser only: never shown again, never in a backup or a log.
 //        POST <proxy>/estimate   Content-Type: application/json   X-Chad-Token: <token>
@@ -11,8 +11,8 @@
 //      An address with a path posts to that path as it is. docs/proxy-example.js is a Cloudflare Worker for the same
 //      contract that keeps a provider key in an encrypted secret, with CORS and abuse limits.
 //   2. Your own OpenAI key (hidden fallback). Stored only in this browser, never in a backup, sent only to OpenAI.
-//   3. Neither. No request is made; the app offers search, barcode and quick add instead.
-// The proxy is used once a token (or an address of your own) is saved; otherwise your own key; otherwise none.
+//   3. With no saved credentials, use the built-in proxy through Tailscale.
+// A saved proxy/token takes priority, then an own key, then the built-in proxy without a token.
 // Every failure carries a `kind` and a gentle message: the caller always has another way to log the food.
 ((root) => {
   const PROXY_KEY = 'chad.aiProxyUrl', TOKEN_KEY = 'chad.aiProxyToken', KEY_KEY = 'rec-calories-ai-key';
@@ -23,13 +23,13 @@
     off: 'AI estimates aren’t set up on this device.',
     proxy: 'Use a full https:// address for the proxy.',
     link: 'That isn’t a CHAD setup link. It looks like …#ai=…&k=…',
-    network: 'AI is offline.',
-    timeout: 'The AI took too long.',
+    network: 'Can’t reach your PC. Is Tailscale on and the PC awake?',
+    timeout: 'Can’t reach your PC. Is Tailscale on and the PC awake?',
     cancelled: 'Stopped.',
-    http: 'The AI isn’t answering right now.',
-    failed: 'The AI couldn’t finish that one.',
+    http: 'Can’t reach your PC. Is Tailscale on and the PC awake?',
+    failed: 'Can’t reach your PC. Is Tailscale on and the PC awake?',
     busy: 'The AI is busy right now.',
-    auth: 'The AI didn’t accept this device. Set it up again.',
+    auth: 'Can’t reach your PC. Is Tailscale on and the PC awake?',
     key: 'OpenAI didn’t accept your key.',
     limit: 'The AI has had a lot of requests. Try again in a few minutes.',
     large: 'That photo is too big for the AI.',
@@ -61,10 +61,10 @@
   function endpoint(url) { const u = new URL(url); if (bare(url)) u.pathname = '/estimate'; return u.href; }
   function healthURL(url) { const u = new URL(url); u.search = ''; u.pathname = bare(url) ? '/health' : u.pathname.replace(/\/[^/]*$/, '') + '/health'; return u.href; }
   function isDefault(url) { try { return endpoint(checkProxy(url)) === endpoint(DEFAULT_PROXY); } catch { return false; } }
-  // Which route this device uses. The built-in address needs a token before anything is sent to it.
+  // Which route this device uses. The built-in address accepts this phone through Tailscale without a token.
   function settings(storage) {
     const saved = read(storage, PROXY_KEY), token = read(storage, TOKEN_KEY), key = read(storage, KEY_KEY);
-    return { proxy: saved || DEFAULT_PROXY, saved, token, key, custom: !!saved && !isDefault(saved), mode: token || saved ? 'proxy' : key ? 'key' : 'none' };
+    return { proxy: saved || DEFAULT_PROXY, saved, token, key, custom: !!saved && !isDefault(saved), mode: token || saved ? 'proxy' : key ? 'key' : 'proxy' };
   }
   // A setup link carries the proxy and its token in the hash: the whole link, just "#ai=…&k=…", or "ai=…&k=…".
   // A link with only a token (#k=…) is for the built-in proxy. Tokens are one word, no spaces, at most 512 characters.

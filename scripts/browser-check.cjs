@@ -1,5 +1,5 @@
 // Food and AI flows end to end in v12, through the one add-food sheet (+ Food) and the nutrition card: Ask AI without AI
-// (the camera's other ways, and words that end in the friendly "not set up" card), a barcode, search (the foods here and
+// (the camera's other ways, and words that attempt the built-in proxy and show a friendly failure card), a barcode, search (the foods here and
 // Open Food Facts), Type it, Recently eaten (Log again, Delete), an own OpenAI key (a photo through the system camera,
 // words, 401, bad JSON), legacy data, and offline. Open Food Facts and OpenAI are mocked; a synthetic key and journal
 // only. There is no live camera here (as in an iPhone home-screen app): the camera's shutter opens the system camera.
@@ -19,6 +19,7 @@ const product = { code: '9300652010794', product_name: 'Weet-Bix synthetic QA', 
     const off = [], away = [];
     page.on('request', r => { const url = r.url(); if (/^https?:/.test(url) && !url.startsWith(APP)) away.push(url); });
     if (!LIVE) await context.route('https://*.openfoodfacts.org/**', route => { off.push(route.request().url()); return route.fulfill({ json: route.request().url().includes('/product/') ? { status: 1, product } : { products: [product] } }); });
+    await context.route(url => url.href.startsWith(require('../scan9.js').DEFAULT_PROXY), route => route.fulfill({ status: 401, json: {} }));
     const errors = watch(page, text => /401/.test(text));          // the mocked 401 below logs one network line
     await page.clock.install({ time: new Date(NOON) });
     await page.goto(APP + '/');
@@ -47,7 +48,7 @@ const product = { code: '9300652010794', product_name: 'Weet-Bix synthetic QA', 
     };
 
     // Ask AI without any AI: the camera opens with its other ways (no key nagging), and Escape goes back to the add-food
-    // sheet. Words end in the friendly "not set up" card (Search food, Describe it, AI settings), nothing is sent
+    // sheet. Words attempt the built-in proxy and a rejected request offers Search food, Describe it, Advanced; nothing private goes
     // anywhere, and Discard goes back to the add-food sheet too.
     await addFood(); await tap(page.locator('#builder-ask-go')); await cameraOpen();
     assert.match(await page.locator('#camera12-status').innerText(), /Tap the shutter to take or choose a photo/, 'no live camera: the shutter takes or chooses a photo');
@@ -57,9 +58,9 @@ const product = { code: '9300652010794', product_name: 'Weet-Bix synthetic QA', 
     await tap(page.locator('#builder-ask-go')); await cameraOpen();
     await page.locator('#camera12-describe').click(); await page.locator('#describe12').fill('Synthetic soup'); await page.locator('#describe12-go').click();
     await trouble();
-    assert.match(await page.locator('#nutrition12-body').innerText(), /Pair this phone first[\s\S]*Photo AI isn’t set up on this phone[\s\S]*Settings/); assert.doesNotMatch(await page.locator('#nutrition12').innerText(), /OpenAI|API key/);
+    assert.match(await page.locator('#nutrition12-body').innerText(), /Can’t reach your PC[\s\S]*Advanced › paste setup link/);
     for (const id of ['n12-search', 'n12-describe', 'n12-setup', 'n12-retry']) assert.equal(await page.locator('#' + id).isVisible(), true, id);
-    assert.deepEqual(away, [], 'no request without AI set up');
+    assert.equal(away.length, 1, 'one real attempt without a saved token');
     await page.locator('#n12-discard').click(); await closed(); await page.locator('#builder-sheet').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#recent12 .ch-food.is-draft').count(), 0, 'the discarded words leave no draft');
 
@@ -259,6 +260,6 @@ const product = { code: '9300652010794', product_name: 'Weet-Bix synthetic QA', 
     assert.equal(await page.locator('#n12-name').inputValue(), 'synthetic new food');
     assert.deepEqual(errors, []);
     await context.setOffline(false); await context.close();
-    console.log('PASS: mobile 390x844 light/dark, no unexpected JS/console errors; Ask AI without AI (the camera\'s other ways, no key nag, Escape back to the sheet, words end in the "not set up" card with Search / Describe it / AI settings, no request, Discard back to the sheet); barcode through the sheet into the nutrition card (P/C/F, servings scaling weight and kcal, Add to meal, Log as other food by weight) and cached; search in the sheet (one request per pause, Enter shares it, kept on the device, live after a pause); Recently eaten (kcal and P/C/F, newest first, card with Log again and Delete with Undo); recent foods first; Type it; own-key fallback in Settings: mocked photo (system camera, JPEG, ingredient grams scale, an empty fat counts as 0) and words through the camera, 401 ("OpenAI didn’t accept your key", AI settings → the key field) and bad JSON end in the friendly card with the photo kept, a closed card waits in Recently eaten, Discard with Undo, drafts leave the device store; legacy journal kept (appVersion 12, v11 backup); the hero on the first screen; offline shell with on-demand scanner; offline search: no request, an honest note, the foods here, Type it with the words; screenshots ' + shots);
+    console.log('PASS: mobile 390x844 light/dark, no unexpected JS/console errors; Ask AI without AI (the camera\'s other ways, no key nag, Escape back to the sheet, words attempt the built-in proxy without a token and show Search / Describe it / Advanced after rejection, Discard back to the sheet); barcode through the sheet into the nutrition card (P/C/F, servings scaling weight and kcal, Add to meal, Log as other food by weight) and cached; search in the sheet (one request per pause, Enter shares it, kept on the device, live after a pause); Recently eaten (kcal and P/C/F, newest first, card with Log again and Delete with Undo); recent foods first; Type it; own-key fallback in Settings: mocked photo (system camera, JPEG, ingredient grams scale, an empty fat counts as 0) and words through the camera, 401 ("OpenAI didn’t accept your key", AI settings → the key field) and bad JSON end in the friendly card with the photo kept, a closed card waits in Recently eaten, Discard with Undo, drafts leave the device store; legacy journal kept (appVersion 12, v11 backup); the hero on the first screen; offline shell with on-demand scanner; offline search: no request, an honest note, the foods here, Type it with the words; screenshots ' + shots);
   } finally { await browser.close(); server.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

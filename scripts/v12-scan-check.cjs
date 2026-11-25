@@ -9,7 +9,7 @@
 const assert = require('node:assert/strict');
 const { serve, launch, watch, saved, IPHONE } = require('./harness.cjs');
 const PORT = 8107, ORIGIN = 'http://127.0.0.1:' + PORT, TOKEN = 'synthetic-device-token';
-const OFFLINE = 'Can’t reach your PC — check it’s on and Tailscale is on on this phone. Search or describe it instead';
+const OFFLINE = 'Can’t reach your PC. Is Tailscale on and the PC awake?';
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const again = () => wait(460);                                  // past the 400 ms slip guard and the touch shield
 
@@ -199,20 +199,21 @@ const WORDS = { name: 'Described chicken salad', kcal: 380, protein_g: 42, carbs
     await page.locator('#nutrition12-close').click(); await closed(page);
     assert.match(await page.locator('#recent12 .ch-food.is-draft').first().textContent(), /Synthetic chicken plate.*Ready/s, 'a closed card waits in Recently eaten');
     mode = '401'; await snap(); await trouble();
-    assert.match(await page.locator('#nutrition12-body').textContent(), /didn’t accept this phone/); assert(await page.locator('#n12-setup').isVisible(), 'AI settings for a rejected token');
+    assert.match(await page.locator('#nutrition12-body').textContent(), /Advanced › paste setup link/); assert(await page.locator('#n12-setup').isVisible(), 'AI settings for a rejected token');
     await page.locator('#nutrition12-close').click(); await closed(page);
-    mode = '502'; await snap(); await trouble(); assert.match(await page.locator('#nutrition12-body').textContent(), /couldn’t finish/); await page.locator('#nutrition12-close').click(); await closed(page);
+    mode = '502'; await snap(); await trouble(); assert.match(await page.locator('#nutrition12-body').textContent(), /Can’t reach your PC/); await page.locator('#nutrition12-close').click(); await closed(page);
     mode = 'hang'; await page.evaluate(() => { RECScan.TIMEOUT.proxy = 1500; }); await snap(); await trouble();
     assert.match(await page.locator('#nutrition12-body').textContent(), /took too long/); assert.match(await page.locator('#nutrition12-body').textContent(), new RegExp(OFFLINE.replace(/[-]/g, '\\-')));
     // Search from the error: the add-food sheet opens; the draft stays.
     await page.locator('#n12-search').click(); await page.waitForFunction(() => document.getElementById('builder-sheet').open); await page.evaluate(() => CHADUX.closeSheets());
     const drafts = await page.locator('#recent12 .ch-food.is-draft').count(); assert(drafts >= 4, 'every unanswered photo is kept: ' + drafts);
-    // No token: the friendly message and AI settings; no request at all.
+    // No token: built-in proxy succeeds without a token header.
     await page.evaluate(() => { localStorage.removeItem('chad.aiProxyUrl'); localStorage.removeItem('chad.aiProxyToken'); RECScan.TIMEOUT.proxy = 100000; });
-    const sent = calls.length; mode = 'ok'; await snap(); await trouble();
-    assert.equal(calls.length, sent, 'nothing is sent without a token');
-    assert.match(await page.locator('#nutrition12-body').textContent(), /Pair this phone first[\s\S]*Photo AI isn’t set up on this phone/); assert(await page.locator('#n12-setup').isVisible());
-    // The same from the meal being built (+ Food > Ask AI): AI settings opens Settings and the meal does not pop back over it.
+    const sent = calls.length; mode = 'ok'; await snap(); await cardOpen(page);
+    assert.equal(calls.length, sent + 1, 'built-in estimate attempted without token');
+    assert.equal(calls.at(-1).token, undefined, 'no empty token header');
+    mode = '401';
+    // A real 401 from the meal being built (+ Food > Ask AI): Advanced opens Settings and the meal does not pop back over it.
     const noAiCard = page.locator('#nutrition12[data-state="error"]');
     await page.locator('#nutrition12-close').click(); await closed(page); await again();
     await page.evaluate(() => CHADBuilder.open('D')); await page.waitForFunction(() => document.getElementById('builder-sheet').open);
@@ -223,7 +224,7 @@ const WORDS = { name: 'Described chicken salad', kcal: 380, protein_g: 42, carbs
     await page.locator('#recent12 .ch-food.is-error').first().click(); await noAiCard.waitFor({ state: 'visible' });
     // Describe it from the error keeps the photo and adds the words.
     await page.evaluate(() => { localStorage.setItem('chad.aiProxyUrl', location.origin); localStorage.setItem('chad.aiProxyToken', 'synthetic-device-token'); });
-    await page.locator('#n12-describe').click(); await page.locator('#describe12').fill('Grilled chicken and rice'); await page.locator('#describe12-go').click(); await cardOpen(page);
+    mode = 'ok'; await page.locator('#n12-describe').click(); await page.locator('#describe12').fill('Grilled chicken and rice'); await page.locator('#describe12-go').click(); await cardOpen(page);
     assert(calls.at(-1).body.image, 'the photo goes with the words'); assert.equal(calls.at(-1).body.text, 'Grilled chicken and rice');
     await page.locator('#n12-discard').click(); await closed(page);
     const left = await page.locator('#recent12 .ch-food.is-draft').count();

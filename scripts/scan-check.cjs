@@ -12,14 +12,17 @@ const never = () => { throw Error('must not fetch'); };
   // Routes. The built-in address is https and needs a token before anything is sent; a token beats an own key;
   // an address of your own (no token) is still used, as the v9 Worker example allows.
   assert.match(DEFAULT, /^https:\/\/[^/]+\/$/);
-  assert.deepEqual(scan.settings(store({})), { proxy: DEFAULT, saved: '', token: '', key: '', custom: false, mode: 'none' });
+  assert.deepEqual(scan.settings(store({})), { proxy: DEFAULT, saved: '', token: '', key: '', custom: false, mode: 'proxy' });
   assert.deepEqual(scan.settings(store({ 'chad.aiProxyToken': 'synthetic-token' })), { proxy: DEFAULT, saved: '', token: 'synthetic-token', key: '', custom: false, mode: 'proxy' }, 'a token alone uses the built-in proxy');
   assert.equal(scan.settings(store({ 'rec-calories-ai-key': 'synthetic-key' })).mode, 'key', 'the v8 key keeps working');
   assert.equal(scan.settings(store({ 'chad.aiProxyToken': 'synthetic-token', 'rec-calories-ai-key': 'synthetic-key' })).mode, 'proxy', 'proxy first');
   const own = scan.settings(store({ 'chad.aiProxyUrl': 'https://proxy.example/', 'rec-calories-ai-key': 'synthetic-key' }));
   assert.deepEqual([own.mode, own.proxy, own.custom], ['proxy', 'https://proxy.example/', true]);
   assert.equal(scan.settings(store({ 'chad.aiProxyUrl': DEFAULT, 'chad.aiProxyToken': 't' })).custom, false);
-  await assert.rejects(scan.estimate({ hint: 'rice' }, { ...scan.settings(store({})), fetcher: never }), e => e.kind === 'off', 'no token: nothing is sent to the built-in proxy');
+  let defaultRequest;
+  await scan.estimate({ hint: 'rice' }, { ...scan.settings(store({})), fetcher: async (url, init) => { defaultRequest = { url, ...init }; return reply(meal); } });
+  assert.equal(defaultRequest.url, DEFAULT + 'estimate');
+  assert.equal(Object.hasOwn(defaultRequest.headers, 'X-Chad-Token'), false, 'default proxy without saved token omits the header entirely');
   await assert.rejects(scan.estimate({ hint: 'rice' }, { fetcher: never }), e => e.kind === 'off');
   await assert.rejects(scan.estimate({}, { proxy: 'https://proxy.example', fetcher: never }), e => e.kind === 'input');
 
@@ -125,5 +128,5 @@ const never = () => { throw Error('must not fetch'); };
   assert.ok(JSON.stringify(body.messages[1]).includes('Chicken, rice and broccoli')); assert.ok(!JSON.stringify(body.messages[1]).includes('image_url'));
   await assert.rejects(scan.estimate({ hint: 'x' }, { key: 'synthetic-test-token', fetcher: async () => reply({}, 401) }), e => e.kind === 'key' && /OpenAI/.test(e.message));
   await assert.rejects(scan.estimate({ hint: 'x' }, { key: 'synthetic-test-token', fetcher: async () => reply({ choices: [{ message: { content: 'broken json' } }] }) }), e => e.kind === 'parse');
-  console.log('PASS scan9: routes (built-in https proxy only with a token, own address without one, proxy before own key, none), URL rules and /estimate + /health, setup links (whole link, hash, bare, token-only, junk), request contract (image, text, hint, metric, token header, no cookies, no referrer), _g/grams answers, items-only meals, dropped broken lines, "Not food", typed gentle failures (offline/CORS, 401/403, 413, 429, 502/500/504, 404, junk), 100 s timeout vs cancel, one busy retry with status, cancel mid-pause, health, token check (400 ok / 401 rejected / health only without a token), own-key contract with the shared prompt. No real AI call made.');
+  console.log('PASS scan9: routes (built-in https proxy with no token by default, own address without one, proxy before own key, none), URL rules and /estimate + /health, setup links (whole link, hash, bare, token-only, junk), request contract (image, text, hint, metric, token header, no cookies, no referrer), _g/grams answers, items-only meals, dropped broken lines, "Not food", typed gentle failures (offline/CORS, 401/403, 413, 429, 502/500/504, 404, junk), 100 s timeout vs cancel, one busy retry with status, cancel mid-pause, health, token check (400 ok / 401 rejected / health only without a token), own-key contract with the shared prompt. No real AI call made.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -1,6 +1,6 @@
 'use strict';
 // Bump CACHE with every release: a changed worker is what tells installed copies to update.
-const CACHE = 'rec-calories-shell-v12b';
+const CACHE = 'rec-calories-shell-v12c';
 const SHELL = ['./', './index.html', './theme12.css', './icons8.js', './motion8.js', './charts8.js', './game10.js', './scan9.js', './scan12.js', './food9.js', './plan11.js', './train10.js', './quest12.js', './gym11.js', './builder11.js', './ux12.js', './app12.js', './fonts/press-start-2p.ttf', './fonts/OFL.txt', './vendor/zxing-browser.min.js', './vendor/ZXING-LICENSE', './vendor/README.md', './manifest.webmanifest', './icons/icon.svg', './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/mark.svg'];
 self.addEventListener('install', event => {
   // cache: 'reload' skips the HTTP cache, so a new shell can never be assembled from stale files.

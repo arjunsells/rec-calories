@@ -1,7 +1,7 @@
 // Ask AI in v12, end to end: the full-screen camera (a synthetic canvas stream stands in for the lens), Describe it, the
 // photo drafts in Recently eaten and the nutrition card (pending, ready, error), against a mock AI proxy on another origin
 // (so CORS is real) and the built-in proxy address answered inside the browser (so no test ever reaches the real one);
-// Settings › AI estimates (always open: setup links pasted or in the URL hash, the token never shown again, Test,
+// Settings › AI estimates › Advanced (collapsed by default: setup links pasted or in the URL hash, the token never shown again, Test,
 // Disconnect, other ways to connect, the own-key fallback); a small phone's card via + Food › Barcode (48 px targets);
 // plus the example Cloudflare Worker run under Node with a stubbed provider. Open Food Facts is stubbed. Synthetic tokens
 // and key only: no real AI request, no credential.
@@ -10,7 +10,7 @@ const { serve, launch, watch, saved, IPHONE, NOON, root } = require('./harness.c
 const scan = require('../scan9.js');
 const TOKEN = 'synthetic-token-qa', APP = 'http://127.0.0.1:8096', PROXY = 'http://127.0.0.1:8095';
 const MEAL = { name: 'Synthetic burrito bowl', kcal: 640, protein: 42, carbs: 70, fat: 18, items: [{ name: 'Rice', portion: '200 g', kcal: 260, protein: 5, carbs: 57, fat: 1 }, { name: 'Chicken', portion: '150 g', kcal: 380, protein: 37, carbs: 13, fat: 17 }], confidence: 0.7 };
-const OFFLINE = 'Can’t reach your PC — check it’s on and Tailscale is on on this phone. Search or describe it instead';
+const OFFLINE = 'Can’t reach your PC. Is Tailscale on and the PC awake?';
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const until = async (test, what, ms = 30000) => { const end = Date.now() + ms; while (!test()) { if (Date.now() > end) throw Error('timed out waiting for ' + what); await wait(20); } };
@@ -103,14 +103,14 @@ function jpegSize(dataURL) {
       Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: async () => c.captureStream(15) } });
     });
     // The built-in address is answered inside the browser: no test ever reaches the real proxy.
-    const builtIn = [];
+    let allowUnpaired = true; const builtIn = [];
     await context.route(url => url.href.startsWith(scan.DEFAULT_PROXY), route => {
       const req = route.request(), cors = { 'Access-Control-Allow-Origin': APP, 'Access-Control-Allow-Headers': 'Content-Type, X-Chad-Token', 'Access-Control-Allow-Methods': 'GET, POST' };
       if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
       const body = req.method() === 'POST' ? JSON.parse(req.postData() || '{}') : null, json = (status, data) => route.fulfill({ status, headers: cors, contentType: 'application/json', body: JSON.stringify(data) });
       builtIn.push({ url: req.url(), method: req.method(), token: req.headers()['x-chad-token'], body });
       if (req.url().endsWith('/health')) return json(200, { ok: true, busy: 0 });
-      if (req.headers()['x-chad-token'] !== TOKEN) return json(401, { error: 'unauthorized' });
+      if (req.headers()['x-chad-token'] !== TOKEN && !(allowUnpaired && !req.headers()['x-chad-token'])) return json(401, { error: 'unauthorized' });
       if (!body.image && !body.text) return json(400, { error: 'send image and/or text' });
       return json(200, { name: 'Synthetic chicken wings', grams: 240, kcal: 635, protein_g: 57, carbs_g: 0, fat_g: 45, confidence: 0.73, items: [] });
     });
@@ -144,8 +144,8 @@ function jpegSize(dataURL) {
     const parts = () => page.evaluate(() => [...document.querySelectorAll('#n12-parts .ch-ing')].map(r => [r.querySelector('.ch-ing__name').textContent, r.querySelector('.ch-ing__grams')?.value ?? '', r.querySelector('.ch-ing__kcal').textContent]));
     const keys = () => page.evaluate(() => [localStorage.getItem('chad.aiProxyUrl'), localStorage.getItem('chad.aiProxyToken')]);
     const toastText = () => page.locator('#undo-toast').innerText();
-    // Settings is behind the gear on Today, and its AI section is always open (one disclosure inside, at most).
-    const advanced = async () => { if (!await page.locator('#settings').isVisible()) { if (!await page.locator('#today').isVisible()) await tap(page.locator('[data-view=today]')); await tap(page.locator('#open-settings')); } await page.locator('#advanced-settings').scrollIntoViewIfNeeded(); };
+    // Settings is behind the gear on Today; all connection controls are inside Advanced.
+    const advanced = async () => { if (!await page.locator('#settings').isVisible()) { if (!await page.locator('#today').isVisible()) await tap(page.locator('[data-view=today]')); await tap(page.locator('#open-settings')); } await page.locator('#advanced-settings').scrollIntoViewIfNeeded(); if (!await page.locator('#ai-more').evaluate(d => d.open)) await tap(page.locator('#ai-more > summary')); };
     const status = () => page.locator('#ai-status-title').innerText();
     const clearAI = async () => { await page.evaluate(() => ['chad.aiProxyUrl', 'chad.aiProxyToken', 'rec-calories-ai-key'].forEach(k => localStorage.removeItem(k))); await page.goto(APP + '/'); };
     const drafts = page.locator('#recent12 .ch-food.is-draft');
@@ -158,20 +158,29 @@ function jpegSize(dataURL) {
     });
     const storeEmpty = async () => { const end = Date.now() + 15000; while (await storedDrafts()) { if (Date.now() > end) throw Error('a logged draft stayed in this device’s store'); await wait(25); } };
 
-    // 1. No AI set up: no request anywhere (the built-in address needs a token first), and the camera still works: the
-    //    photo becomes a draft and ends in the friendly "not set up" card, with its ways out.
+    // 1. Zero setup: successful photo request has no token; controls stay collapsed in Settings.
+    await page.locator('#open-settings').click();
+    assert.equal(await page.locator('#ai-more').evaluate(d => d.open), false);
+    assert.equal(await page.locator('#ai-link').isVisible(), false);
+    assert.doesNotMatch(await page.locator('#settings').innerText(), /Not set up|Paste your setup link/);
+    assert.equal(await page.locator('#ai-more > summary').innerText(), 'Advanced');
+    assert.equal((await page.locator('#ai-more > summary').boundingBox()).height, 48);
+    await page.locator('#close-settings').click();
+    await shoot(); await cardOpen();
+    assert.equal(builtIn.at(-1).token, undefined, 'no token header on first photo');
+    await tap(page.locator('#n12-discard')); await closed();
+    builtIn.length = 0; allowUnpaired = false;
     assert.equal(await page.evaluate(() => [localStorage.getItem('chad.aiProxyUrl'), localStorage.getItem('chad.aiProxyToken'), localStorage.getItem('rec-calories-ai-key')].join('')), '', 'nothing set by default');
     await camera();
     assert.match(await page.locator('#camera12').innerText(), /Search food[\s\S]*Saved[\s\S]*Describe it/); assert.doesNotMatch(await page.locator('#camera12').innerText(), /OpenAI|API key|token/i);
     await page.waitForFunction(() => document.getElementById('camera12-video').videoWidth > 0);
     await tap(page.locator('#camera12-shutter')); await trouble();
     let words = await gentle();
-    assert.match(words, /Pair this phone first/); assert.match(words, /Photo AI isn’t set up on this phone yet\. Open Settings › AI estimates and paste your CHAD setup link\./);
-    assert.doesNotMatch(words, /Photo AI offline|Can’t reach your PC/);
+    assert.ok(words.includes(OFFLINE)); assert.ok(words.includes('Advanced › paste setup link'));
     assert.equal(await page.locator('#nutrition12 .ch-nut__trouble svg').getAttribute('data-name'), 'info', 'pairing uses the info icon');
     for (const id of ['n12-search', 'n12-describe', 'n12-setup', 'n12-retry', 'n12-discard']) assert.equal(await page.locator('#' + id).isVisible(), true, id);
     assert.match(await page.locator('#nutrition12 .ch-nut__photo img').getAttribute('src'), /^data:image\/jpeg;base64,/, 'the photo stays, as a JPEG');
-    // Describe this photo: the words go with it (and still nothing is sent).
+    // Describe this photo: the words go with it on the next real attempt.
     await tap(page.locator('#n12-describe')); await page.locator('#describe12').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#detail-title').innerText(), 'Describe this photo');
     await page.locator('#describe12').fill('Synthetic chicken wrap'); await tap(page.locator('#describe12-go')); await trouble();
@@ -191,16 +200,17 @@ function jpegSize(dataURL) {
     await tap(page.locator('#builder-sheet [data-close=builder-sheet]')); await page.locator('#builder-sheet').waitFor({ state: 'hidden' });
     // v11 never kept a photo; v12 keeps it on this device (never in the journal) until it is logged or discarded.
     const kept = page.locator('#recent12 .ch-food.is-draft.is-error');
-    assert.equal(await kept.count(), 1); assert.match(await kept.innerText(), /Pair this phone · tap/); assert.doesNotMatch(await kept.innerText(), /Photo AI offline/); assert.equal(await kept.locator('img').count(), 1, 'with its photo');
+    assert.equal(await kept.count(), 1); assert.match(await kept.innerText(), /Can’t reach PC · tap to retry/); assert.equal(await kept.locator('img').count(), 1, 'with its photo');
     // A barcode from the camera: the shutter types the digits.
     await camera(); await tap(page.locator('[data-mode12=barcode]'));
     assert.equal(await page.locator('#camera12-title').textContent(), 'Scan barcode'); assert.equal(await page.locator('#camera12-shutter').getAttribute('aria-label'), 'Type the barcode digits');
     await tap(page.locator('#camera12-shutter')); await page.locator('#scan-sheet').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#scan').getAttribute('data-mode'), 'barcode'); assert.equal(await page.locator('#scan-title').textContent(), 'Scan a barcode');
     await page.keyboard.press('Escape'); await page.locator('#scan-sheet').waitFor({ state: 'hidden' });
-    await advanced(); assert.equal(await status(), 'Not set up');
-    assert.equal(await page.locator('#ai-test').isVisible(), false); assert.equal(await page.locator('#ai-disconnect').isVisible(), false);
-    assert.equal(proxyCalls.length + probes.length + health + builtIn.length + openai.length, 0, 'no request without a token, key or address of your own');
+    await advanced(); assert.equal(await status(), 'Set up again');
+    assert.equal(await page.locator('#ai-test').isVisible(), true); assert.equal(await page.locator('#ai-disconnect').isVisible(), true);
+    assert.equal(builtIn.filter(r => r.method === 'POST').length, 2, 'photo and description attempted without a token');
+    assert.ok(builtIn.every(r => r.token === undefined)); builtIn.length = 0;
 
     // 2. A setup link for the built-in proxy: stored, wiped from the address bar, a quiet "AI connected" toast. No tap.
     const builtInLink = APP + '/#ai=' + encodeURIComponent(scan.DEFAULT_PROXY.replace(/\/$/, '')) + '&k=' + TOKEN;
@@ -260,14 +270,14 @@ function jpegSize(dataURL) {
     await page.waitForFunction(() => document.getElementById('ai-status-title').textContent === 'Set up again'); assert.match(await page.locator('#ai-dot').getAttribute('class'), /is-bad/);
     // Paste the setup link (the installed app has its own storage): saved, and the field is emptied at once.
     await page.evaluate(() => { localStorage.removeItem('chad.aiProxyUrl'); localStorage.removeItem('chad.aiProxyToken'); }); await page.goto(APP + '/'); await advanced();
-    assert.equal(await page.locator('#ai-status-text').innerText(), 'Paste your setup link here. On iPhone, paste it inside the CHAD app (not Safari).');
+    assert.equal(await status(), 'Ready');
     assert.equal(await page.locator('#ai-link').evaluate(e => getComputedStyle(e).webkitTextSecurity), 'disc', 'the pasted link is masked');
     await page.locator('#ai-link').fill(link); await page.locator('#ai-link').press('Enter');
     assert.deepEqual(await keys(), [PROXY + '/', TOKEN]); assert.equal(await page.locator('#ai-link').inputValue(), '', 'the field never keeps the token'); assert.match(await toastText(), /AI connected/);
     await page.locator('#ai-link').fill('#ai=' + encodeURIComponent(PROXY) + '&k=' + TOKEN); await page.locator('#ai-link').press('Enter'); assert.deepEqual(await keys(), [PROXY + '/', TOKEN], 'just the hash works too');
     await page.locator('#ai-link').fill('hello there'); await page.locator('#ai-link').press('Enter');
     assert.match(await page.locator('#message').innerText(), /isn’t a CHAD setup link/); assert.equal(await page.locator('#ai-link').inputValue(), ''); assert.deepEqual(await keys(), [PROXY + '/', TOKEN]);
-    await page.locator('#ai-more > summary').click();
+    if (!await page.locator('#ai-more').evaluate(d => d.open)) await page.locator('#ai-more > summary').click();
     assert.equal(await page.locator('#ai-proxy').inputValue(), PROXY + '/', 'the address shows, never the token'); assert.equal(await page.locator('#ai-token').inputValue(), ''); assert.equal(await page.locator('#ai-token').getAttribute('placeholder'), 'Saved on this device');
     for (const bad of ['http://proxy.example', 'not a url']) { await page.locator('#ai-proxy').fill(bad); await page.locator('#ai-proxy').press('Tab'); assert.match(await page.locator('#message').innerText(), /https/); assert.equal(await page.evaluate(() => localStorage.getItem('chad.aiProxyUrl')), PROXY + '/', 'a bad address is refused'); }
     await page.locator('#ai-token').fill(TOKEN); await page.locator('#ai-token').press('Tab'); assert.equal(await page.locator('#ai-token').inputValue(), '', 'the token is never displayed');
@@ -348,7 +358,7 @@ function jpegSize(dataURL) {
     //    Describe it / Retry / Discard; AI settings only where a fresh link helps, Retake photo only for a photo with no
     //    food in it. (v11 offered Try again only where it helps; the v12 card always offers Retry.)
     const offline = kept => new RegExp(esc(OFFLINE) + '[\\s\\S]*' + kept + '\\. Retry when the PC is on\\.');
-    const failures = [['fail', /The AI couldn’t finish that one/], ['f502', /The AI couldn’t finish that one[\s\S]*search or describe it/], ['badjson', /That answer came back garbled/],
+    const failures = [['fail', new RegExp(esc(OFFLINE))], ['f502', new RegExp(esc(OFFLINE))], ['badjson', /That answer came back garbled/],
       ['nocors', offline('Your words are kept here')], ['nocors', offline('Your photo is safe here'), true], ['limit', /The AI needs a breather/], ['large', /That photo is too big for the AI/, true],
       ['empty', /No food spotted[\s\S]*Describe it again with more detail, or search for it\./], ['empty', /No food spotted[\s\S]*Retake the photo, or describe it instead\./, true]];
     for (const [which, title, photo] of failures) {
@@ -359,7 +369,7 @@ function jpegSize(dataURL) {
       for (const id of ['n12-search', 'n12-describe', 'n12-retry', 'n12-discard']) assert.equal(await page.locator('#' + id).isVisible(), true, which + ' ' + id);
       assert.equal(await page.locator('#n12-setup').count(), 0, which + ': no setup needed'); assert.equal(await page.locator('#n12-retake').count(), which === 'empty' && photo ? 1 : 0, which + ' retake');
       if (photo) assert.equal(await page.locator('#nutrition12 .ch-nut__photo img').isVisible(), true, which + ': the photo stays');
-      assert.match(await drafts.first().innerText(), which === 'nocors' ? /Photo AI offline · tap to retry/ : / · tap$/, which + ' in Recently eaten');
+      assert.match(await drafts.first().innerText(), ['nocors', 'fail', 'f502'].includes(which) ? /Can’t reach PC · tap to retry/ : / · tap$/, which + ' in Recently eaten');
       if (which === 'empty' && photo) break;
       await tap(page.locator('#n12-discard')); await closed();
     }
@@ -379,7 +389,7 @@ function jpegSize(dataURL) {
     // holds a token); with the token right again, Retry finishes it.
     await page.evaluate(() => localStorage.setItem('chad.aiProxyToken', 'synthetic-wrong'));
     await describe('synthetic toast'); await trouble();
-    assert.match(await gentle(), /Photo AI didn’t accept this phone[\s\S]*fresh setup link/); assert.equal(await page.locator('#n12-setup').isVisible(), true);
+    assert.match(await gentle(), /Can’t reach your PC[\s\S]*Advanced › paste setup link/); assert.equal(await page.locator('#n12-setup').isVisible(), true);
     const store = await page.evaluate(async () => { const db = await new Promise(r => { const q = indexedDB.open('chad-photos-v12'); q.onsuccess = () => r(q.result); }); const all = (name, how) => new Promise(r => { const q = db.transaction(name).objectStore(name)[how](); q.onsuccess = () => r(q.result); }); return { drafts: JSON.stringify(await all('drafts', 'getAll')), photos: (await all('photos', 'getAll')).map(p => Object.keys(p).sort().join()) }; });
     assert.match(store.drafts, /synthetic toast/); assert.doesNotMatch(store.drafts, /synthetic-wrong|synthetic-token|data:image/, 'drafts keep words, never a token or a photo');
     assert.ok(store.photos.length >= 1 && store.photos.every(k => k === 'image,thumbnail'), 'the photo store holds pictures only: ' + store.photos);
@@ -435,7 +445,7 @@ function jpegSize(dataURL) {
     assert.equal(openai.length, 1); assert.equal(openai[0].auth, 'Bearer synthetic-key-qa'); assert.equal(openai[0].body.store, false);
     assert.equal(await page.locator('#n12-name').inputValue(), 'Synthetic burrito bowl'); await tap(page.locator('#n12-discard')); await closed();
     await advanced(); await tap(page.locator('#ai-disconnect')); assert.equal(await page.evaluate(() => localStorage.getItem('rec-calories-ai-key')), null, 'Disconnect removes an own key too');
-    assert.equal(await status(), 'Not set up');
+    await page.waitForFunction(() => document.getElementById('ai-status-title').textContent === 'Connected');
     assert.deepEqual(errors, []);
     await context.close();
 
@@ -457,6 +467,6 @@ function jpegSize(dataURL) {
     const logged = (await saved(little)).entries.at(-1); assert.deepEqual([logged.kcal, logged.portion, logged.source], [60, '85 g', 'barcode'], 'half of the 170 g pot');
     assert.deepEqual(smallErrors, []);
     await small.close();
-    console.log('PASS Ask AI (v12 camera, Describe it, drafts in Recently eaten, the nutrition card) against a mock proxy on another origin and the built-in address (intercepted): nothing sent without a token, the photo kept as a draft in the "not set up" card (Describe this photo, Search food → Type it with the words, a barcode from the camera); setup link for the built-in proxy (stored, wiped from the address bar, quiet "AI connected", Undo/Redo, token-only link; the kept photo retried through it, grams as the weight, a logged photo’s leftover draft dropped on start; wrong token flagged); links to other proxies ask first; Settings status / Test (health + token check, no estimate) / paste link (masked, emptied, hash-only, junk refused) / other ways (https rule, hidden token); the shutter → Analysing… draft (photo, ring ~70% at 10 s) → pending card (photo, words, Close) → ready in place, 1024 px JPEG and token header, card (name, kcal, P/C/F, confidence, health, ingredients with grams; Fix with AI asks for a note first) with servings scaling, typed overrides, Done refusing no name / empty calories / a negative or too big number with the words that fix it (nothing logged), one-tap log with the photo id and no photo in the journal, Undo/Redo; words only with the CHAD answer shape; busy retry; friendly cards for 500/502/bad JSON/offline/429/413/no food with Retry (photo or words kept, and said so), Retake photo only for a photo with no food; Search food with the words, Retry; wrong token → AI settings, drafts and the photo store hold no token; 100 s timeout drops the request (words kept); a closed card carries on and waits in a toast behind another sheet; backups and journal free of AI settings and photos; proxy before own key; Disconnect with Undo; own-key fallback; 375 × 667 card with 48 px targets, half a pot logged as 85 g. Zero unexpected console errors.');
+    console.log('PASS Ask AI (v12 camera, Describe it, drafts in Recently eaten, the nutrition card) against a mock proxy on another origin and the built-in address (intercepted): successful first photo without a token header, collapsed Advanced with no setup card, rejected requests kept as drafts (Describe this photo, Search food → Type it with the words, a barcode from the camera); setup link for the built-in proxy (stored, wiped from the address bar, quiet "AI connected", Undo/Redo, token-only link; the kept photo retried through it, grams as the weight, a logged photo’s leftover draft dropped on start; wrong token flagged); links to other proxies ask first; Settings status / Test (health + token check, no estimate) / paste link (masked, emptied, hash-only, junk refused) / other ways (https rule, hidden token); the shutter → Analysing… draft (photo, ring ~70% at 10 s) → pending card (photo, words, Close) → ready in place, 1024 px JPEG and token header, card (name, kcal, P/C/F, confidence, health, ingredients with grams; Fix with AI asks for a note first) with servings scaling, typed overrides, Done refusing no name / empty calories / a negative or too big number with the words that fix it (nothing logged), one-tap log with the photo id and no photo in the journal, Undo/Redo; words only with the CHAD answer shape; busy retry; friendly cards for 500/502/bad JSON/offline/429/413/no food with Retry (photo or words kept, and said so), Retake photo only for a photo with no food; Search food with the words, Retry; wrong token → AI settings, drafts and the photo store hold no token; 100 s timeout drops the request (words kept); a closed card carries on and waits in a toast behind another sheet; backups and journal free of AI settings and photos; proxy before own key; Disconnect with Undo; own-key fallback; 375 × 667 card with 48 px targets, half a pot logged as 85 g. Zero unexpected console errors.');
   } finally { stalled.forEach(res => { try { res.destroy(); } catch { /* closed */ } }); await browser.close(); server.close(); proxy.close(); proxy.closeAllConnections?.(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

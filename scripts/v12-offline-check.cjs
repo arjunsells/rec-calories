@@ -7,7 +7,7 @@
 const assert = require('node:assert/strict');
 const { serve, launch, watch, saved, shellFiles, CACHE, IPHONE } = require('./harness.cjs');
 const PORT = 8108, ORIGIN = 'http://127.0.0.1:' + PORT;
-const OFFLINE = 'Can’t reach your PC — check it’s on and Tailscale is on on this phone. Search or describe it instead';
+const OFFLINE = 'Can’t reach your PC. Is Tailscale on and the PC awake?';
 (async () => {
   const server = await serve(PORT), browser = await launch();
   try {
@@ -52,7 +52,7 @@ const OFFLINE = 'Can’t reach your PC — check it’s on and Tailscale is on o
     await page.locator('#nutrition12-close').click(); await page.waitForFunction(() => !document.getElementById('nutrition12').open);
     // An offline reload: the draft and its photo come back from the device.
     await page.reload(); await page.waitForFunction(() => window.CHADScan12 && document.querySelector('#recent12 .ch-food.is-draft img'));
-    assert.match(await page.locator('#recent12 .ch-food.is-draft').first().textContent(), /Photo AI offline/);
+    assert.match(await page.locator('#recent12 .ch-food.is-draft').first().textContent(), /Can’t reach PC/);
     // Gym and Progress open offline too.
     for (const view of ['training', 'history']) { await page.waitForTimeout(460); await page.locator(`.tab[data-view=${view}]`).click(); await page.waitForFunction(v => !document.getElementById(v).hidden, view); }
     assert(await page.locator('#history .chart-card').count() >= 3, 'charts drawn offline');
