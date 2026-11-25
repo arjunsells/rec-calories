@@ -1,8 +1,8 @@
 'use strict';
 // CHAD v11 · the one add-food sheet. "Custom" on a meal builds that meal; "+ Food" on Today logs anything else. Tap
-// first, typing optional, in this order: your recent foods, your favourites (saved meals for this meal, the Quick log
-// favourites, the foods here), search (the foods here and Open Food Facts), then Ask AI (a photo and/or words through
-// your proxy, app11.js), a barcode, or typing it in; those three open the editable card and come back here with the
+// first, typing optional: search (the foods here and Open Food Facts) and Ask AI (a photo and/or words through
+// your proxy, app11.js), a barcode, or typing it in, above your recent foods and favourites (saved meals for this meal,
+// Quick log favourites, the foods here); those three open the editable card and come back here with the
 // item. Each item has ½ · 1 · 2 (or grams − / +) and a remove button; the total runs at the top. Log fills the meal
 // (or logs other food) with Undo in the toast; Save keeps a meal as a one-tap favourite on that meal. Every step inside
 // the sheet (add, portion, remove, save) has Undo, and Undo has Redo, right there in the sheet.
@@ -165,7 +165,8 @@
     const later = button('ch-btn ch-bld__later', () => logMeal(true), 'Plan for later'); later.id = 'builder-later';
     actions.append(save, log, later);
     const foot = el('div', 'ch-bld__foot'); foot.append(undoBar, actions);
-    body.replaceChildren(totalBar, list, recentHead, recent, el('h3', 'ch-list-h', 'Favourites'), chips, el('h3', 'ch-list-h', 'Search'), search, results, el('h3', 'ch-list-h', 'More ways'), ways, foot);
+    // Entry methods stay above the growing lists, visible on opening even on a small phone.
+    body.replaceChildren(totalBar, el('h3', 'ch-list-h', 'Search'), search, results, el('h3', 'ch-list-h', 'More ways'), ways, list, recentHead, recent, el('h3', 'ch-list-h', 'Favourites'), chips, foot);
     root.CHADIcons?.mount(body);
     search.onsubmit = e => { e.preventDefault(); runSearch($('builder-search').value); $('builder-search').blur(); };
     $('builder-search').addEventListener('input', () => { clearTimeout(searchTimer); const term = $('builder-search').value; offRows = []; paintLocal(term); if (term.trim().length >= 2) searchTimer = setTimeout(() => runSearch(term), 450); });

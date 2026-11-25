@@ -45,4 +45,4 @@ function decodePNG(buffer) {
 }
 const saved = page => page.evaluate(() => JSON.parse(localStorage.getItem('rec-calories-v1')));
 const shellFiles = () => [...fs.readFileSync(path.join(root, 'sw.js'), 'utf8').match(/^const SHELL = (.+);$/m)[1].matchAll(/'([^']+)'/g)].map(m => m[1]);
-module.exports = { root, serve, launch, watch, saved, shellFiles, decodePNG, IPHONE, MIME, NOON: '2026-11-24T12:00:00+09:30', CACHE: 'rec-calories-shell-v12g', V8: '7ddd9ab', V9: '472da71', V10: '47c498e', V11: '566cc4e' };
+module.exports = { root, serve, launch, watch, saved, shellFiles, decodePNG, IPHONE, MIME, NOON: '2026-11-24T12:00:00+09:30', CACHE: 'rec-calories-shell-v12h', V8: '7ddd9ab', V9: '472da71', V10: '47c498e', V11: '566cc4e' };

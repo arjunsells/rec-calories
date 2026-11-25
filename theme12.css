@@ -737,7 +737,7 @@ input[type="range"].ch-input::-moz-range-thumb{ width:28px; height:28px; border-
 
 /* ---- overlays ---- */
 .ch-sheet{
-  --ch-sheet-limit:min(85vh,calc(100% - var(--ch-sat) - 16px));
+  --ch-sheet-limit:min(85vh,calc(100vh - var(--ch-sat) - 16px));
   position:fixed; z-index:60; inset:auto 0 calc(8px + var(--ch-kb,0px)) 0; margin:0 auto;
   width:calc(100% - 16px - var(--ch-sal) - var(--ch-sar)); max-width:504px;
   min-height:min(320px,var(--ch-sheet-limit)); max-height:var(--ch-sheet-limit); border:0;
@@ -749,8 +749,11 @@ input[type="range"].ch-input::-moz-range-thumb{ width:28px; height:28px; border-
   font:400 17px/22px var(--ch-font); -webkit-font-smoothing:antialiased; -webkit-tap-highlight-color:transparent;
   touch-action:pan-y; overscroll-behavior:contain;
 }
-@supports (height:100dvh){ .ch-sheet{ --ch-sheet-limit:min(85dvh,calc(100% - var(--ch-sat) - 16px)) } }
-@supports (height:100svh){ .ch-sheet{ --ch-sheet-limit:min(85svh,calc(100% - var(--ch-sat) - 16px)) } }
+@supports (height:100dvh){ .ch-sheet{ --ch-sheet-limit:min(85dvh,calc(100dvh - var(--ch-sat) - 16px)) } }
+@supports (height:100svh){ .ch-sheet{ --ch-sheet-limit:min(85svh,calc(100dvh - var(--ch-sat) - 16px)) } }
+/* A flex scroller cannot supply an auto-sized dialog's height on standalone Safari.
+   Give builders and list sheets a stable viewport height; short control sheets still fit content. */
+.ch-sheet.ch-builder,.ch-sheet:has(.ch-sheet__body :is(ul,ol,.ch-list)){ height:var(--ch-sheet-limit) }
 dialog.ch-sheet:not([open]){ display:none }
 dialog.ch-sheet:not([open])::backdrop{ display:none }
 dialog.ch-sheet[open]{ display:flex }
