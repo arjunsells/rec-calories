@@ -200,7 +200,7 @@ function jpegSize(dataURL) {
     await tap(page.locator('#builder-sheet [data-close=builder-sheet]')); await page.locator('#builder-sheet').waitFor({ state: 'hidden' });
     // v11 never kept a photo; v12 keeps it on this device (never in the journal) until it is logged or discarded.
     const kept = page.locator('#recent12 .ch-food.is-draft.is-error');
-    assert.equal(await kept.count(), 1); assert.match(await kept.innerText(), /Can’t reach PC · tap to retry/); assert.equal(await kept.locator('img').count(), 1, 'with its photo');
+    assert.equal(await kept.count(), 1); assert.match(await kept.innerText(), /Check AI settings · tap/); assert.equal(await kept.locator('img').count(), 1, 'with its photo');
     // A barcode from the camera: the shutter types the digits.
     await camera(); await tap(page.locator('[data-mode12=barcode]'));
     assert.equal(await page.locator('#camera12-title').textContent(), 'Scan barcode'); assert.equal(await page.locator('#camera12-shutter').getAttribute('aria-label'), 'Type the barcode digits');

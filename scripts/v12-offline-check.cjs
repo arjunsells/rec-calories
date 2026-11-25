@@ -52,6 +52,7 @@ const OFFLINE = 'Can’t reach your PC. Is Tailscale on and the PC awake?';
     await page.locator('#nutrition12-close').click(); await page.waitForFunction(() => !document.getElementById('nutrition12').open);
     // An offline reload: the draft and its photo come back from the device.
     await page.reload(); await page.waitForFunction(() => window.CHADScan12 && document.querySelector('#recent12 .ch-food.is-draft img'));
+    await page.waitForFunction(() => CHADScan12.drafts().some(d => d.status === 'error'));
     assert.match(await page.locator('#recent12 .ch-food.is-draft').first().textContent(), /Can’t reach PC/);
     // Gym and Progress open offline too.
     for (const view of ['training', 'history']) { await page.waitForTimeout(460); await page.locator(`.tab[data-view=${view}]`).click(); await page.waitForFunction(v => !document.getElementById(v).hidden, view); }

@@ -18,6 +18,8 @@
   // The proxy contract has one text field: a label photo says so there, and so do a description and a correction.
   const LABEL_HINT = 'This photo is a nutrition label. Read the nutrition label: use its serving size and the per-serving values printed on it.';
   const OFFLINE = 'Can’t reach your PC. Is Tailscale on and the PC awake?';
+  // The same failures get the unreachable note and background recovery. Auth needs Settings/user action.
+  const UNREACHABLE = new Set(['off', 'network', 'timeout', 'failed', 'http', 'interrupted']);
   const OIL = { name: 'Oil or sauce, 15 mL', grams: 13.6, kcal: 120, protein: 0, carbs: 0, fat: 13.6 };
   const SOURCE = { photo: 'Photo', label: 'Food label', text: 'Described', barcode: 'Barcode', manual: 'Typed in', favourite: 'Saved food', search: 'Food search', plan: 'Meal plan', custom: 'Custom meal', repeat: 'Logged again', addon: 'Add-on' };
   const uid = () => 'scan-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
@@ -666,7 +668,7 @@
         b.setAttribute('aria-label', 'Analysing a ' + (d.source === 'text' ? 'description' : 'photo') + '. Open');
       } else if (d.status === 'error') {
         top.append(el('b', 'ch-food__name', d.item?.name || 'Not analysed'), el('small', 'ch-food__time', timeOf(d.at)));
-        words.append(top, el('small', 'ch-food__note is-alert', ['off', 'network', 'timeout', 'auth', 'failed', 'http'].includes(d.errorKind) ? 'Can’t reach PC · tap to retry' : (d.error || 'Needs a retry') + ' · tap'));
+        words.append(top, el('small', 'ch-food__note is-alert', UNREACHABLE.has(d.errorKind) ? 'Can’t reach PC · tap to retry' : d.errorKind === 'auth' ? 'Check AI settings · tap' : (d.error || 'Needs a retry') + ' · tap'));
         b.setAttribute('aria-label', (d.error || 'Not analysed') + '. Open to retry, search or describe it');
       } else {
         const t = total(d);
@@ -717,19 +719,31 @@
         if (draft.status === 'error') setError(draft);
         drafts.push(draft);
       }
-      render(); tidyPhotos(); retryDrafts();
+      render(); tidyPhotos(); retryDrafts(true);
     }).catch(() => {});
   }
-  // Event driven only: no polling or self-scheduled retries. Persist the cooldown across reloads too.
-  function retryDrafts() {
-    if (document.hidden || navigator.onLine === false) return;
+  // Each load gets one immediate recovery attempt. Subsequent events use the persisted LAST attempt.
+  // A throttled event gets one deferred attempt, never a polling loop or a retry-on-failure loop.
+  const deferredRetries = new Map();
+  function retryDrafts(startup = false, onlyId = null) {
+    if (document.hidden && !startup) return;
     for (const d of drafts) {
-      if (d.status !== 'error' || !['off', 'network', 'timeout'].includes(d.errorKind) || running.has(d.id)) continue;
-      if (Date.now() - (d.lastAttemptAt || 0) < 30000) continue;
+      if (onlyId && d.id !== onlyId) continue;
+      if (d.status !== 'error' || !UNREACHABLE.has(d.errorKind) || running.has(d.id)) continue;
+      const remaining = 30000 - (Date.now() - (d.lastAttemptAt || 0));
+      if (!startup && remaining > 0) {
+        if (!deferredRetries.has(d.id)) deferredRetries.set(d.id, setTimeout(() => {
+          deferredRetries.delete(d.id);
+          if (drafts.includes(d) && d.status === 'error') retryDrafts(false, d.id);
+        }, remaining));
+        continue;
+      }
+      clearTimeout(deferredRetries.get(d.id)); deferredRetries.delete(d.id);
       estimate(d); // background result stays in Recently eaten; no modal opens on resume
     }
   }
-  addEventListener('online', retryDrafts);
+  // navigator.onLine can be stale on iOS: the actual request determines reachability.
+  addEventListener('online', () => retryDrafts());
   document.addEventListener('visibilitychange', () => { if (!document.hidden) retryDrafts(); });
   window.CHADScan12 = { open, openResult, edit, render, health, drafts: () => drafts.slice() };
   init();

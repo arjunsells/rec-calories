@@ -123,7 +123,8 @@ const WORDS = { name: 'Described chicken salad', kcal: 380, protein_g: 42, carbs
       await page.evaluate(() => { const d = document.getElementById('detail-sheet'); d.style.animationPlayState = ''; CHADUX.showSheet(d); });
       await page.reload();
       assert.equal(await page.locator('dialog[open]').count(), 0, 'reload leaves no sheet or backdrop');
-      assert.equal(calls.length, startupCalls + 1, 'persisted cooldown prevents reload retry loop');
+      await page.waitForFunction(() => CHADScan12.drafts().some(d => d.status === 'error'));
+      assert.equal(calls.length, startupCalls + 2, 'fresh load retries once despite persisted cooldown');
       mode = 'ok'; const before = calls.length;
       await page.clock.runFor(31000);
       await page.evaluate(() => { dispatchEvent(new Event('online')); document.dispatchEvent(new Event('visibilitychange')); });
@@ -291,12 +292,14 @@ const WORDS = { name: 'Described chicken salad', kcal: 380, protein_g: 42, carbs
     await page.locator('#n12-discard').click(); await closed(page);
     const left = await page.locator('#recent12 .ch-food.is-draft').count();
     await again(); await page.locator('#undo-toast button').click(); assert.equal(await page.locator('#recent12 .ch-food.is-draft').count(), left + 1, 'Discard has Undo');
-    // A reload mid-scan: the photo survives; Retry finishes it.
+    // A reload mid-scan: the photo survives and startup recovery finishes it.
     mode = 'hang'; await snap(); await page.waitForFunction(() => document.querySelector('#recent12 .ch-food.is-pending'));
-    hold = []; await page.reload(); await page.waitForFunction(() => window.CHADScan12);
-    await page.waitForFunction(() => /Scan interrupted/.test(document.getElementById('recent12').textContent));
-    mode = 'ok'; await page.locator('#recent12 .ch-food.is-error', { hasText: 'Scan interrupted' }).first().click();
-    await page.locator('#n12-retry').click(); await cardOpen(page); assert.equal(await value(page, 'n12-kcal'), '600');
+    const interruptedId = await page.evaluate(() => CHADScan12.drafts().find(d => d.status === 'pending').id);
+    hold = []; mode = 'ok'; await page.reload(); await page.waitForFunction(() => window.CHADScan12);
+    await page.waitForFunction(id => CHADScan12.drafts().some(d => d.id === id && d.status === 'ready'), interruptedId);
+    assert.equal(await page.locator('dialog[open]').count(), 0, 'interrupted scan recovers on startup without opening a sheet');
+    await page.locator('#recent12 .ch-food', { hasText: 'Synthetic chicken plate' }).first().click();
+    await cardOpen(page); assert.equal(await value(page, 'n12-kcal'), '600');
     await page.locator('#n12-done').click(); await closed(page);
     // Tidying the device's photos on start: one nothing points to from two days ago goes; one from a minute ago (its
     // draft may still be on its way) and one a logged food points to stay.
