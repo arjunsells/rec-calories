@@ -22,7 +22,7 @@ const shots = path.join(os.tmpdir(), 'chad-v12-qa');
       let proxy = 'ok';
       await context.route('**/estimate', async route => { await new Promise(r => setTimeout(r, proxy === 'slow' ? 2500 : 300)); if (proxy === '401') return route.fulfill({ status: 401, contentType: 'application/json', body: '{}' }); route.fulfill({ contentType: 'application/json', body: JSON.stringify({ name: 'Synthetic chicken, rice and greens with a long name', grams: 420, kcal: 640, protein_g: 52, carbs_g: 62, fat_g: 18, fibre_g: 6, sugar_g: 4, confidence: .6, items: [{ name: 'Grilled chicken thigh, skin off', grams: 180, kcal: 340, protein_g: 44, carbs_g: 0, fat_g: 16 }, { name: 'White rice', grams: 180, kcal: 230, protein_g: 4.5, carbs_g: 50, fat_g: .5 }, { name: 'Broccoli', grams: 60, kcal: 20, protein_g: 2, carbs_g: 4, fat_g: .2 }] }) }); });
       await page.addInitScript(() => { const c = document.createElement('canvas'); c.width = 960; c.height = 720; const g = c.getContext('2d'); const draw = () => { g.fillStyle = '#6b5a48'; g.fillRect(0, 0, 960, 720); g.fillStyle = '#f4f1ea'; g.beginPath(); g.arc(480, 360, 260, 0, 7); g.fill(); }; draw(); setInterval(draw, 120); Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: async () => c.captureStream(10) } }); });
-      if (safe) await page.addInitScript(css => { const add = () => { const style = document.createElement('style'); style.textContent = css; document.documentElement.append(style); }; if (document.documentElement) add(); else new MutationObserver((m, o) => { if (document.documentElement) { o.disconnect(); add(); } }).observe(document, { childList: true }); }, ':root{--ch-sat:47px;--ch-sab:34px;--ch-sal:6px;--ch-sar:6px}');   // as soon as <html> exists, before any script
+      if (safe) await page.addInitScript(css => { const add = () => { const style = document.createElement('style'); style.textContent = css; document.documentElement.append(style); }; if (document.documentElement) add(); else new MutationObserver((m, o) => { if (document.documentElement) { o.disconnect(); add(); } }).observe(document, { childList: true }); }, ':root{--ch-sat:59px;--ch-sab:34px;--ch-sal:6px;--ch-sar:6px}');   // as soon as <html> exists, before any script
       await page.clock.install({ time: new Date(NOON) }); await page.goto('http://127.0.0.1:8091/');
       // A saved dinner, so its favourite and Same as yesterday are on screen too.
       await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('rec-calories-v1')); s.myMeals = [{ id: 'my-qa', slot: 'D', name: 'Synthetic chook and spud bowl with corn', macros: [640, 52, 60, 18], parts: [] }]; s.questsV5 = { '2026-11-23': { picks: { D: 'C' } } }; s.entries = [{ id: 'plan-2026-11-23-D', day: '2026-11-23', name: 'Synthetic leftover pasta bake', kcal: 700, protein: 40, carbs: 80, fat: 20, planSlot: 'D', source: 'custom' }]; localStorage.setItem('rec-calories-v1', JSON.stringify(s)); localStorage.setItem('chad.aiProxyUrl', location.origin); localStorage.setItem('chad.aiProxyToken', 'synthetic-design-token'); });
@@ -30,6 +30,12 @@ const shots = path.join(os.tmpdir(), 'chad-v12-qa');
       const name = width + 'x' + height + ' ' + theme + (safe ? ' safe' : '');
       const check = async label => {
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, name + ' ' + label + ' overflow');
+        assert.doesNotMatch(await page.locator('body').innerText(), /pair/i, name + ' no pairing wording');
+        assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('.ch-datebar,.ch-sheet__head,.ch-bld__total')].filter(e => {
+          if (!e.getClientRects().length) return false;
+          const bg = getComputedStyle(e).backgroundColor;
+          return bg === 'transparent' || (bg.startsWith('rgba(') && parseFloat(bg.split(',').at(-1)) < 1);
+        }).map(e => e.className)), [], name + ' ' + label + ' opaque headers');
         const bad = await page.evaluate(() => [...document.querySelectorAll('button,a,summary,input:not([type=hidden]),select,textarea')].filter(e => {
           if (e.closest('#gym')) return false;                                                     // Gym mode has its own, bigger rule
           const r = e.getBoundingClientRect(); if (!r.width || !r.height || getComputedStyle(e).visibility === 'hidden') return false;
@@ -90,10 +96,10 @@ const shots = path.join(os.tmpdir(), 'chad-v12-qa');
             if (r.top < sat - 1 || r.bottom > vh - sab + 1 || r.left < 0 || r.right > vw) off.push((b.getAttribute('aria-label') || b.textContent).trim().slice(0, 24) + ' ' + JSON.stringify([r.top, r.bottom, r.left, r.right].map(Math.round)));
           }
           return { bad, off, wide: document.documentElement.scrollWidth > vw };
-        }, { sat: safe ? 47 : 0, sab: safe ? 34 : 0 });
+        }, { sat: safe ? 59 : 0, sab: safe ? 34 : 0 });
         assert.deepEqual(out.bad, [], name + ' Gym mode ' + label + ': 56 px targets, 72 px main buttons'); assert.deepEqual(out.off, [], name + ' Gym mode ' + label + ': every control on screen, clear of the notch and home indicator'); assert.equal(out.wide, false);
       };
-      const sheetFits = async (id, label) => { const box = await page.locator('#' + id).boundingBox(); assert.ok(box.y >= (safe ? 47 : 0) - 1 && box.y + box.height <= height + 1, name + ' ' + label + ' fits the screen ' + JSON.stringify(box)); };
+      const sheetFits = async (id, label) => { const box = await page.locator('#' + id).boundingBox(); assert.ok(box.y >= (safe ? 59 : 0) - 1 && box.y + box.height <= height + 1, name + ' ' + label + ' fits the screen ' + JSON.stringify(box)); };
       const tab = view => page.locator(`[data-view=${view}]`).tap();
       assert.equal(await page.evaluate(() => devicePixelRatio), 3);
       assert.equal(await page.evaluate(() => matchMedia('(pointer:coarse)').matches), true);
@@ -121,6 +127,11 @@ const shots = path.join(os.tmpdir(), 'chad-v12-qa');
       await tab('today'); await page.locator('#open-settings').tap(); await check('Settings'); await aa('Settings');
       await page.evaluate(() => document.querySelectorAll('#settings details').forEach(d => d.open = true)); await check('Settings, disclosures open'); await aa('Settings, disclosures open');
       await page.evaluate(() => scrollTo(0, document.body.scrollHeight)); await aa('Settings, bottom');
+      assert.equal(await page.evaluate(() => {
+        const items = [...document.querySelectorAll('#settings button,#settings summary')].filter(e => e.getClientRects().length);
+        const r = items.at(-1).getBoundingClientRect(), bar = document.querySelector('.ch-tabbar').getBoundingClientRect();
+        return r.top >= 0 && r.bottom <= bar.top;
+      }), true, name + ' last Settings control reachable above tab bar');
       await page.locator('#close-settings').tap();
 
       // The floating dock: with a card scrolled right behind it, every pixel in and around the bar is identical to the
@@ -171,7 +182,7 @@ const shots = path.join(os.tmpdir(), 'chad-v12-qa');
       await page.locator('#builder-ask-go').tap(); await page.locator('#camera12').waitFor({ state: 'visible' }); await page.waitForFunction(() => document.getElementById('camera12-video').videoWidth > 0);
       await check('camera'); await aa('camera');
       // The camera fills the screen edge to edge; its controls stay clear of the notch and the home indicator.
-      assert.deepEqual(await page.evaluate(({ sat, sab }) => { const r = q => document.querySelector(q).getBoundingClientRect(); return { close: r('#camera12-close').top >= sat - 1, shutter: r('#camera12-shutter').bottom <= innerHeight - sab, links: r('.ch-cam__links').bottom <= innerHeight - sab + 1, full: r('#camera12').height >= innerHeight - 1 }; }, { sat: safe ? 47 : 0, sab: safe ? 34 : 0 }), { close: true, shutter: true, links: true, full: true }, name + ' the camera controls clear the notch and home indicator');
+      assert.deepEqual(await page.evaluate(({ sat, sab }) => { const r = q => document.querySelector(q).getBoundingClientRect(); return { close: r('#camera12-close').top >= sat - 1, shutter: r('#camera12-shutter').bottom <= innerHeight - sab, links: r('.ch-cam__links').bottom <= innerHeight - sab + 1, full: r('#camera12').height >= innerHeight - 1 }; }, { sat: safe ? 59 : 0, sab: safe ? 34 : 0 }), { close: true, shutter: true, links: true, full: true }, name + ' the camera controls clear the notch and home indicator');
       for (const m of ['label', 'barcode']) { await page.locator(`[data-mode12=${m}]`).tap(); await page.waitForTimeout(150); await check('camera, ' + m); await aa('camera, ' + m); }
       await page.locator('#camera12-shutter').tap(); await page.locator('#scan-sheet').waitFor({ state: 'visible' }); await check('barcode digits'); await aa('barcode digits'); await sheetFits('scan-sheet', 'barcode');
       await page.locator('#scan-sheet [data-close=scan-sheet]').tap(); await page.locator('#builder-sheet').waitFor({ state: 'visible' }); await page.locator('#builder-sheet [data-close=builder-sheet]').tap(); await page.waitForTimeout(420);

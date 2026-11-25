@@ -219,6 +219,7 @@ body{ margin:0; background:var(--ch-bg) }      /* the native rubber band at the 
 /* ---- header: big title that collapses into a blurred bar ---- */
 .ch-datebar{
   position:sticky; top:0; z-index:30; isolation:isolate;
+  background:var(--ch-bg);
   display:flex; align-items:center; gap:8px;
   padding:calc(var(--ch-sat) + 6px) calc(16px + var(--ch-sar)) 6px calc(16px + var(--ch-sal));
 }
@@ -738,7 +739,7 @@ input[type="range"].ch-input::-moz-range-thumb{ width:28px; height:28px; border-
 .ch-sheet{
   position:fixed; z-index:60; inset:auto 0 calc(8px + var(--ch-kb,0px)) 0; margin:0 auto;
   width:calc(100% - 16px - var(--ch-sal) - var(--ch-sar)); max-width:504px;
-  max-height:calc(var(--ch-vvh,var(--ch-screen-h))*.92 - var(--ch-sat)); border:0;
+  max-height:calc(var(--ch-vvh,var(--ch-screen-h)) - var(--ch-sat) - 16px); border:0;
   flex-direction:column; padding:0 16px max(16px,calc(var(--ch-sab) - 8px));
   border-radius:36px; overflow:hidden;
   background:var(--ch-material-sheet); color:var(--ch-text);
@@ -756,7 +757,7 @@ dialog.ch-sheet.is-closing::backdrop{ animation:ch-fade-out .26s ease forwards }
 .ch-sheet > form{ display:contents }
 .ch-sheet__grip{ flex:none; align-self:stretch; height:20px; margin:0 -16px; position:relative; touch-action:none; cursor:grab }
 .ch-sheet__grip::before{ content:""; position:absolute; left:50%; top:8px; width:36px; height:5px; margin-left:-18px; border-radius:3px; background:var(--ch-faint); opacity:.7 }
-.ch-sheet__head{ flex:none; display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:48px; margin-bottom:8px; padding-left:4px; touch-action:none }
+.ch-sheet__head{ flex:none; display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:48px; margin-bottom:8px; padding-left:4px; touch-action:none; background:var(--ch-material-sheet); z-index:2 }
 .ch-sheet__title{ font:700 22px/28px var(--ch-font); letter-spacing:-.018em; min-width:0 }
 .ch-sheet__body{ flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; display:grid; grid-auto-rows:max-content; gap:16px; align-content:start; margin-inline:-16px; padding:4px 16px }
 .ch-sheet .ch-list,.ch-sheet .ch-card{ background:var(--ch-fill); box-shadow:none }
@@ -1753,7 +1754,7 @@ html.is-gym .ch-app:has(#celebration) #celebration{ top:calc(var(--ch-sat) + 124
 
 /* ---- the camera: full screen, true black ---- */
 .ch-sheet.ch-cam{
-  inset:0; width:100%; max-width:none; height:var(--ch-screen-h); max-height:none; margin:0; padding:0; border-radius:0;
+  inset:0 0 auto; top:var(--ch-vv-top,0px); width:100%; max-width:none; height:var(--ch-vvh,var(--ch-screen-h)); max-height:none; margin:0; padding:0; border-radius:0;
   background:#000; color:#fff; -webkit-backdrop-filter:none; backdrop-filter:none; box-shadow:none; overflow:hidden;
 }
 dialog.ch-cam[open]{ display:block }
@@ -1803,7 +1804,7 @@ dialog.ch-cam::backdrop{ background:#000 }
 .ch-cam__links .ch-icon{ width:18px; height:18px }
 
 /* ---- the nutrition card ---- */
-.ch-sheet.ch-nut{ height:calc(var(--ch-vvh,var(--ch-screen-h)) - var(--ch-sat) - 10px); max-height:none; inset:auto 0 0 0; width:100%; max-width:520px; border-radius:30px 30px 0 0; padding:0 18px; background:var(--ch-material-sheet); -webkit-backdrop-filter:none; backdrop-filter:none }
+.ch-sheet.ch-nut{ height:calc(var(--ch-vvh,var(--ch-screen-h)) - var(--ch-sat) - 10px); max-height:calc(var(--ch-vvh,var(--ch-screen-h)) - var(--ch-sat) - 10px); inset:auto 0 var(--ch-kb,0px) 0; width:100%; max-width:520px; border-radius:30px 30px 0 0; padding:0 18px; background:var(--ch-material-sheet); -webkit-backdrop-filter:none; backdrop-filter:none }
 .ch-nut__head{ display:grid; grid-template-columns:48px minmax(0,1fr) 48px; margin:0 0 4px; padding:0 }
 .ch-nut__head .ch-sheet__close{ margin:0 }
 .ch-nut__title{ text-align:center; font:700 17px/22px var(--ch-font) }

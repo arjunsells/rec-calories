@@ -9,7 +9,7 @@ const text = buffer => buffer.toString('utf8').split('\r\n').join('\n');
 const newWorker = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
 let phase = 'v11';        // v11 -> v12 (deploy) -> v13 -> v14 (pretend future releases)
 
-// Unchanged shared modules remain byte-identical to v11. v12c deliberately updates scan9.js
+// Unchanged shared modules remain byte-identical to v11. v12d deliberately updates scan9.js
 // in place; cache generations keep the old page/module together until the new worker takes
 // over. Verify both cached bytes and routing behavior across that transition below.
 const changedShared = new Set(['./scan9.js']);
@@ -64,8 +64,8 @@ const handler = (pathname, res) => {
     await page.waitForFunction(() => !window.qaOld && window.CHADScan12 && document.getElementById('now')?.dataset.now, null, { timeout: 20000 });
     await page.waitForFunction(async cache => (await caches.has(cache)) && !(await caches.has('rec-calories-shell-v11')), CACHE);
     assert.deepEqual(errors, [], 'no script errors through the upgrade');
-    assert.equal(text(Buffer.from(await page.evaluate(async () => (await fetch('./scan9.js')).text()))), text(fs.readFileSync(path.join(root, 'scan9.js'))), 'v12c serves its updated estimator from the new cache');
-    assert.equal(await page.evaluate(() => RECScan.settings({ getItem: () => null }).mode), 'proxy', 'v12c defaults to the built-in proxy without setup');
+    assert.equal(text(Buffer.from(await page.evaluate(async () => (await fetch('./scan9.js')).text()))), text(fs.readFileSync(path.join(root, 'scan9.js'))), 'v12d serves its updated estimator from the new cache');
+    assert.equal(await page.evaluate(() => RECScan.settings({ getItem: () => null }).mode), 'proxy', 'v12d defaults to the built-in proxy without setup');
     assert.deepEqual(await saved(page), { ...before, appVersion: 12 }, 'v12 keeps the v11 journal as it was (appVersion 12)');
     assert.equal(await page.evaluate(() => localStorage.getItem('rec-calories-v11-backup')), raw, 'and keeps the v11 journal byte for byte');
     assert.equal(await page.locator('#journey-day').innerText(), 'Day 48');
@@ -113,7 +113,7 @@ const handler = (pathname, res) => {
     await page.keyboard.press('Escape'); await page.locator('#undo-toast button').click();
     await page.waitForFunction(() => !window.qaMarker && window.CHADQuest, null, { timeout: 20000 });
     assert.deepEqual(await saved(page), { ...before, appVersion: 12 }); assert.deepEqual(errors, []);
-    console.log('PASS actual v11 to v12 upgrade: unchanged shared files verified against Git, scan9.js verified as original under v11 and updated under v12c with zero-setup routing, the v12 shell adds scan12/app12/quest12/ux12/theme12 and drops the v11 files, the v11 app stays whole until the v12 worker takes over, v11 cache removed, one reload into v12, v11 journal kept (lunch, water, habit, workout, saved meal, theme, other food, key) with only appVersion 12 and a byte-for-byte v11 backup, dinner on top with the v11 water on its own card, v11 food in Recently eaten and the eaten view, offline page/assets/data/history and logging (water card, Quick log, Undo), navigations from the shell; next-release path: one automatic reload on a fresh page, an "Update ready" toast when a sheet is open.');
+    console.log('PASS actual v11 to v12 upgrade: unchanged shared files verified against Git, scan9.js verified as original under v11 and updated under v12d with zero-setup routing, the v12 shell adds scan12/app12/quest12/ux12/theme12 and drops the v11 files, the v11 app stays whole until the v12 worker takes over, v11 cache removed, one reload into v12, v11 journal kept (lunch, water, habit, workout, saved meal, theme, other food, key) with only appVersion 12 and a byte-for-byte v11 backup, dinner on top with the v11 water on its own card, v11 food in Recently eaten and the eaten view, offline page/assets/data/history and logging (water card, Quick log, Undo), navigations from the shell; next-release path: one automatic reload on a fresh page, an "Update ready" toast when a sheet is open.');
     await context.close();
   } finally { await browser.close(); server.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

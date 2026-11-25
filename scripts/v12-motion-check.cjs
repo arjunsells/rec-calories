@@ -66,7 +66,10 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     await settle(); await sleep(450); await page.locator('#left-line').tap(); await settle(); assert.equal(await page.locator('#remaining-label').textContent(), 'Calories left');
 
     // 3. Sheets leave with an animation however they are dismissed, and the page is usable right after.
-    for (const dismiss of [() => page.locator('[data-close=builder-sheet]').tap(), () => page.keyboard.press('Escape'), () => page.touchscreen.tap(196, 24)]) {   // the backdrop: above the tall sheet
+    for (const dismiss of [() => page.locator('[data-close=builder-sheet]').tap(), () => page.keyboard.press('Escape'), async () => {
+      const box = await page.locator('#builder-sheet').boundingBox();
+      await page.touchscreen.tap(196, box.y / 2); // outside even when the sheet fills the safe visual viewport
+    }]) {
       await sleep(450); await page.locator('#add-food').scrollIntoViewIfNeeded(); await page.locator('#add-food').tap(); assert.equal(await page.locator('#builder-sheet').isVisible(), true); await sleep(520);
       await dismiss();
       assert.equal(await page.locator('#builder-sheet').evaluate(d => d.open && d.classList.contains('is-closing')), true, 'closing is animated, not cut');
@@ -100,7 +103,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     await touch('touchStart', 196, box.y + 10); await touch('touchMove', 196, box.y + 30); await touch('touchMove', 196, box.y + 70); await touch('touchEnd');
     await sheet.waitFor({ state: 'hidden', timeout: 2000 });
     await page.setViewportSize({ width: 393, height: 320 }); box = await open();                    // short enough that the meal sheet scrolls
-    const body = sheet.locator('.ch-sheet__body'), scrollable = await body.evaluate(b => b.scrollHeight > b.clientHeight + 70);
+    const body = sheet.locator('.ch-sheet__body'), scrollable = await body.evaluate(b => b.scrollHeight >= b.clientHeight + 70);
     assert.equal(scrollable, true, 'the short screen makes the sheet content scroll');
     await body.evaluate(b => { b.scrollTop = 60; });
     const inside = await body.boundingBox();

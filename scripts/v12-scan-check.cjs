@@ -63,7 +63,10 @@ const WORDS = { name: 'Described chicken salad', kcal: 380, protein_g: 42, carbs
   }
   const value = (page, id) => page.locator('#' + id).inputValue();
   const cardOpen = page => page.waitForFunction(() => document.getElementById('nutrition12').open && document.getElementById('nutrition12').dataset.state === 'ready' && document.getElementById('n12-kcal'));
-  const closed = page => page.waitForFunction(() => !document.getElementById('nutrition12').open);
+  const closed = async page => {
+    await page.waitForFunction(() => !document.getElementById('nutrition12').open);
+    assert.equal(await page.locator('dialog[open]').count(), 0, 'scan finished: no dialog or native backdrop remains');
+  };
   const photoSize = page => page.evaluate(async () => {
     const db = await new Promise(r => { const q = indexedDB.open('chad-photos-v12'); q.onsuccess = () => r(q.result); });
     const all = await new Promise(r => { const q = db.transaction('photos').objectStore('photos').getAll(); q.onsuccess = () => r(q.result); });
@@ -71,6 +74,65 @@ const WORDS = { name: 'Described chicken salad', kcal: 380, protein_g: 42, carbs
     return Promise.all(all.map(async p => ({ image: await size(p.image), thumbnail: await size(p.thumbnail) })));
   });
   try {
+    // iOS restores a failed-photo Describe sheet mid-animation, sometimes with the keyboard still raised.
+    // Keep this separate from the normal scan flow, and use real motion (the rest uses reduced motion).
+    {
+      const { context, page } = await open();
+      await page.emulateMedia({ reducedMotion: 'no-preference', colorScheme: 'dark' });
+      await page.evaluate(async () => {
+        const db = await new Promise(r => { const q = indexedDB.open('chad-photos-v12'); q.onsuccess = () => r(q.result); });
+        await new Promise(r => { const t = db.transaction('drafts', 'readwrite'); t.objectStore('drafts').put({ id: 'resume-off', day: CHADUX.dateKey(), at: Date.now(), source: 'text', desc: 'Synthetic salad', status: 'error', errorKind: 'off' }); t.oncomplete = r; });
+      });
+      mode = 'abort'; const startupCalls = calls.length; await page.reload();
+      await page.waitForFunction(() => CHADScan12.drafts().some(d => d.status === 'error'));
+      assert.equal(calls.length, startupCalls + 1, 'saved off draft retries on startup');
+      await page.locator('#recent12 .is-error').first().click();
+      await page.locator('#n12-describe').click();
+      await page.evaluate(() => {
+        document.documentElement.style.setProperty('--ch-sat', '59px');
+        document.documentElement.style.setProperty('--ch-sab', '34px');
+        Object.defineProperty(visualViewport, 'height', { configurable: true, value: 380 });
+        Object.defineProperty(visualViewport, 'offsetTop', { configurable: true, value: 59 });
+        visualViewport.dispatchEvent(new Event('resize'));
+      });
+      await page.waitForTimeout(750);
+      await page.locator('#describe12-go').scrollIntoViewIfNeeded();
+      assert.equal(await page.locator('#detail-sheet').evaluate(d => {
+        const r = d.getBoundingClientRect(), b = document.getElementById('describe12-go').getBoundingClientRect();
+        return r.top >= 59 && r.bottom <= 439 && b.top >= r.top && b.bottom <= r.bottom - 26;
+      }), true, 'Describe and Estimate stay inside raised-keyboard visual viewport and above home indicator');
+      // Re-enter while already keyboard-sized, then interrupt the fresh entrance before animationend.
+      await page.evaluate(() => { const d = document.getElementById('detail-sheet'); CHADUX.closeSheets(); CHADUX.showSheet(d); });
+      await page.evaluate(() => {
+        const d = document.getElementById('detail-sheet');
+        d.style.transform = 'translateY(240px)'; d.classList.add('is-dragging');
+        Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+        document.dispatchEvent(new Event('visibilitychange'));
+        Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      assert.equal(await page.locator('dialog[open]').count(), 0, 'resume clears interrupted Describe sheet and its native backdrop');
+      await page.locator('#recent12 .is-error').first().click();
+      await page.locator('#n12-describe').click();
+      await page.evaluate(() => {
+        const d = document.getElementById('detail-sheet');
+        d.style.animationPlayState = 'paused'; CHADUX.closeSheet(d);
+      });
+      await page.waitForTimeout(400);
+      assert.equal(await page.locator('dialog[open]').count(), 0, 'timeout closes sheet and backdrop when animationend never fires');
+      await page.evaluate(() => { const d = document.getElementById('detail-sheet'); d.style.animationPlayState = ''; CHADUX.showSheet(d); });
+      await page.reload();
+      assert.equal(await page.locator('dialog[open]').count(), 0, 'reload leaves no sheet or backdrop');
+      assert.equal(calls.length, startupCalls + 1, 'persisted cooldown prevents reload retry loop');
+      mode = 'ok'; const before = calls.length;
+      await page.clock.runFor(31000);
+      await page.evaluate(() => { dispatchEvent(new Event('online')); document.dispatchEvent(new Event('visibilitychange')); });
+      await page.waitForFunction(() => CHADScan12.drafts().some(d => d.status === 'ready'));
+      assert.equal(calls.length, before + 1, 'off/network draft auto-retries once across simultaneous resume and online');
+      assert.equal(await page.locator('dialog[open]').count(), 0, 'background retry leaves no sheet/backdrop');
+      assert.doesNotMatch(await page.locator('body').innerText(), /pair/i);
+      await context.close();
+    }
     /* ---- 1. the camera, a photo, the Analysing card, the nutrition card ---- */
     let { context, page, errors } = await open();
     await page.locator('#open-camera').click();
@@ -244,7 +306,8 @@ const WORDS = { name: 'Described chicken salad', kcal: 380, protein_g: 42, carbs
       if (op.put) for (const key of op.put) await tx('readwrite', s => s.put({ image: 'data:image/jpeg;base64,AAAA', thumbnail: 'data:image/jpeg;base64,AAAA' }, key));
       return tx('readonly', s => s.getAllKeys());
     }, op);
-    const old = 'scan-' + (Date.now() - 2 * 864e5).toString(36) + '-orphan', fresh = 'scan-' + Date.now().toString(36) + '-fresh', keptKey = (await saved(page)).entries.find(e => e.photoId).photoId;
+    const photoNow = await page.evaluate(() => Date.now()); // use the app's fixed clock, never the host's current date
+    const old = 'scan-' + (photoNow - 2 * 864e5).toString(36) + '-orphan', fresh = 'scan-' + photoNow.toString(36) + '-fresh', keptKey = (await saved(page)).entries.find(e => e.photoId).photoId;
     await store({ put: [old, fresh] }); await page.waitForTimeout(300);
     await page.reload(); await page.waitForFunction(() => window.CHADScan12); await page.waitForTimeout(800);
     const keys = await store({});

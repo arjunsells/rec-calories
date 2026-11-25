@@ -90,21 +90,35 @@
   }
 
   /* ---- sheets: one at a time ---- */
-  function finishClose(d) {
+  let sheetEpoch = 0;
+  function resetSheet(d) {
+    clearTimeout(d.openingTimer); clearTimeout(d.closingTimer);
+    d.getAnimations?.().forEach(a => a.cancel());
     d.classList.remove('is-opening', 'is-closing', 'is-dragging'); d.style.transform = ''; d.style.removeProperty('--drag');
+  }
+  function finishClose(d) {
+    resetSheet(d);
     if (d.open) d.close();
   }
   function closeSheet(d, animated = true) {
     if (!d || !d.open) return;
     if (!animated || !M() || M().reduced() || d.classList.contains('is-closing')) return finishClose(d);
     d.classList.remove('is-opening', 'is-dragging'); d.classList.add('is-closing');
-    setTimeout(() => { if (d.classList.contains('is-closing')) finishClose(d); }, 340);   // animationend normally gets there first
+    d.closingTimer = setTimeout(() => { if (d.classList.contains('is-closing')) finishClose(d); }, 340);
   }
   // When an action closes a sheet, the page underneath ignores touches for a moment: the second tap of a double tap on
   // "Log" must not land on whatever sits under that button once the sheet is gone.
   function shield() { const app = document.querySelector('.ch-app'); if (!app) return; app.dataset.shield = ''; clearTimeout(shieldTimer); shieldTimer = setTimeout(() => delete app.dataset.shield, 400); }
-  function closeSheets() { const open = document.querySelectorAll('dialog.ch-sheet[open]'); if (open.length) shield(); open.forEach(finishClose); stopScanner(); }
+  function closeSheets() {
+    const epoch = ++sheetEpoch;
+    if (document.querySelector('dialog.ch-sheet[open]')) shield();
+    document.querySelectorAll('dialog.ch-sheet').forEach(finishClose); stopScanner();
+    // Native backdrops exist only while their dialog is open. A timeout also clears interrupted iOS animations;
+    // a subsequent show invalidates this sweep, so it can never dismiss a newly opened sheet.
+    setTimeout(() => { if (epoch === sheetEpoch) document.querySelectorAll('dialog.ch-sheet').forEach(finishClose); }, 360);
+  }
   function show(d) {
+    ++sheetEpoch; resetSheet(d);
     d.classList.remove('is-closing', 'is-dragging'); d.classList.add('is-opening');      // the entrance plays once per opening
     if (!d.open) d.showModal();
     const body = d.querySelector('.ch-sheet__body'); if (body) body.scrollTop = 0;
@@ -160,14 +174,20 @@
       const lift = () => {
         const zoomed = Math.abs(vv.scale - 1) > 0.01, keyboard = zoomed ? 0 : Math.round(innerHeight - vv.height - vv.offsetTop), style = document.documentElement.style;
         style.setProperty('--ch-kb', (keyboard > 80 ? keyboard : 0) + 'px');
-        if (zoomed || keyboard <= 80) style.removeProperty('--ch-vvh'); else style.setProperty('--ch-vvh', Math.round(vv.height) + 'px');
+        style.setProperty('--ch-vv-top', (zoomed ? 0 : Math.floor(vv.offsetTop)) + 'px');
+        if (zoomed) style.removeProperty('--ch-vvh'); else style.setProperty('--ch-vvh', Math.floor(vv.height) + 'px');
       };
       vv.addEventListener('resize', lift); vv.addEventListener('scroll', lift); lift();
     }
+    // Home-screen Safari may freeze an entrance, exit or drag while backgrounded or restore it from bfcache.
+    // Close on both edges; never resume an obsolete transform or leave a modal backdrop over Today.
+    closeSheets();
+    document.addEventListener('visibilitychange', closeSheets);
+    addEventListener('pagehide', closeSheets); addEventListener('pageshow', closeSheets);
     window.CHADIcons?.mount(document);
     document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => closeSheet($(b.dataset.close)));
     document.querySelectorAll('dialog.ch-sheet').forEach(d => {
-      d.addEventListener('close', () => { d.classList.remove('is-opening', 'is-closing', 'is-dragging'); d.style.transform = ''; d.style.removeProperty('--drag'); stopScanner(); });
+      d.addEventListener('close', () => { if (!d.open) { resetSheet(d); stopScanner(); } });
       d.addEventListener('cancel', e => { e.preventDefault(); closeSheet(d); });                       // Escape leaves the same way as a tap
       d.addEventListener('animationend', e => { if (e.target !== d) return; if (d.classList.contains('is-closing')) finishClose(d); else d.classList.remove('is-opening'); });
       d.addEventListener('click', e => { if (e.target === d) { const r = d.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) closeSheet(d); } });
@@ -215,7 +235,7 @@
   // scanner stops with it.
   function wireSheet(d, options = {}) {
     if (!d || d.dataset.wired) return; d.dataset.wired = '';
-    d.addEventListener('close', () => { d.classList.remove('is-opening', 'is-closing', 'is-dragging'); d.style.transform = ''; d.style.removeProperty('--drag'); });
+    d.addEventListener('close', () => { if (!d.open) resetSheet(d); });
     d.addEventListener('cancel', e => { e.preventDefault(); closeSheet(d); });
     d.addEventListener('animationend', e => { if (e.target !== d) return; if (d.classList.contains('is-closing')) finishClose(d); else d.classList.remove('is-opening'); });
     d.addEventListener('click', e => { if (e.target === d) { const r = d.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) closeSheet(d); } });

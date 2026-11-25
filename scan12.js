@@ -115,11 +115,12 @@
     $('open-camera').onclick = () => open();
     $('camera12-close').onclick = () => U().closeSheet($('camera12'));
     // Opened from the add-food sheet and closed without a photo, a lookup or a search: back to the meal being built.
-    $('camera12').addEventListener('close', () => { stop(); if (!handoff) backToMeal(context); });
+    $('camera12').addEventListener('close', () => { if ($('camera12').open) return; stop(); if (!handoff) backToMeal(context); });
     $('nutrition12-close').onclick = () => U().closeSheet($('nutrition12'));
     $('nutrition12-save').onclick = () => { if (active?.status === 'ready') bookmark(active); };
     // Closed without adding, a builder card goes back to the meal being built (queued: a sheet opened meanwhile wins).
     $('nutrition12').addEventListener('close', () => {
+      if ($('nutrition12').open) return;
       fixing = adding = false;
       setTimeout(() => { if ($('nutrition12').open || document.querySelector('dialog.ch-sheet[open]') || !active?.add) return; const back = active.add; active.add = null; back(null); }, 0);
     });
@@ -253,7 +254,7 @@
   const canOpen = () => !document.querySelector('dialog[open]') && !document.hidden && !document.documentElement.classList.contains('is-gym');
   async function estimate(d, autoOpen = false) {
     if (running.has(d.id)) return;
-    running.add(d.id); d.status = 'pending'; d.error = d.errorText = d.errorKind = ''; d.startedAt = Date.now();
+    running.add(d.id); d.status = 'pending'; d.error = d.errorText = d.errorKind = ''; d.startedAt = Date.now(); d.lastAttemptAt = d.startedAt;
     if (!drafts.includes(d)) drafts.push(d);
     keep(d).catch(() => {}); render(); if (showing(d)) drawResult(); pend();
     try {
@@ -716,9 +717,20 @@
         if (draft.status === 'error') setError(draft);
         drafts.push(draft);
       }
-      render(); tidyPhotos();
+      render(); tidyPhotos(); retryDrafts();
     }).catch(() => {});
   }
+  // Event driven only: no polling or self-scheduled retries. Persist the cooldown across reloads too.
+  function retryDrafts() {
+    if (document.hidden || navigator.onLine === false) return;
+    for (const d of drafts) {
+      if (d.status !== 'error' || !['off', 'network', 'timeout'].includes(d.errorKind) || running.has(d.id)) continue;
+      if (Date.now() - (d.lastAttemptAt || 0) < 30000) continue;
+      estimate(d); // background result stays in Recently eaten; no modal opens on resume
+    }
+  }
+  addEventListener('online', retryDrafts);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) retryDrafts(); });
   window.CHADScan12 = { open, openResult, edit, render, health, drafts: () => drafts.slice() };
   init();
 })();
