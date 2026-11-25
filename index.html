@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#EEF1F7" media="(prefers-color-scheme: light)">
-    <meta name="theme-color" content="#060A14" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="CHAD">
@@ -19,7 +19,7 @@
       // Paint the chosen theme before the first frame (no flash). Device-local preference only.
       try{var t=localStorage.getItem('rec-calories-theme');if(t!=='dark'&&t!=='light'&&t!=='system')t=(JSON.parse(localStorage.getItem('rec-calories-v1')||'{}')||{}).arcadeTheme;if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}
     </script>
-    <link rel="stylesheet" href="./theme11.css">
+    <link rel="stylesheet" href="./theme12.css">
     <script src="./icons8.js" defer></script>
     <script src="./motion8.js" defer></script>
     <script src="./charts8.js" defer></script>
@@ -28,11 +28,12 @@
     <script src="./food9.js" defer></script>
     <script src="./plan11.js" defer></script>
     <script src="./train10.js" defer></script>
-    <script src="./quest11.js" defer></script>
+    <script src="./quest12.js" defer></script>
     <script src="./gym11.js" defer></script>
     <script src="./builder11.js" defer></script>
-    <script src="./ux11.js" defer></script>
-    <script src="./app11.js" defer></script>
+    <script src="./ux12.js" defer></script>
+    <script src="./app12.js" defer></script>
+    <script src="./scan12.js" defer></script>
   </head>
   <body>
     <div class="app ch-app">
@@ -48,41 +49,42 @@
             <button id="open-settings" type="button" class="ch-datebar__gear" aria-label="Settings"><i data-icon="gear" data-size="24"></i></button>
           </header>
           <div id="day-page" class="ch-page">
+            <div id="week" class="ch-week" role="group" aria-label="Days this week"></div>
             <div id="first" class="ch-first">
-              <button id="left-line" type="button" class="ch-left" aria-expanded="false" aria-controls="left-more">
-                <span class="ch-left__col ch-left__col--kcal" id="calorie-left">
-                  <b class="ch-left__num" id="remaining">1,900</b>
-                  <span class="ch-left__unit" id="remaining-label">kcal left</span>
-                  <i class="ch-left__bar" id="kcal-bar"><i></i></i>
+              <!-- v12: the hero. Calories left, big, with its ring; a tap shows what was eaten instead (and back). -->
+              <button id="left-line" type="button" class="ch-hero" aria-pressed="false">
+                <span class="ch-hero__words" id="calorie-left">
+                  <b class="ch-hero__num" id="remaining">1,900</b>
+                  <span class="ch-hero__label" id="remaining-label">Calories left</span>
+                  <span class="ch-hero__sub" id="phase-line"></span>
                 </span>
-                <span class="ch-left__col ch-left__col--protein" id="protein-left-col">
-                  <b class="ch-left__num" id="protein-left">220</b>
-                  <span class="ch-left__unit" id="protein-left-label">g protein left</span>
-                  <i class="ch-left__bar" id="protein-bar"><i></i></i>
-                </span>
-                <span class="ch-left__chev" aria-hidden="true"><i data-icon="chevron-down" data-size="18"></i></span>
+                <span class="ch-dial ch-dial--hero" id="kcal-dial" aria-hidden="true"><svg viewBox="0 0 100 100"><circle class="ch-dial__track" cx="50" cy="50" r="43"/><circle class="ch-dial__fill" cx="50" cy="50" r="43" pathLength="100"/></svg><i data-icon="flame" data-size="30"></i></span>
               </button>
-              <div id="left-more" class="ch-left__more" hidden>
-                <div class="ch-left__minis">
-                  <div class="ch-mini ch-mini--carbs" id="carbs-meter" role="img" aria-label="Carbs">
-                    <span>Carbs</span>
-                    <b><span id="carbs-left">150</span> g <small id="carbs-left-label">left</small></b>
-                    <i class="ch-bar" id="carbs-bar"><i></i></i>
-                  </div>
-                  <div class="ch-mini ch-mini--fat" id="fat-meter" role="img" aria-label="Fat">
-                    <span>Fat</span>
-                    <b><span id="fat-left">45</span> g <small id="fat-left-label">left</small></b>
-                    <i class="ch-bar" id="fat-bar"><i></i></i>
-                  </div>
+              <div class="ch-macro3" id="macros">
+                <div class="ch-macro ch-macro--p" id="protein-card" role="img" aria-label="Protein">
+                  <b class="ch-macro__num"><span id="protein-left">220</span><small>g</small></b>
+                  <span class="ch-macro__label" id="protein-left-label">Protein left</span>
+                  <span class="ch-dial ch-dial--sm" id="protein-dial" aria-hidden="true"><svg viewBox="0 0 100 100"><circle class="ch-dial__track" cx="50" cy="50" r="40"/><circle class="ch-dial__fill" cx="50" cy="50" r="40" pathLength="100"/></svg><i class="ch-glyph ch-glyph--protein"></i></span>
                 </div>
-                <p class="ch-left__eaten" id="eaten-line">Eaten <b><span id="consumed">0</span> of <span id="target-label">1,900</span> kcal</b> · P <span id="protein-total">0</span> · C <span id="carbs-total">0</span> · F <span id="fat-total">0</span> g</p>
-                <p class="ch-hint" id="phase-line"></p>
-                <h3 class="ch-list-h" id="entries-head" hidden>Food today</h3>
-                <ul id="entries" class="entries ch-list"></ul>
+                <div class="ch-macro ch-macro--c" id="carbs-card" role="img" aria-label="Carbs">
+                  <b class="ch-macro__num"><span id="carbs-left">150</span><small>g</small></b>
+                  <span class="ch-macro__label" id="carbs-left-label">Carbs left</span>
+                  <span class="ch-dial ch-dial--sm" id="carbs-dial" aria-hidden="true"><svg viewBox="0 0 100 100"><circle class="ch-dial__track" cx="50" cy="50" r="40"/><circle class="ch-dial__fill" cx="50" cy="50" r="40" pathLength="100"/></svg><i class="ch-glyph ch-glyph--carbs"></i></span>
+                </div>
+                <div class="ch-macro ch-macro--f" id="fat-card" role="img" aria-label="Fat">
+                  <b class="ch-macro__num"><span id="fat-left">45</span><small>g</small></b>
+                  <span class="ch-macro__label" id="fat-left-label">Fat left</span>
+                  <span class="ch-dial ch-dial--sm" id="fat-dial" aria-hidden="true"><svg viewBox="0 0 100 100"><circle class="ch-dial__track" cx="50" cy="50" r="40"/><circle class="ch-dial__fill" cx="50" cy="50" r="40" pathLength="100"/></svg><i class="ch-glyph ch-glyph--fat"></i></span>
+                </div>
               </div>
+              <div id="water-slot"></div>
               <section id="now" class="ch-now" aria-labelledby="now-title"></section>
             </div>
             <div id="after-now" class="ch-flow ch-after"></div>
+            <section class="ch-recent" aria-labelledby="recent-title">
+              <h2 class="ch-h ch-recent__h" id="recent-title">Recently eaten</h2>
+              <ul id="recent12" class="ch-recent__list"></ul>
+            </section>
           </div>
         </section>
         <section id="training" class="view ch-view" hidden>
@@ -103,17 +105,20 @@
             <img class="ch-mark" src="./icons/mark.svg" alt="" width="48" height="48" decoding="async" aria-hidden="true">
           </header>
           <div class="ch-tiles" aria-label="Streaks">
-            <div class="ch-tile">
-              <span class="ch-tile__k">Streak</span>
-              <span class="ch-tile__v"><i data-icon="flame" data-size="20"></i><span id="streak-count">0</span></span>
+            <div class="ch-tile ch-tile--streak">
+              <span class="ch-tile__icon" aria-hidden="true"><i data-icon="flame" data-size="30"></i></span>
+              <span class="ch-tile__v"><span id="streak-count">0</span></span>
+              <span class="ch-tile__k">Day streak</span>
               <span class="ch-tile__s" id="streak"></span>
             </div>
             <div class="ch-tile ch-tile--water">
-              <span class="ch-tile__k">Water</span>
-              <span class="ch-tile__v"><i data-icon="drop" data-size="20"></i><span id="water-streak">0</span></span>
+              <span class="ch-tile__icon" aria-hidden="true"><i data-icon="drop" data-size="28"></i></span>
+              <span class="ch-tile__v"><span id="water-streak">0</span></span>
+              <span class="ch-tile__k">Water streak</span>
               <span class="ch-tile__s" id="water-streak-s"></span>
             </div>
           </div>
+          <div id="charts" class="ch-flow"></div>
           <div class="ch-section">
             <h2 class="ch-h">Workouts</h2>
             <span id="workout-count"></span>
@@ -124,7 +129,7 @@
             <span id="pr-count"></span>
           </div>
           <ul id="records" class="ch-list records"></ul>
-          <div id="charts" class="ch-flow"></div>
+          <div id="charts-more" class="ch-flow"></div>
         </section>
         <section id="settings" class="view ch-view" hidden>
           <header class="ch-datebar">
@@ -185,7 +190,7 @@
           <p class="ch-list-f">Your journal lives on this device. A backup may hold private measurements; AI settings are never in it. Safari: Share → Add to Home Screen. <span id="offline-status">Preparing offline access…</span></p>
           <h2 class="ch-list-h">How it works</h2>
           <div id="help-settings" class="ch-list"></div>
-          <p class="ch-version">CHAD v11 · One day stronger.</p>
+          <p class="ch-version">CHAD v12 · One day stronger.</p>
         </section>
       </main>
       <div class="ch-dock-scrim" aria-hidden="true"></div>
@@ -194,6 +199,7 @@
           <span class="ch-tab__icon"><i data-icon="rings" data-size="25" aria-hidden="true"></i></span>
           <span class="ch-tab__label">Today</span>
         </button>
+        <button id="open-camera" class="ch-camera-tab" type="button" aria-label="Scan or add food"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg></button>
         <button class="tab ch-tab" type="button" data-view="training">
           <span class="ch-tab__icon"><i data-icon="training" data-size="26" aria-hidden="true"></i></span>
           <span class="ch-tab__label">Gym</span>

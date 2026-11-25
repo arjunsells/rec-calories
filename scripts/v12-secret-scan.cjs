@@ -9,9 +9,10 @@
 //   body measurements    a body weight in kg or a body-fat figure (test fixtures are synthetic and say so on the line)
 //   medications          medicine names, or a dose in mg, mcg or IU
 //   photos               any image outside icons/, and any embedded image data longer than a tiny synthetic stub
-//   private files        AI-PROXY.md, .env, auth.json, logs, job briefs and progress notes
+//   private files        AI-PROXY.md, .env, auth.json, logs, job briefs and progress notes, the design notes
+//   another app's brand  v12 borrows patterns, never a name: no other photo-calorie app is named in a shipped file
 //   email addresses      any, apart from noreply addresses and example domains
-// node scripts/v11-secret-scan.cjs
+// node scripts/v12-secret-scan.cjs
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict'), { execFileSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const scan = require('../scan9.js');
@@ -21,10 +22,10 @@ const flag = (file, what, sample) => problems.push(`${file}: ${what}${sample ? '
 
 // Private files never tracked or staged.
 for (const f of files) {
-  if (/^AI-PROXY\.md$|(^|\/)\.env|(^|\/)auth\.json$|\.log$|\.err$|^(CLAUDE-)?JOB[^/]*\.md$|^V\d+-PROGRESS\.md$/i.test(f)) flag(f, 'a private file');
+  if (/^AI-PROXY\.md$|(^|\/)\.env|(^|\/)auth\.json$|\.log$|\.err$|^(CLAUDE-)?JOB[^/]*\.md$|^V\d+-PROGRESS\.md$|^CALAI-NOTES\.md$/i.test(f)) flag(f, 'a private file');
   if (/\.(png|jpe?g|webp|heic|heif|gif|bmp|tiff?)$/i.test(f) && !f.startsWith('icons/')) flag(f, 'an image outside icons/ (photos never ship)');
 }
-const builtIn = new URL(scan.DEFAULT_PROXY).hostname, SELF = 'scripts/v11-secret-scan.cjs';
+const builtIn = new URL(scan.DEFAULT_PROXY).hostname, SELF = 'scripts/v12-secret-scan.cjs';
 // Reserved and placeholder names (RFC 2606/6761) and the docs' own placeholders are not real hosts.
 const placeholder = host => /(^|\.)(example|invalid|test|localhost)$|(^|\.)example\.|your-name/.test(host);
 const say = host => host === builtIn ? '<the built-in proxy host>' : host;            // never print the proxy host
@@ -59,6 +60,8 @@ for (const f of files) {
     if (f !== SELF && /\b\d+(\.\d+)?\s?(mg|mcg|µg|IU)\b/.test(line) && !vendor) flag(at, 'a dose', line.trim());
     // photos embedded as data
     { const m = /data:image\/(png|jpe?g|webp|heic|gif);base64,([A-Za-z0-9+/=]{200,})/.exec(line); if (m) flag(at, 'embedded image data'); }
+    // another app's name (patterns only, never its name, logo or words)
+    if (f !== SELF && /\bcal\s?ai\b|calai\.app/i.test(line)) flag(at, "another app's brand name");
     // email addresses
     for (const m of line.matchAll(/\b[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})\b/g)) { if (/^noreply@|@users\.noreply\.github\.com$/i.test(m[0]) || placeholder(m[1].toLowerCase()) || vendor || f.startsWith('fonts/')) continue; flag(at, 'an email address'); }   // third-party licence texts keep their authors
   });
@@ -68,6 +71,7 @@ assert.equal(fs.readFileSync(path.join(root, 'scan9.js'), 'utf8').split(builtIn)
 // The ignore rules keep the private files out.
 const ignore = fs.readFileSync(path.join(root, '.gitignore'), 'utf8') + '\n' + fs.readFileSync(path.join(root, '.git/info/exclude'), 'utf8');
 for (const rule of ['AI-PROXY.md', '*.log', 'JOB*.md', 'CLAUDE-JOB*.md', '.env*', 'auth.json']) assert.ok(ignore.split(/\r?\n/).includes(rule), rule + ' is ignored');
-assert.ok(/V1[01]-PROGRESS\.md|V\*-PROGRESS\.md/.test(ignore), 'the progress notes are ignored');
+assert.ok(/V1[012]-PROGRESS\.md|V\*-PROGRESS\.md/.test(ignore), 'the progress notes are ignored');
+assert.ok(ignore.split(/\r?\n/).includes('*.err'), 'run error logs are ignored');
 if (problems.length) { console.error('FAIL secret scan:\n  ' + problems.join('\n  ')); process.exitCode = 1; }
-else console.log(`PASS secret scan of ${files.length} committed or committable files: no token, key, JWT or bearer token, no setup link with a token, the proxy address only once (scan9.js), no tunnel host or tailnet IP, no web host outside the allowlist, no PIN, no body weight or body fat, no medication or dose, no photo or embedded image, no private file, no email address; the private files are ignored.`);
+else console.log(`PASS secret scan of ${files.length} committed or committable files: no token, key, JWT or bearer token, no setup link with a token, the proxy address only once (scan9.js), no tunnel host or tailnet IP, no web host outside the allowlist, no PIN, no body weight or body fat, no medication or dose, no other app's brand name, no photo or embedded image, no private file, no email address; the private files are ignored.`);

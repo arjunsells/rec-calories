@@ -1,10 +1,10 @@
 'use strict';
-// CHAD v11 · the journal: state, validation, the v10 -> v11 migration, persistence, reversible changes, the big
+// CHAD v12 · the journal: state, validation, the v11 -> v12 migration, persistence, reversible changes, the big
 // "left today" line, favourites, the editable card, Ask AI (Snap + Say), barcodes, AI settings and the offline shell.
-// Screens are drawn by quest11.js, Gym mode by gym11.js, the add-food sheet by builder11.js; navigation, sheets and
-// toasts live in ux11.js.
+// Screens are drawn by quest12.js, Gym mode by gym11.js, the add-food sheet by builder11.js; navigation, sheets and
+// toasts live in ux12.js.
 (() => {
-  const KEY = 'rec-calories-v1', SHELL = 'rec-calories-shell-v11', BACKUP = 'rec-calories-v10-backup', APP_VERSION = 11;
+  const KEY = 'rec-calories-v1', SHELL = 'rec-calories-shell-v12', BACKUP = 'rec-calories-v11-backup', APP_VERSION = 12;
   const $ = id => document.getElementById(id);
   const M = () => window.CHADMotion;
   const oneDecimal = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }), integer = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
@@ -40,12 +40,12 @@
     set: (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); return true; } catch { return false; } }
   };
 
-  /* ---- reading, and the v10 -> v11 migration ---- */
-  // v11 changes no shape: the journal stays schema 5 under the same key, and every field and device key a v10 app wrote
+  /* ---- reading, and the v11 -> v12 migration ---- */
+  // v12 changes no shape: the journal stays schema 5 under the same key, and every field and device key a v10 app wrote
   // (entries, days, workouts, saved meals, settings, the legacy XP of older versions, chad.gym, chad.builder,
   // chad.streakSeen, the theme, the AI keys, the food cache) is read as it is and never removed, so v10 can still read
-  // what v11 writes. The first time v11 opens a journal it has not written yet, it keeps one untouched copy of that
-  // journal under rec-calories-v10-backup (never overwritten), and from then on writes appVersion: 11. Score and XP are
+  // what v12 writes. The first time v12 opens a journal it has not written yet, it keeps one untouched copy of that
+  // journal under rec-calories-v11-backup (never overwritten), and from then on writes appVersion: 12. Score and XP are
   // no longer shown; whatever an older version stored for them stays stored.
   function migrate(raw, parsed) {
     if (!raw || parsed.appVersion === APP_VERSION) return;
@@ -115,7 +115,7 @@
   }
   function add(name, kcal, protein, extras = {}) {
     const entry = { id: newId(), day: selectedKey(), name: String(name || '').trim().slice(0, 80), kcal, protein, carbs: 0, fat: 0, meal: defaultMeal(), ...extras };
-    M()?.mark(`#entries [data-entry="${entry.id}"]`, 'just-on');
+    M()?.mark(`#recent12 [data-entry="${entry.id}"]`, 'just-on');
     if (!logEntries([entry], `${entry.name || 'Entry'} · ${whole(kcal)} kcal`)) return false;
     M()?.haptic('on');
     return true;
@@ -149,36 +149,36 @@
   let scanner = null, scannerSession = 0;
 
   /* ---- the screen ---- */
-  // The one line that matters: kcal and protein left today, big. A tap opens carbs, fat, what was eaten and the food
-  // itself, in place.
-  function renderLeft(goals, t, entries) {
+  // v12: the hero card (calories left, big, with its ring) and three small cards (protein, carbs, fat left, each with a
+  // ring). A tap on the hero shows what was eaten instead, on all four, and a second tap goes back.
+  const dial = (id, fraction) => {
+    const d = $(id); if (!d) return;
+    const p = Math.max(0, Math.min(1, fraction || 0)), fill = d.querySelector('.ch-dial__fill');
+    d.style.setProperty('--p', p.toFixed(4)); d.classList.toggle('is-zero', !(p > 0)); d.classList.toggle('is-full', p >= 1);
+    if (fill) fill.style.strokeDasharray = (p * 100).toFixed(2) + ' 100';     // pathLength 100: the arc is the fraction
+  };
+  function renderLeft(goals, t) {
     const target = goals.target ?? state.target, proteinGoal = goals.proteinGoal ?? state.proteinGoal, carbsGoal = goals.carbsGoal ?? state.carbsGoal ?? 150, fatGoal = goals.fatGoal ?? state.fatGoal ?? 45;
-    const left = target - t.kcal, pLeft = proteinGoal - t.protein, cLeft = carbsGoal - t.carbs, fLeft = fatGoal - t.fat;
-    num('remaining', Math.abs(left)); $('remaining-label').textContent = left < 0 ? 'kcal over' : 'kcal left';
-    num('protein-left', Math.abs(pLeft)); $('protein-left-label').textContent = pLeft < 0 ? 'g protein over' : pLeft === 0 ? 'g protein: goal hit' : 'g protein left';
-    $('calorie-left').classList.toggle('is-over', left < 0); $('protein-left-col').classList.toggle('is-hit', pLeft <= 0);
-    $('kcal-bar').style.setProperty('--p', Math.max(0, Math.min(1, t.kcal / target))); $('protein-bar').style.setProperty('--p', Math.max(0, Math.min(1, t.protein / proteinGoal)));
-    const words = `${whole(Math.abs(left))} kcal ${left < 0 ? 'over' : 'left'}, ${whole(Math.abs(pLeft))} g protein ${pLeft < 0 ? 'over' : 'left'}`;
-    $('left-line').setAttribute('aria-label', words + (detailsOpen ? '. Hide details' : '. Show carbs, fat and food'));
-    $('left-line').setAttribute('aria-expanded', String(detailsOpen)); $('left-more').hidden = !detailsOpen;
-    $('left-line').classList.toggle('is-open', detailsOpen);
-    // Details, kept current while folded so they open instantly.
-    for (const [id, v, goal] of [['carbs', cLeft, carbsGoal], ['fat', fLeft, fatGoal]]) {
-      $(id + '-left').textContent = whole(Math.abs(v)); $(id + '-left-label').textContent = v < 0 ? 'over' : 'left';
-      $(id + '-bar').style.setProperty('--p', Math.max(0, Math.min(1, (goal - v) / goal))); $(id + '-meter').setAttribute('aria-label', `${id === 'carbs' ? 'Carbs' : 'Fat'}: ${whole(Math.abs(v))} g ${v < 0 ? 'over' : 'left'} of ${whole(goal)} g`);
+    const left = target - t.kcal, eaten = detailsOpen;
+    num('remaining', eaten ? t.kcal : Math.abs(left));
+    $('remaining-label').textContent = eaten ? 'Calories eaten' : left < 0 ? 'Calories over' : 'Calories left';
+    $('calorie-left').classList.toggle('is-over', !eaten && left < 0);
+    dial('kcal-dial', t.kcal / target); $('kcal-dial').classList.toggle('is-over', left < 0);
+    $('phase-line').textContent = eaten ? `of ${whole(target)} kcal` : CHADQuest.phaseHint ? CHADQuest.phaseHint(state, currentDay) : '';
+    const words = [];
+    for (const [k, name, value, goal] of [['protein', 'Protein', t.protein, proteinGoal], ['carbs', 'Carbs', t.carbs, carbsGoal], ['fat', 'Fat', t.fat, fatGoal]]) {
+      const rest = goal - value;
+      num(k + '-left', eaten ? value : Math.abs(rest));
+      $(k + '-left-label').textContent = name + (eaten ? ' eaten' : rest < 0 ? ' over' : ' left');
+      dial(k + '-dial', value / goal);
+      $(k + '-card').classList.toggle('is-over', !eaten && rest < 0);
+      $(k + '-card').setAttribute('aria-label', `${name}: ${whole(value)} of ${whole(goal)} g eaten, ${whole(Math.abs(rest))} g ${rest < 0 ? 'over' : 'left'}`);
+      words.push(`${whole(eaten ? value : Math.abs(rest))} g ${name.toLowerCase()} ${eaten ? 'eaten' : rest < 0 ? 'over' : 'left'}`);
     }
-    $('consumed').textContent = whole(t.kcal); $('target-label').textContent = whole(target);
-    $('protein-total').textContent = whole(t.protein); $('carbs-total').textContent = whole(t.carbs); $('fat-total').textContent = whole(t.fat);
-    $('phase-line').textContent = CHADQuest.phaseHint ? CHADQuest.phaseHint(state, currentDay) : '';
-    $('entries-head').hidden = !entries.length;
-    renderEntries($('entries'), entries);
+    $('left-line').setAttribute('aria-pressed', String(eaten));
+    $('left-line').setAttribute('aria-label', (eaten ? `${whole(t.kcal)} of ${whole(target)} kcal eaten` : `${whole(Math.abs(left))} kcal ${left < 0 ? 'over' : 'left'} of ${whole(target)}`) + ', ' + words.join(', ') + '. ' + (eaten ? 'Show what is left' : 'Show what was eaten'));
   }
-  function toggleDetails() {
-    detailsOpen = !detailsOpen; M()?.haptic('tap');
-    $('left-more').hidden = !detailsOpen; $('left-line').setAttribute('aria-expanded', String(detailsOpen)); $('left-line').classList.toggle('is-open', detailsOpen);
-    render();
-    if (detailsOpen) M()?.pulse($('left-more'), 'is-opening', 420);
-  }
+  function toggleDetails() { detailsOpen = !detailsOpen; M()?.haptic('tap'); render(); M()?.pulse($('left-line'), 'is-flipping', 420); }
   function render() {
     const focused = document.activeElement, view = focused?.closest?.('.view')?.id; let restore = [];
     if (focused?.dataset?.slot) restore = [`[data-slot="${focused.dataset.slot}"][data-tier="${focused.dataset.tier}"]`, `[data-meal-row="${focused.dataset.slot}"]`];
@@ -193,47 +193,14 @@
     currentDay = selectedKey(); observedToday = dayKey(); currentBlock = CHADUX?.timeBlock();
     turned = shownDay !== null && shownDay !== currentDay; shownDay = currentDay;
     const goals = CHADQuest.goals(state, currentDay), entries = state.entries.filter(e => e.day === currentDay);
-    renderLeft(goals, totals(entries), entries);
+    renderLeft(goals, totals(entries));
     CHADQuest.render(state, { save, change, showView, message, celebrate, refresh: render, patchDay, restoreAt, assign, shape, key: currentDay, logFavourite, defaultMeal });
     CHADUX?.render(state);
-    fitFirst();
+    window.CHADScan12?.render();
     for (const selector of restore) { const target = document.querySelector(selector); if (target) { target.focus({ preventScroll: true }); break; } }
   }
-  // The first screen is the line and the one thing to do now; it reaches down to the floating tab bar, so everything
-  // else (Later today, Custom, Quick log) starts just under it, one scroll away.
-  function fitFirst() {
-    const first = $('first'), bar = document.querySelector('.ch-tabbar');
-    if (!first || !bar || $('today').hidden) return;
-    first.style.minHeight = '';
-    const top = first.getBoundingClientRect().top + scrollY, dock = bar.getBoundingClientRect().top, gap = parseFloat(getComputedStyle($('day-page')).rowGap) || 0;
-    if (dock > 0) first.style.minHeight = Math.max(0, Math.ceil(dock - top - gap + 2)) + 'px';
-  }
-  // One row per entry: what it is, when, kcal and P/C/F. A tap opens it, with Log again and Delete.
-  function renderEntries(container, entries) {
-    container.replaceChildren();
-    entries.slice().reverse().forEach(e => {
-      const row = node('li', 'entry'), open = node('button', 'entry-open'), info = node('span', 'entry-info'), meta = node('small');
-      const when = e.planSlot ? (window.CHADPlan || []).find(s => s.id === e.planSlot)?.name || e.meal || 'Meal' : e.meal || 'Food';
-      row.dataset.entry = e.id; open.type = 'button';
-      meta.append(`${when} · ${whole(e.kcal)} kcal · `, CHADUX.pcf(e.protein, e.carbs || 0, e.fat || 0));
-      info.append(node('strong', '', e.name || 'Quick entry'), meta);
-      open.append(info); open.insertAdjacentHTML('beforeend', glyph('chevron', 15));
-      open.setAttribute('aria-label', `${e.name || 'Entry'}, ${when}, ${fmt(e.kcal)} kcal, protein ${fmt(e.protein)} g, carbs ${fmt(e.carbs || 0)} g, fat ${fmt(e.fat || 0)} g. Options`);
-      open.onclick = () => entrySheet(e);
-      row.append(open); container.append(row);
-    });
-  }
-  const SOURCES = { plan: 'Meal plan', addon: 'Add-on', repeat: 'Logged again', manual: 'Typed in', search: 'Food search', barcode: 'Barcode', photo: 'Photo estimate', text: 'AI estimate', custom: 'Custom meal', favourite: 'Favourite' };
-  function entrySheet(e) {
-    const when = new Date(e.day + 'T12:00:00+09:30').toLocaleDateString('en-AU', { timeZone: 'Australia/Darwin', weekday: 'short', day: 'numeric', month: 'short' }).replace(/,/g, '');
-    const meta = node('p', 'ch-hint', [when, e.meal, SOURCES[e.source], e.portion].filter(Boolean).join(' · '));
-    const again = node('button', 'ch-btn ch-btn--block', 'Log again'), del = node('button', 'ch-btn ch-btn--block ch-btn--danger', 'Delete');
-    again.type = del.type = 'button';
-    again.onclick = () => { CHADUX.closeSheets(); add(e.name, e.kcal, e.protein, { carbs: e.carbs || 0, fat: e.fat || 0, portion: e.portion || '', source: 'repeat' }); };
-    del.onclick = () => { CHADUX.closeSheets(); removeEntry(e); };
-    const parts = Array.isArray(e.parts) && e.parts.length ? (() => { const list = node('ul', 'ch-bullets'); e.parts.slice(0, 20).forEach(p => list.append(node('li', '', [p.name, p.amount].filter(Boolean).join(' · ')))); return [list]; })() : [];
-    CHADUX.detail(e.name || 'Entry', [CHADUX.macroTiles([e.kcal, e.protein, e.carbs || 0, e.fat || 0]), meta, ...parts, again, del]);
-  }
+  // Log again: one more of a food already in the journal, on the day in view (Undo takes it back).
+  function logAgain(e) { return add(e.name, e.kcal, e.protein, { carbs: e.carbs || 0, fat: e.fat || 0, portion: e.portion || '', source: 'repeat' }); }
   function stopScanner() { scannerSession++; scanner?.stop(); scanner = null; $('barcode-video').hidden = true; $('stop-camera').hidden = true; }
   function showView(id) {
     stopScanner();
@@ -277,6 +244,7 @@
   let card = null;
   // info.add: the builder's "Add to meal" (the card fills one item of the meal being built instead of logging it).
   function openResult(item, source, info = {}) {
+    if (window.CHADScan12) return window.CHADScan12.openResult(item, source, info);
     const ai = source === 'photo' || source === 'text', typed = source === 'manual', grams = item.grams || (item.basis === '100g' ? 100 : item.servingGrams) || null;
     card = { item, source, ai, add: info.add || null, rate: grams ? Object.fromEntries(NUMS.map(k => [k, (item[k] || 0) / grams])) : null };
     $('confirm-title').textContent = typed ? 'Type it in' : card.add ? 'Add to your meal' : ai ? 'Your meal, decoded.' : 'Check and log';
@@ -339,7 +307,7 @@
     if (values.fix) { message(values.text, true); numField(values.fix).focus(); return; }
     if (card.add) { const back = card.add, from = card.source; card = null; dropPhoto(); CHADUX.closeSheets(); back({ ...values, source: from }); return; }
     const entry = { ...values, id: newId(), day: selectedKey(), meal: $('scan-meal').value, source: card.source };
-    M()?.mark(`#entries [data-entry="${entry.id}"]`, 'just-on');
+    M()?.mark(`#recent12 [data-entry="${entry.id}"]`, 'just-on');
     if (!logEntries([entry], `${entry.name} · ${whole(entry.kcal)} kcal`)) return;
     card = null; dropPhoto(); CHADUX.closeSheets(); showView('today'); M()?.haptic('on');
   };
@@ -587,11 +555,10 @@
 
   window.addEventListener('storage', e => { if (e.key === KEY || e.key === null) { state = defaults(); read(); render(); fillGoals(); } if ([RECScan.PROXY_KEY, RECScan.TOKEN_KEY, RECScan.KEY_KEY, null].includes(e.key)) aiStatus(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) stopScanner(); else render(); });
-  addEventListener('resize', () => fitFirst());
   setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]') && (dayKey() !== observedToday || CHADUX?.timeBlock() !== currentBlock)) render(); }, 60000);
   function fillGoals() { $('journey-start-date').value = CHADUX.validDate(state.journeyStartDate) ? state.journeyStartDate : CHADUX.defaultJourneyStart; $('phase').value = state.phaseMode || 'auto'; const g = { ...state, ...CHADQuest.goals(state, dayKey()) }; [g.target, g.proteinGoal, g.carbsGoal, g.fatGoal].forEach((v, i) => $(goalIds[i]).value = v); }
   if (CHADUX) {
-    Object.assign(CHADUX, { save, change, openResult, aiRoute, goSetup, message, logFavourite, showView, journal: () => state });
+    Object.assign(CHADUX, { save, change, removeEntry, logAgain, openResult, aiRoute, goSetup, message, logFavourite, showView, defaultMeal, journal: () => state, aiRejected: () => { aiRejected = true; aiStatus(); } });
     CHADUX.onFoodOpen = kind => {
       $('food-state').hidden = true; $('scan-status').textContent = '';
       if (kind === 'camera' && !scan) { clearPhoto(); snapState(); }             // an estimate in flight keeps its card
@@ -599,7 +566,6 @@
   }
   CHADUX?.setup({ stopScanner, render });
   read(); render(); fillGoals(); aiStatus(); if (storageReadable) save(state);
-  document.fonts?.ready?.then(() => fitFirst());
   window.CHADGym?.resume();                                        // a workout left open comes straight back
   // A setup link may open the app, or arrive in a tab that is already open. It is wiped from the address bar before
   // anything else happens, then saved: a quiet "AI connected" toast, with Undo.
@@ -620,7 +586,8 @@
         if (handled || typeof e.data !== 'string' || e.data === SHELL) return;
         handled = true;
         try { if (sessionStorage.getItem('rec-calories-reloaded') === e.data) return; sessionStorage.setItem('rec-calories-reloaded', e.data); } catch { /* reload at most once per page either way */ }
-        const busy = document.querySelector('dialog[open]') || ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) || window.CHADGym?.isOpen();
+        // A photo still being analysed counts as busy: a reload would cut its answer off (the photo would wait for a retry).
+        const busy = document.querySelector('dialog[open]') || ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) || window.CHADGym?.isOpen() || window.CHADScan12?.drafts().some(d => d.status === 'pending');
         if (fresh && !busy) location.reload();
         else CHADUX?.toast('Update ready', () => location.reload(), { action: 'Reload', icon: 'refresh', life: 12000 });
       };

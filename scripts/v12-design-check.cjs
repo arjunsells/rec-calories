@@ -1,25 +1,31 @@
 ﻿// Layout matrix: 393x852 and 375x667, DPR 3, touch, iPhone UA, light and dark, with and without simulated safe areas.
-// Every screen and sheet (Today at noon with its details and Later today open, Quick log, Gym, Progress, Settings with
-// its disclosure open, the add-food sheet, the card, the AI and barcode sheet, the meal sheet, the food sheet) and Gym
-// mode (exercise, rest, finish): 48 px targets everywhere (an input inside a label counts by its label, the box you tap)
-// and 56 px in Gym mode (72 px for its main buttons); WCAG AA contrast for every visible text (4.5:1, 3:1 for large),
-// gradients and opacity composited, against what is really behind it; no horizontal scroll; nothing spills out of its
-// card; the first screen is the line and the one thing to do; one tap per action; Gym mode clear of the notch and the
+// Every v12 screen and sheet: Today at noon (week strip, the hero and its "eaten" side, the macro cards, the water card,
+// lunch, Later today open, Quick log, Recently eaten with an Analysing… row and logged food), a past day, Gym, Progress,
+// Settings with its disclosures open, the add-food sheet, the full-screen camera in each mode, the barcode digits sheet,
+// the nutrition card (typed, a photo ready, Fix with AI open, an error, a logged food), Describe it, Saved, the meal
+// sheet, and Gym mode (exercise, rest, finish): 48 px targets everywhere (an input inside a label counts by its label, the
+// box you tap) and 56 px in Gym mode (72 px for its main buttons); WCAG AA contrast for every visible text (4.5:1, 3:1 for
+// large), gradients and opacity composited, against what is really behind it; no horizontal scroll; nothing spills out of
+// its card; the hero and the macro cards on the first screen; one tap per action; Gym mode clear of the notch and the
 // home indicator; and a pixel check that nothing shows through or collides with the floating tab bar.
+// Synthetic data only: a canvas stands in for the camera and the proxy is stubbed in the browser.
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os'), assert = require('node:assert/strict');
 const { serve, launch, watch, saved, decodePNG, IPHONE, NOON } = require('./harness.cjs');
-const shots = path.join(os.tmpdir(), 'chad-v11-qa');
+const shots = path.join(os.tmpdir(), 'chad-v12-qa');
 
 (async () => {
   const server = await serve(8091), browser = await launch();
   try {
     fs.mkdirSync(shots, { recursive: true });
     for (const [width, height] of [[393, 852], [375, 667]]) for (const theme of ['light', 'dark']) for (const safe of [false, true]) {
-      const context = await browser.newContext({ viewport: { width, height }, ...IPHONE, colorScheme: theme, reducedMotion: 'reduce' }), page = await context.newPage(), errors = watch(page);
+      const context = await browser.newContext({ viewport: { width, height }, ...IPHONE, colorScheme: theme, reducedMotion: 'reduce' }), page = await context.newPage(), errors = watch(page, t => /status of 401/.test(t));   // the 401 is the stub's, on purpose
+      let proxy = 'ok';
+      await context.route('**/estimate', async route => { await new Promise(r => setTimeout(r, proxy === 'slow' ? 2500 : 300)); if (proxy === '401') return route.fulfill({ status: 401, contentType: 'application/json', body: '{}' }); route.fulfill({ contentType: 'application/json', body: JSON.stringify({ name: 'Synthetic chicken, rice and greens with a long name', grams: 420, kcal: 640, protein_g: 52, carbs_g: 62, fat_g: 18, fibre_g: 6, sugar_g: 4, confidence: .6, items: [{ name: 'Grilled chicken thigh, skin off', grams: 180, kcal: 340, protein_g: 44, carbs_g: 0, fat_g: 16 }, { name: 'White rice', grams: 180, kcal: 230, protein_g: 4.5, carbs_g: 50, fat_g: .5 }, { name: 'Broccoli', grams: 60, kcal: 20, protein_g: 2, carbs_g: 4, fat_g: .2 }] }) }); });
+      await page.addInitScript(() => { const c = document.createElement('canvas'); c.width = 960; c.height = 720; const g = c.getContext('2d'); const draw = () => { g.fillStyle = '#6b5a48'; g.fillRect(0, 0, 960, 720); g.fillStyle = '#f4f1ea'; g.beginPath(); g.arc(480, 360, 260, 0, 7); g.fill(); }; draw(); setInterval(draw, 120); Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: async () => c.captureStream(10) } }); });
       if (safe) await page.addInitScript(css => { const add = () => { const style = document.createElement('style'); style.textContent = css; document.documentElement.append(style); }; if (document.documentElement) add(); else new MutationObserver((m, o) => { if (document.documentElement) { o.disconnect(); add(); } }).observe(document, { childList: true }); }, ':root{--ch-sat:47px;--ch-sab:34px;--ch-sal:6px;--ch-sar:6px}');   // as soon as <html> exists, before any script
       await page.clock.install({ time: new Date(NOON) }); await page.goto('http://127.0.0.1:8091/');
       // A saved dinner, so its favourite and Same as yesterday are on screen too.
-      await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('rec-calories-v1')); s.myMeals = [{ id: 'my-qa', slot: 'D', name: 'Synthetic chook and spud bowl with corn', macros: [640, 52, 60, 18], parts: [] }]; s.questsV5 = { '2026-11-23': { picks: { D: 'C' } } }; s.entries = [{ id: 'plan-2026-11-23-D', day: '2026-11-23', name: 'Synthetic leftover pasta bake', kcal: 700, protein: 40, carbs: 80, fat: 20, planSlot: 'D', source: 'custom' }]; localStorage.setItem('rec-calories-v1', JSON.stringify(s)); });
+      await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('rec-calories-v1')); s.myMeals = [{ id: 'my-qa', slot: 'D', name: 'Synthetic chook and spud bowl with corn', macros: [640, 52, 60, 18], parts: [] }]; s.questsV5 = { '2026-11-23': { picks: { D: 'C' } } }; s.entries = [{ id: 'plan-2026-11-23-D', day: '2026-11-23', name: 'Synthetic leftover pasta bake', kcal: 700, protein: 40, carbs: 80, fat: 20, planSlot: 'D', source: 'custom' }]; localStorage.setItem('rec-calories-v1', JSON.stringify(s)); localStorage.setItem('chad.aiProxyUrl', location.origin); localStorage.setItem('chad.aiProxyToken', 'synthetic-design-token'); });
       await page.reload(); await page.evaluate(() => document.fonts.ready);
       const name = width + 'x' + height + ' ' + theme + (safe ? ' safe' : '');
       const check = async label => {
@@ -32,7 +38,7 @@ const shots = path.join(os.tmpdir(), 'chad-v11-qa');
         }).map(e => ({ text: (e.getAttribute('aria-label') || e.textContent || e.id).trim().slice(0, 40), id: e.id, cls: String(e.className), w: e.offsetWidth, h: e.offsetHeight })));
         assert.deepEqual(bad, [], name + ' ' + label + ' 48px targets');
         // Nothing sticks out of its card.
-        const spill = await page.evaluate(() => [...document.querySelectorAll('.ch-opt__hit > *, .ch-cell > *, .ch-done__label, .ch-water__val, .ch-water__goal, .ch-fav > *, .ch-row-pick > *, .ch-later__toggle > *, .ch-left__col > *, .ch-pill > *, .ch-now__title, .ch-bld__chip > *')].filter(e => { const p = e.closest('.ch-opt, .ch-cell, .ch-done, .ch-water, .ch-fav, .ch-row-pick, .ch-later__toggle, .ch-left__col, .ch-pill, .ch-now, .ch-bld__chip'); if (!p || p === e || !e.getClientRects().length) return false; const a = e.getBoundingClientRect(), b = p.getBoundingClientRect(); return a.right > b.right + 1 || a.left < b.left - 1; }).map(e => e.className + ': ' + e.textContent.trim().slice(0, 30)));
+        const spill = await page.evaluate(() => [...document.querySelectorAll('.ch-opt__hit > *, .ch-cell > *, .ch-done__label, .ch-water__val, .ch-water__goal, .ch-fav > *, .ch-row-pick > *, .ch-later__toggle > *, .ch-hero__words > *, .ch-macro > *, .ch-watercard__words > *, .ch-food__words > *, .ch-week__day > *, .ch-pill > *, .ch-now__title, .ch-bld__chip > *, .ch-ing > *, .ch-nut__tile > *, .ch-cam__modes > button > *, .ch-cam__links > button > *')].filter(e => { const p = e.closest('.ch-opt, .ch-cell, .ch-done, .ch-water, .ch-fav, .ch-row-pick, .ch-later__toggle, .ch-hero__words, .ch-macro, .ch-watercard__words, .ch-food__words, .ch-week__day, .ch-pill, .ch-now, .ch-bld__chip, .ch-ing, .ch-nut__tile, .ch-cam__modes > button, .ch-cam__links > button'); if (!p || p === e || !e.getClientRects().length) return false; const a = e.getBoundingClientRect(), b = p.getBoundingClientRect(); return a.right > b.right + 1 || a.left < b.left - 1; }).map(e => e.className + ': ' + e.textContent.trim().slice(0, 30)));
         assert.deepEqual(spill, [], name + ' ' + label + ' nothing spills out of its card');
       };
       // WCAG AA: each element with its own text, against every colour that can be behind it (gradient stops composited
@@ -92,13 +98,15 @@ const shots = path.join(os.tmpdir(), 'chad-v11-qa');
       assert.equal(await page.evaluate(() => devicePixelRatio), 3);
       assert.equal(await page.evaluate(() => matchMedia('(pointer:coarse)').matches), true);
 
-      // Today at noon: the line and lunch fill the first screen; everything else is one scroll down.
+      // Today at noon: the week strip, the hero and the three macro cards are the first screen (the water card too on a tall
+      // phone); then the water card, the thing to do now and Recently eaten, in that order.
       await check('today'); await aa('today');
-      const first = await page.evaluate(() => ({ line: document.getElementById('left-line').getBoundingClientRect().bottom, now: document.querySelector('#now .ch-opt').getBoundingClientRect().top, after: document.getElementById('after-now').getBoundingClientRect().top, dock: document.querySelector('.ch-tabbar').getBoundingClientRect().top }));
-      assert.ok(first.line <= first.dock && first.now < first.dock - 60, name + ' the line and the first lunch option are on the first screen ' + JSON.stringify(first));
-      assert.ok(first.after >= first.dock - 4, name + ' nothing else competes on the first screen ' + JSON.stringify(first));
+      const first = await page.evaluate(() => { const r = q => document.querySelector(q).getBoundingClientRect(); return { hero: r('#left-line').bottom, macros: r('#macros').bottom, water: r('#water12').bottom, dock: r('.ch-tabbar').top, order: ['#week', '#left-line', '#macros', '#water12', '#now', '#after-now', '#recent12'].map(q => Math.round(r(q).top)) }; });
+      assert.ok(first.hero <= first.dock && first.macros <= first.dock, name + ' the hero and the macro cards are on the first screen ' + JSON.stringify(first));
+      if (height > 800) assert.ok(first.water <= first.dock, name + ' and the water card on a tall phone ' + JSON.stringify(first));
+      assert.deepEqual(first.order, first.order.slice().sort((x, y) => x - y), name + ' week, hero, macros, water, now, the rest, Recently eaten ' + JSON.stringify(first.order));
       const header = await page.locator('.date-header').evaluate(e => e.getBoundingClientRect().height); assert.ok(header >= (safe ? 91 : 48));
-      await page.locator('#left-line').tap(); await check('the line opened'); await aa('the line opened'); await page.waitForTimeout(420); await page.locator('#left-line').tap();
+      await page.locator('#left-line').tap(); assert.equal(await page.locator('#remaining-label').textContent(), 'Calories eaten'); await check('the hero, eaten'); await aa('the hero, eaten'); await page.waitForTimeout(420); await page.locator('#left-line').tap();
       await page.evaluate(() => scrollTo(0, document.body.scrollHeight)); await check('Today, scrolled'); await aa('Today, scrolled');
       await page.waitForTimeout(420); await page.locator('#later-toggle').tap(); await check('Later today open'); await aa('Later today open');
       await page.evaluate(() => scrollTo(0, document.body.scrollHeight)); await aa('Later today, bottom');
@@ -126,7 +134,7 @@ const shots = path.join(os.tmpdir(), 'chad-v11-qa');
         await page.evaluate(() => scrollTo(0, 0));                                                  // the spacer is behind the bar (a capture at the very end of the page can shift fixed layers)
         const frames = () => page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))).then(() => page.waitForTimeout(150));   // the header collapses on scroll: capture a settled frame
         await frames(); const empty = decodePNG(await page.screenshot());
-        const moved = await page.evaluate(({ view, top }) => { const card = view === 'today' ? document.querySelector('#first .ch-left') : [...document.querySelectorAll('#training .ch-session')].at(-1); scrollBy(0, card.getBoundingClientRect().top - (top - 24)); const r = card.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right }; }, { view, top: dock.top });
+        const moved = await page.evaluate(({ view, top }) => { const card = view === 'today' ? document.querySelector('#first .ch-hero') : [...document.querySelectorAll('#training .ch-session')].at(-1); scrollBy(0, card.getBoundingClientRect().top - (top - 24)); const r = card.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right }; }, { view, top: dock.top });
         assert.ok(moved.top < dock.top && moved.bottom > dock.bottom && moved.left < dock.left + quarter, name + ' ' + view + ' a card sits behind the bar for the pixel check ' + JSON.stringify({ moved, dock }));
         await frames(); const png = decodePNG(await page.screenshot());
         for (const [label, [x, y]] of Object.entries(points)) { const a = png.at(x * 3, y * 3), b = empty.at(x * 3, y * 3); assert.ok(a.every((v, i) => Math.abs(v - b[i]) <= 3), `${name} ${view} ${label}: ${a} with a card behind, ${b} over empty page`); }
@@ -149,7 +157,8 @@ const shots = path.join(os.tmpdir(), 'chad-v11-qa');
       await page.evaluate(() => CHADUX.hideToast(true)); await page.waitForTimeout(420); await page.locator('#later-toggle').tap(); await page.evaluate(() => scrollTo(0, 0));
       await check('today after lunch'); await aa('today after lunch');
 
-      // The sheets, one at a time, each fitting the screen: the add-food sheet, the card, Ask AI, barcode, a meal, a food.
+      // The sheets, one at a time, each fitting the screen: the add-food sheet, the card, the camera in each mode, barcode,
+      // a photo (Analysing…, ready, Fix with AI, an error), Describe it, Saved, a meal, a logged food.
       await page.locator('#add-food').scrollIntoViewIfNeeded(); await page.waitForTimeout(420); await page.locator('#add-food').tap(); await page.locator('#builder-sheet').waitFor({ state: 'visible' });
       for (const food of ['chook', 'yopro', 'steak-mash']) { await page.locator(`#builder-chips [data-food=${food}]`).tap(); await page.waitForTimeout(60); }
       await page.evaluate(() => { document.getElementById('builder-undo').hidden = true; });
@@ -157,15 +166,36 @@ const shots = path.join(os.tmpdir(), 'chad-v11-qa');
       const bspill = await page.evaluate(() => [...document.querySelectorAll('.ch-bld__item > *, .ch-bld__ctl > *, .ch-bld__chip > *, .ch-bld__total > *, .ch-bld__actions > *, .ch-bld__ways > *')].filter(e => { const p = e.parentElement.getBoundingClientRect(), r = e.getBoundingClientRect(); return r.width && (r.left < p.left - 1 || r.right > p.right + 1); }).map(e => e.className + ' ' + e.textContent.slice(0, 20)));
       assert.deepEqual(bspill, [], name + ' nothing spills out of the add-food sheet');
       const foot = await page.locator('.ch-bld__foot').boundingBox(); assert.ok(foot.y + foot.height <= height + 1, name + ' Log stays on screen');
-      await page.locator('#builder-type').tap(); await page.locator('#confirm-sheet').waitFor({ state: 'visible' }); await check('the card'); await aa('the card'); await sheetFits('confirm-sheet', 'the card');
-      await page.locator('#cancel-scan').tap(); await page.locator('#builder-sheet').waitFor({ state: 'visible' });
-      await page.locator('#builder-ask-go').tap(); await page.locator('#scan-sheet').waitFor({ state: 'visible' }); await check('Ask AI'); await aa('Ask AI'); await sheetFits('scan-sheet', 'Ask AI');
-      await page.locator('[data-snap=barcode]').tap(); await page.waitForTimeout(100); await check('barcode'); await aa('barcode'); await sheetFits('scan-sheet', 'barcode');
+      await page.locator('#builder-type').tap(); await page.locator('#nutrition12').waitFor({ state: 'visible' }); await check('the card, typed'); await aa('the card, typed'); await sheetFits('nutrition12', 'the card');
+      await page.locator('#nutrition12-close').tap(); await page.locator('#builder-sheet').waitFor({ state: 'visible' });
+      await page.locator('#builder-ask-go').tap(); await page.locator('#camera12').waitFor({ state: 'visible' }); await page.waitForFunction(() => document.getElementById('camera12-video').videoWidth > 0);
+      await check('camera'); await aa('camera');
+      // The camera fills the screen edge to edge; its controls stay clear of the notch and the home indicator.
+      assert.deepEqual(await page.evaluate(({ sat, sab }) => { const r = q => document.querySelector(q).getBoundingClientRect(); return { close: r('#camera12-close').top >= sat - 1, shutter: r('#camera12-shutter').bottom <= innerHeight - sab, links: r('.ch-cam__links').bottom <= innerHeight - sab + 1, full: r('#camera12').height >= innerHeight - 1 }; }, { sat: safe ? 47 : 0, sab: safe ? 34 : 0 }), { close: true, shutter: true, links: true, full: true }, name + ' the camera controls clear the notch and home indicator');
+      for (const m of ['label', 'barcode']) { await page.locator(`[data-mode12=${m}]`).tap(); await page.waitForTimeout(150); await check('camera, ' + m); await aa('camera, ' + m); }
+      await page.locator('#camera12-shutter').tap(); await page.locator('#scan-sheet').waitFor({ state: 'visible' }); await check('barcode digits'); await aa('barcode digits'); await sheetFits('scan-sheet', 'barcode');
       await page.locator('#scan-sheet [data-close=scan-sheet]').tap(); await page.locator('#builder-sheet').waitFor({ state: 'visible' }); await page.locator('#builder-sheet [data-close=builder-sheet]').tap(); await page.waitForTimeout(420);
+      // A photo: the Analysing… row, then the card by itself; Fix with AI open; the bottom of the card.
+      proxy = 'slow'; await page.locator('#open-camera').tap(); await page.waitForFunction(() => document.getElementById('camera12-video').videoWidth > 0); await page.locator('#camera12-shutter').tap();
+      await page.waitForFunction(() => document.querySelector('#recent12 .ch-food.is-pending')); await page.locator('#recent12').scrollIntoViewIfNeeded(); await check('Analysing row'); await aa('Analysing row');
+      await page.waitForFunction(() => document.getElementById('nutrition12').open && document.getElementById('nutrition12').dataset.state === 'ready', null, { timeout: 15000 });
+      await check('the card, a photo'); await aa('the card, a photo'); await sheetFits('nutrition12', 'the card with a photo');
+      const nspill = await page.evaluate(() => [...document.querySelectorAll('#nutrition12 .ch-ing > *, #nutrition12 .ch-nut__tile > *, #nutrition12 .ch-nut__serv > *, #nutrition12 .ch-nut__actions > *')].filter(e => { const p = e.parentElement.getBoundingClientRect(), r = e.getBoundingClientRect(); return r.width && (r.left < p.left - 1 || r.right > p.right + 1); }).map(e => e.className + ' ' + e.textContent.slice(0, 20)));
+      assert.deepEqual(nspill, [], name + ' nothing spills out of the nutrition card');
+      const nfoot = await page.locator('#nutrition12-foot').boundingBox(); assert.ok(nfoot.y + nfoot.height <= height + 1, name + ' Done stays on screen');
+      await page.evaluate(() => { const b = document.getElementById('nutrition12-body'); b.scrollTop = b.scrollHeight; }); await page.waitForTimeout(100); await check('the card, bottom'); await aa('the card, bottom');
+      await page.locator('#n12-fix').tap(); await check('Fix with AI'); await aa('Fix with AI'); await page.locator('#n12-cancelfix').tap();
+      await page.locator('#nutrition12-close').tap(); await page.waitForTimeout(420);
+      proxy = '401'; await page.locator('#open-camera').tap(); await page.waitForFunction(() => document.getElementById('camera12-video').videoWidth > 0); await page.locator('#camera12-shutter').tap();
+      await page.waitForFunction(() => document.getElementById('nutrition12').open && document.getElementById('nutrition12').dataset.state === 'error', null, { timeout: 15000 });
+      await check('the card, an error'); await aa('the card, an error'); await sheetFits('nutrition12', 'the card with an error'); proxy = 'ok';
+      await page.locator('#nutrition12-close').tap(); await page.waitForTimeout(420); await page.evaluate(() => scrollTo(0, document.getElementById('recent12').getBoundingClientRect().top + scrollY - 200)); await check('Recently eaten, drafts'); await aa('Recently eaten, drafts');
+      for (const [id, label] of [['camera12-describe', 'Describe it'], ['camera12-saved', 'Saved']]) { await page.locator('#open-camera').tap(); await page.locator('#' + id).tap(); await page.locator('#detail-sheet').waitFor({ state: 'visible' }); await check(label); await aa(label); await sheetFits('detail-sheet', label); await page.keyboard.press('Escape'); await page.waitForTimeout(420); }
+      await page.evaluate(() => scrollTo(0, 0)); await page.waitForTimeout(100);
       await page.locator('#later-toggle').tap(); const dinner = page.locator('#later-more [data-slot=D][data-tier=S]'); await dinner.evaluate(e => e.scrollIntoView({ block: 'center' })); await page.waitForTimeout(420); const card = await dinner.boundingBox(); await page.mouse.move(card.x + card.width / 2, card.y + card.height / 2); await page.mouse.down(); await page.clock.runFor(600); await page.mouse.up();
       assert.equal(await page.locator('#detail-sheet').isVisible(), true); await check('meal sheet'); await aa('meal sheet'); await sheetFits('detail-sheet', 'the meal sheet'); await page.keyboard.press('Escape');
-      await page.waitForTimeout(420); await page.locator('#later-toggle').tap(); await page.evaluate(() => scrollTo(0, 0)); await page.waitForTimeout(420); await page.locator('#left-line').tap(); await page.locator('#entries .entry-open').first().tap(); assert.equal(await page.locator('dialog[open]').count(), 1, 'one sheet at a time'); await check('food sheet'); await aa('food sheet'); await page.keyboard.press('Escape');
-      await page.waitForTimeout(420); await page.locator('#left-line').tap();
+      await page.waitForTimeout(420); await page.locator('#later-toggle').tap(); await page.waitForTimeout(420); await page.locator('#recent12 [data-entry]').first().scrollIntoViewIfNeeded(); await page.locator('#recent12 [data-entry]').first().tap(); await page.locator('#nutrition12').waitFor({ state: 'visible' }); assert.equal(await page.locator('dialog[open]').count(), 1, 'one sheet at a time'); await check('the card, a logged food'); await aa('the card, a logged food'); await page.keyboard.press('Escape');
+      await page.waitForTimeout(420); await page.evaluate(() => scrollTo(0, 0));
 
       // Gym mode from the Gym tab: exercise, rest, finish.
       await tab('training'); await page.locator('.is-today .exercise-row').first().tap(); await check('exercise sheet'); await aa('exercise sheet'); await page.keyboard.press('Escape');
@@ -182,7 +212,7 @@ const shots = path.join(os.tmpdir(), 'chad-v11-qa');
       if (!safe && theme === 'dark') await page.screenshot({ path: path.join(shots, name.replaceAll(' ', '-') + '-gym-finish.png') });
       await page.locator('[data-gym=done]').tap(); assert.equal(await page.locator('#gym').isVisible(), false);
       assert.deepEqual(errors, [], name + ' errors'); await context.close();
-      console.log('PASS ' + name + ': Today (the line, its details, Later today, Quick log, a past day), Gym tab, Progress, Settings (disclosures open), the add-food sheet, the card, Ask AI, barcode, the meal and food sheets: WCAG AA text contrast (gradients and opacity composited), >= 48 px targets, nothing spills, no overflow, the first screen is the line and the one thing to do, every sheet fits, dock pixels clean behind the bar, last row clears the fade, toast above the dock, meal/water/YoPRO/habit/Start/set = 1 tap each; Gym mode exercise, rest and finish: 56 px targets, 72 px main buttons in the bottom of the screen, clear of notch and home indicator, finish fits; no JS/console errors');
+      console.log('PASS ' + name + ': Today (week strip, hero + eaten side, macro cards, water card, Later today, Quick log, Recently eaten with drafts, a past day), Gym tab, Progress, Settings (disclosures open), the add-food sheet, the camera (food, label, barcode), barcode digits, the nutrition card (typed, photo, Fix with AI, error, logged food), Describe it, Saved, the meal sheet: WCAG AA text contrast (gradients and opacity composited), >= 48 px targets, nothing spills, no overflow, the first screen is the line and the one thing to do, every sheet fits, dock pixels clean behind the bar, last row clears the fade, toast above the dock, meal/water/YoPRO/habit/Start/set = 1 tap each; Gym mode exercise, rest and finish: 56 px targets, 72 px main buttons in the bottom of the screen, clear of notch and home indicator, finish fits; no JS/console errors');
     }
     console.log('Screenshots outside repo: ' + shots);
   } finally { await browser.close(); server.close(); }

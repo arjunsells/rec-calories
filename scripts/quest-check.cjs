@@ -5,7 +5,7 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), vm = requ
 let NOW = Date.parse('2026-11-24T12:00:00+09:30'), block = 'midday';
 class Clock extends Date { constructor(...a) { super(...(a.length ? a : [NOW])); } static now() { return NOW; } }
 const load = (files, extra = {}) => { const ctx = { window: { CHADUX: { timeBlock: () => block } }, Intl, Date: Clock, Math, matchMedia: () => ({ addEventListener() {} }), ...extra }; vm.createContext(ctx); for (const f of files) vm.runInContext(fs.readFileSync(f, 'utf8'), ctx); return ctx; };
-const ctx = load(['game10.js', 'train10.js', 'quest11.js', 'plan11.js']); ctx.CHADPlan = ctx.window.CHADPlan;       // the screens read the plan as a global, as in the page
+const ctx = load(['game10.js', 'train10.js', 'quest12.js', 'plan11.js']); ctx.CHADPlan = ctx.window.CHADPlan;       // the screens read the plan as a global, as in the page
 const q = ctx.window.CHADQuest, plan = ctx.window.CHADPlan, T = ctx.CHADTrain, G = ctx.RECGame;
 const plain = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 const eq = (a, b, message) => assert.deepEqual(plain(a), plain(b), message);
@@ -204,7 +204,7 @@ for (let round = 0; round < 12; round++) {
     assert.equal(streak, G.journey(journal, k).streak);
   }
 }
-console.log('PASS v11 scoring (kept for the data, not shown) equals the shipped v9 on 12 random journals (days, weeks, stats apart from the journey streak and the badge-only ones).');
+console.log('PASS v12 scoring (kept for the data, not shown) equals the shipped v9 on 12 random journals (days, weeks, stats apart from the journey streak and the badge-only ones).');
 
 /* ---- v11: the two one-tap favourites, and the same numbers in the add-food sheet ---- */
 const favs = ctx.window.CHADFavourites, builder = require('../builder11.js');
@@ -214,17 +214,18 @@ eq(builder.FOODS.slice(0, 2).map(f => f.id), ['yopro-pouch', 'gochi-noodle'], 'a
 const half = builder.FOODS.find(f => f.id === 'nandos-half'); eq(half.per, L.choices[0].macros, "the ½ chicken is the same everywhere");
 console.log('PASS favourites: YoPRO Perform pouch 120/20.1/6.8/1.2 and Gochi noodle meal 225/31.8/25.2/2.6, the same in the add-food sheet, first there.');
 
-/* ---- v11: ONE thing to do now, by Darwin time: water in the morning, lunch until 4 pm, the session 4-6:30 pm, then
-   dinner, the snack while protein is short, water, the wrap-up; another day: its first meal still to log ---- */
+/* ---- v12: ONE thing to do now, by Darwin time: lunch until 4 pm, the session 4-6:30 pm, then dinner, the snack while
+   protein is short, the wrap-up; another day: its first meal still to log. Water has its own card above it all day
+   (one tap), so it is never the thing to do now. ---- */
 const TUE = '2026-11-24', WED = '2026-11-25', SUN = '2026-11-29';
 const at = (b, s, key = TUE) => { block = b; const n = q.nowFor(s, key); return n.id === 'meal' ? 'meal ' + n.slot.id : n.id; };
 const day = (fields = {}, entries = []) => ({ target: 1900, proteinGoal: 220, carbsGoal: 150, fatGoal: 45, entries, questsV5: { [TUE]: fields, [WED]: fields, [SUN]: fields } });
 const ate = (slot, tier, key = TUE) => { const c = plan.find(s => s.id === slot).choices.find(c => c.tier === tier); return { id: 'plan-' + key + '-' + slot, day: key, name: c.title, kcal: c.macros[0], protein: c.macros[1], carbs: c.macros[2], fat: c.macros[3], planSlot: slot }; };
 const habits = { steps: true, sleep: true, electrolyte: true };
-assert.equal(at('morning', day()), 'water', '8 am: water first');
-assert.equal(at('morning', day({ water: 4.5 })), 'meal L', 'water done early: lunch next');
+assert.equal(at('morning', day()), 'meal L', '8 am: lunch is next (water has its own card)');
+assert.equal(at('morning', day({ water: 4.5 })), 'meal L', 'water done early: still lunch');
 assert.equal(at('midday', day()), 'meal L', 'noon: lunch');
-assert.equal(at('midday', day({ picks: { L: 'S' } }, [ate('L', 'S')])), 'water', 'lunch in: water');
+assert.equal(at('midday', day({ picks: { L: 'S' } }, [ate('L', 'S')])), 'session', 'lunch in: the session, early (water or not)');
 assert.equal(at('midday', day({ picks: { L: 'S' }, water: 4.5 }, [ate('L', 'S')])), 'session', 'lunch and water done: the session, early');
 assert.equal(at('gym', day()), 'session', '4:30 pm: the session');
 assert.equal(at('gym', day({ training: true })), 'meal D', 'session marked done: dinner');
@@ -232,7 +233,7 @@ assert.equal(at('gym', day({ workout: { id: 'pull', start: 1, end: 2, sets: [] }
 assert.equal(at('gym', day({ workout: { id: 'pull', start: 1, sets: [] } })), 'session', 'mid-workout: still the session (Resume)');
 assert.equal(at('evening', day()), 'meal D', '7 pm: dinner');
 assert.equal(at('evening', day({ picks: { L: 'M', D: 'M' } }, [ate('L', 'M'), ate('D', 'M')])), 'meal P', 'dinner in, protein short (139 g of 220): the snack');
-assert.equal(at('evening', day({ picks: { L: 'S', D: 'F' } }, [ate('L', 'S'), ate('D', 'F')])), 'water', 'dinner in, protein fine (223.5 g): water');
+assert.equal(at('evening', day({ picks: { L: 'S', D: 'F' } }, [ate('L', 'S'), ate('D', 'F')])), 'wrap', 'dinner in, protein fine (223.5 g): the wrap-up (water stays on its card)');
 assert.equal(at('evening', day({ picks: { L: 'S', D: 'F' }, water: 4.5 }, [ate('L', 'S'), ate('D', 'F')])), 'wrap', 'and water done: the wrap-up');
 assert.equal(at('evening', day({ picks: { L: 'S', D: 'F' }, water: 4.5, ...habits }, [ate('L', 'S'), ate('D', 'F')])), 'done', 'everything in: done');
 assert.equal(at('evening', day({ picks: { L: 'S', D: 'M', P: 'S' }, water: 4.5 }, [ate('L', 'S'), ate('D', 'M'), ate('P', 'S')])), 'wrap', 'the snack logged: never offered again');
@@ -248,4 +249,4 @@ const MON = '2026-11-23';
 for (const b of ['morning', 'midday', 'gym', 'evening']) { block = b; assert.equal(q.nowFor({ target: 1900, proteinGoal: 220, entries: [], questsV5: {} }, MON).slot?.id, 'L', 'another day: lunch first, at ' + b); }
 assert.equal(q.nowFor({ target: 1900, proteinGoal: 220, entries: [ate('L', 'S', MON)], questsV5: { [MON]: { picks: { L: 'S' } } } }, MON).slot?.id, 'D');
 assert.equal(q.nowFor({ target: 1900, proteinGoal: 220, entries: [ate('L', 'S', MON), ate('D', 'F', MON)], questsV5: { [MON]: { picks: { L: 'S', D: 'F' }, ...habits } } }, MON).id, 'done', 'protein reached: no snack needed, the day is done');
-console.log('PASS the one thing to do now: 8 am water (then lunch), noon lunch (then water, then the session early), 4:30 pm the session (Resume mid-workout; done -> dinner), 7 pm dinner, then the snack only while protein is 20 g+ short, water, the wrap-up, done; Wednesday Muay Thai and Sunday the walk as the session; another day: its first meal still to log.');
+console.log('PASS the one thing to do now (v12, water on its own card): 8 am lunch, noon lunch (then the session early), 4:30 pm the session (Resume mid-workout; done -> dinner), 7 pm dinner, then the snack only while protein is 20 g+ short, the wrap-up, done; Wednesday Muay Thai and Sunday the walk as the session; another day: its first meal still to log.');
